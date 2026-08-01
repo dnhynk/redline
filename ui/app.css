@@ -137,6 +137,10 @@
 html {
   scroll-padding-top: var(--scroll-pad);
 }
+/* 런이 도는 동안에는 상단 바 아래에 상태 띠가 한 겹 더 붙는다 */
+html.is-running {
+  scroll-padding-top: var(--scroll-pad-run);
+}
 
 body {
   margin: 0;
@@ -1485,6 +1489,31 @@ a {
 .report-sub {
   font-size: 13px;
   line-height: 1.6;
+  color: var(--muted);
+}
+/* 모델이 쓴 보고문 위에 호스트가 센 값을 둔다 — 어긋나면 이쪽이 정본이다 */
+.report-facts {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 18px 0 4px;
+  padding: 12px 16px;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  font-size: 14px;
+}
+.report-facts b {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rf-nums {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.rf-note {
+  margin-left: auto;
+  font-size: 12px;
   color: var(--muted);
 }
 .report-empty {

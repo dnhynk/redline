@@ -972,6 +972,46 @@ def test_the_deck_and_the_intro_close_on_the_same_sentence():
     assert re.sub(r"\s+", " ", strip_tags(foot)).strip() == " ".join(closing)
 
 
+def test_an_unjudged_sentence_is_not_called_a_non_claim_on_a_thin_run():
+    """상한에 안 닿았다는 것만으로는 모델이 그 문장을 보고 넘어갔다고 말할 수 없다.
+    본문을 얼마나 짚었는지 모르면 단정하지 않고 감사 안 함 쪽으로 둔다."""
+    block = JS.split("function bareLabel(")[1].split("\n  }")[0]
+    assert "sweptEnough()" in block, "커버리지를 안 보고 단정한다"
+    assert re.search(r"capReached\(\)\s*\|\|\s*!sweptEnough\(\)", block), block
+    swept = JS.split("function sweptEnough(")[1].split("\n  }")[0]
+    assert "coverage" in swept and "audited_claim_count" in swept
+    # 모르면 덜 단정적인 쪽으로 — 커버리지가 없으면 false 를 돌려준다
+    assert "return false" in swept
+    frac = float(re.search(r"var SWEPT_FRACTION = ([\d.]+);", JS).group(1))
+    assert 0 < frac <= 0.5, f"기준이 느슨하다: {frac}"
+
+
+def test_the_host_count_stands_above_the_model_prose():
+    """모델이 쓴 보고문은 수치를 잘못 적을 수 있다. 나란히 놓는 자리에서는
+    호스트가 센 값이 정본이다."""
+    assert 'id="report-facts"' in INDEX
+    assert INDEX.index('id="report-facts"') < INDEX.index('id="final-report"'), (
+        "호스트 수치가 보고문 아래에 있다")
+    block = JS.split("function paintReportFacts(")[1].split("\n  }")[0]
+    for field in ("unsupported_rate", "no_source_count", "coverage"):
+        assert field in block, field
+    assert "audit" in block and "final_report" not in block, "모델 글에서 수치를 읽는다"
+    # 어느 쪽이 정본인지 화면이 말한다
+    assert "이 줄이 맞습니다" in block
+
+
+def test_the_scroll_destination_clears_the_sticky_layers():
+    """상단 바와 상태 띠가 둘 다 sticky 라 목적지가 그 아래로 와야 탭 줄이 안 가린다."""
+    block = JS.split("function stickyTop(")[1].split("\n  }")[0]
+    assert ".topbar" in block and "#status-band" in block
+    assert "getBoundingClientRect" in block, "실제 높이를 안 재고 상수를 쓴다"
+    # 재고서 안 쓰면 재는 의미가 없다 — 돌려주는 값이 잰 높이여야 한다
+    assert re.search(r"return\s+Math\.round\(height\)", block), "잰 높이를 안 돌려준다"
+    assert "- 78" not in JS, "옛 고정 오프셋이 남아 있다"
+    assert JS.count("- stickyTop()") >= 2, "스크롤 목적지가 sticky 높이를 안 쓴다"
+    assert "--scroll-pad-run" in CSS and "html.is-running" in CSS
+
+
 def test_the_screen_does_not_explain_its_own_design_decisions():
     for phrase in ("본문을 가리지 않", "여백에 붙습니다", "그래서 빨강", "설계", "은유"):
         assert phrase not in strip_tags(INDEX), phrase

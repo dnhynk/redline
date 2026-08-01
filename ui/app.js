@@ -740,7 +740,8 @@
     if (reason === "non_auditable") return "감사 대상 아님";
     if (reason === "complete") {
       // 상한을 다 쓴 런에서는 이 문장을 보지 못했을 수 있다 — 그때는 단정하지 않는다.
-      return capReached() ? "감사 안 함" : "논증 문장 아님";
+      // 상한에 안 닿았더라도 본문을 얼마나 짚었는지 모르면 마찬가지다.
+      return capReached() || !sweptEnough() ? "감사 안 함" : "논증 문장 아님";
     }
     return cutLabel();
   }
@@ -750,6 +751,21 @@
     var cap = audit.max_claims;
     if (!cap) return true; // 상한을 모르면 덜 단정적인 쪽으로 둔다
     return (audit.claims || []).length >= cap;
+  }
+
+  // 상한에 안 닿았다는 것만으로는 모델이 이 문장을 보고 넘어갔다고 말할 수 없다.
+  // 등록을 덜 했을 뿐 본문 뒤쪽에 닿지도 못한 런이 있기 때문이다. 실제로 훑었는지는
+  // 커버리지로 어림잡는 수밖에 없고, 절반도 못 짚은 런에서는 단정하지 않는다.
+  // 이 어림은 한쪽으로만 틀린다 — 사실 판정 문장이 적은 글에서는 덜 단정하게 되고,
+  // 그 방향은 안 한 것을 한 것처럼 말하지 않는다는 규칙과 같은 쪽이다.
+  var SWEPT_FRACTION = 0.5;
+
+  function sweptEnough() {
+    var audit = state.audit || {};
+    var coverage = audit.coverage;
+    if (!Array.isArray(coverage) || !coverage[1]) return false;
+    if (!(audit.audited_claim_count > 0)) return false;
+    return coverage[0] / coverage[1] >= SWEPT_FRACTION;
   }
 
   function cutLabel() {
@@ -1234,6 +1250,32 @@
       $("#report-empty").hidden = !!md;
       paintFixes(parts.fixes);
     }
+    paintReportFacts(status, !!md);
+  }
+
+  // 아래 보고문은 모델이 쓴 글이라 수치를 잘못 적을 수 있다. 호스트가 센 값을
+  // 그 위에 나란히 두고, 어긋나면 이쪽이 정본이라고 화면이 말하게 한다.
+  function paintReportFacts(status, hasReport) {
+    var line = $("#report-facts");
+    if (!line) return;
+    var audit = (status && status.audit) || state.audit;
+    if (!hasReport || !audit) {
+      line.hidden = true;
+      return;
+    }
+    var bits = [];
+    var rate = audit.unsupported_rate;
+    if (Array.isArray(rate) && rate[1]) bits.push("뒷받침 안 됨 " + rate[0] + " / " + rate[1]);
+    if (typeof audit.no_source_count === "number")
+      bits.push("출처 못 찾음 " + audit.no_source_count + "건");
+    if (Array.isArray(audit.coverage) && audit.coverage[1])
+      bits.push("커버리지 " + audit.coverage[0] + " / " + audit.coverage[1]);
+    line.hidden = !bits.length;
+    if (!bits.length) return;
+    line.textContent = "";
+    line.appendChild(el("b", null, "감사가 센 값"));
+    line.appendChild(el("span", "rf-nums", bits.join("  ·  ")));
+    line.appendChild(el("span", "rf-note", "아래 보고문과 수치가 다르면 이 줄이 맞습니다"));
   }
 
   // 추천 수정안 — 목록 전체를 다시 짓지 않고 있는 줄만 갈아 끼운다
@@ -1604,6 +1646,7 @@
   function revealStage() {
     var band = $("#status-band");
     if (band) band.hidden = false;
+    document.documentElement.classList.add("is-running");
     var tabs = $("#result-tabs");
     if (tabs && tabs.hidden) {
       tabs.hidden = false;
@@ -1633,10 +1676,20 @@
     scrollToTabs(stage);
   }
 
+  // 상단 바와 상태 띠가 둘 다 sticky 다. 목적지가 그 아래로 오지 않으면 탭 줄이
+  // 띠에 가린다. 토큰을 믿지 않고 실제 높이를 재서 쓴다 — 띠 내용이 바뀌어도 안 어긋난다.
+  function stickyTop() {
+    var bar = document.querySelector(".topbar");
+    var band = $("#status-band");
+    var height = bar ? bar.getBoundingClientRect().height : 0;
+    if (band && !band.hidden) height += band.getBoundingClientRect().height;
+    return Math.round(height) + 14;
+  }
+
   function scrollToTabs(stage) {
     var tabs = $("#result-tabs");
     if (!tabs || tabs.hidden) return;
-    smoothTo(Math.max(0, tabs.getBoundingClientRect().top + window.scrollY - 78), stage);
+    smoothTo(Math.max(0, tabs.getBoundingClientRect().top + window.scrollY - stickyTop()), stage);
   }
 
   function paintInputCount() {
@@ -1667,7 +1720,7 @@
     if (!spec) return;
     var target = $(spec.target);
     if (!target || target.hidden) return;
-    var top = target.getBoundingClientRect().top + window.scrollY - 78 - spec.peek;
+    var top = target.getBoundingClientRect().top + window.scrollY - stickyTop() - spec.peek;
     smoothTo(Math.max(0, top), stage);
   }
 
