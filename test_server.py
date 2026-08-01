@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import AsyncIterator
@@ -684,15 +687,22 @@ def test_live_lists_are_never_rebuilt_wholesale():
 
 
 def test_claimed_manuscript_keeps_the_host_coordinate_system():
-    """주장이 붙은 줄은 구조 마크다운보다 record_claim 좌표가 먼저다."""
+    """주장이 붙은 줄은 구조 마크다운보다 record_claim 좌표가 먼저다.
+
+    인라인 표기를 지우더라도 앵커는 원문에서 먼저 잡고 그 다음 표시 좌표로 옮긴다.
+    순서가 반대면 지운 글자 수만큼 밑줄이 밀린다.
+    """
     update = JS.split("function updateManuscript(")[1].split("\n  function ")[0]
     assert "claims.length ? null : manuscriptView(slot.sentence, slot.kind)" in update
     assert "anchorsFor(slot.sentence, claims)" in update
-    assert "buildMarkup(slot.sentence, anchors)" in update
+    assert update.index("anchorsFor(slot.sentence") < update.index("stripInline(slot.sentence)"), (
+        "표기를 지운 뒤에 앵커를 잡는다 — 좌표가 밀린다")
+    assert "projectRange(inline.map, anchors[p].start, anchors[p].end)" in update
+    assert "buildMarkup(inline.text, anchors)" in update
     assert "renderMarkdown" not in update and "inline(" not in update
     build = JS.split("function buildMarkup(")[1].split("\n  }")[0]
-    assert "sentence.slice(a.start, a.end)" in build
-    assert "esc(sentence.slice" in build, "원고 슬라이스가 이스케이프를 건너뛴다"
+    assert "shown.slice(a.dstart, a.dend)" in build
+    assert "esc(shown.slice" in build, "원고 슬라이스가 이스케이프를 건너뛴다"
 
 
 def test_every_fixture_claim_underlines_its_exact_recorded_text():
@@ -715,6 +725,84 @@ def test_every_fixture_claim_underlines_its_exact_recorded_text():
                 assert sentence[start:start + len(needle)] == needle
                 checked += 1
     assert checked > 0
+
+
+def _fn(name: str) -> str:
+    """app.js 에서 함수 하나를 통째로 떼어 낸다 — 2칸 들여쓰기 닫는 괄호가 끝이다."""
+    body = JS.split(f"\n  function {name}(")[1].split("\n  }\n")[0]
+    return f"function {name}(" + body + "\n}"
+
+
+INLINE_CASES = [
+    # (문장, 클레임 원문, 표기 위치)
+    ("수면안대는 **눈을 보호하여** 안정적인 수면을 돕습니다.", "안정적인 수면을 돕습니다", "앵커 앞"),
+    ("수면안대는 외부 불빛으로부터 **안정적인 REM 수면 주기를 유지**하도록 돕습니다.",
+     "안정적인 REM 수면 주기를 유지", "앵커가 표기 안쪽"),
+    ("눈을 완전히 감지 못하는 사람이 있습니다. **수분 증발 방지**", "눈을 완전히 감지 못하는 사람이 있습니다",
+     "앵커 뒤"),
+    ("앞말 **강조된 조각** 뒷말이 이어진다", "앞말 **강조된 조각** 뒷말이 이어진다", "표기가 앵커를 가로지름"),
+    ("`code_value` 는 snake_case 를 그대로 둔다", "snake_case 를 그대로 둔다", "코드와 밑줄 낱말"),
+    ("표기가 하나도 없는 평범한 문장이다", "평범한 문장이다", "표기 없음"),
+]
+
+
+def test_inline_markers_leave_the_underline_on_the_recorded_characters():
+    """★ 밑줄이 덮는 글자는 record_claim 이 앵커한 글자여야 한다.
+
+    표기를 지우면 오프셋이 밀리므로, 대응표를 실제로 돌려 확인한다.
+    """
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node 없음 — 대응표를 실행해 볼 수 없다")
+
+    harness = "\n".join([
+        _fn("isWordChar"), _fn("markInlineDelims"), _fn("stripInline"), _fn("projectRange"),
+        """
+const cases = JSON.parse(process.argv[2]);
+const out = cases.map(([sentence, claim]) => {
+  const needle = claim.trim().replace(/[.。!?！？,·:;]+$/u, "");
+  const start = sentence.indexOf(needle);
+  const inline = stripInline(sentence);
+  const span = start < 0 ? null : projectRange(inline.map, start, start + needle.length);
+  // 앵커 구간에서 살아남은 원문 글자 — 밑줄이 덮어야 하는 바로 그 글자다
+  const kept = inline.map.slice(0, inline.text.length)
+    .map((src, i) => (src >= start && src < start + needle.length ? inline.text[i] : ""))
+    .join("");
+  return {
+    start, shown: inline.text, span,
+    underlined: span ? inline.text.slice(span[0], span[1]) : null,
+    kept,
+  };
+});
+process.stdout.write(JSON.stringify(out));
+""",
+    ])
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "h.mjs"
+        script.write_text(harness, encoding="utf-8")
+        proc = subprocess.run(
+            [node, str(script), json.dumps(INLINE_CASES, ensure_ascii=False)],
+            capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    results = json.loads(proc.stdout)
+
+    for (sentence, claim, where), got in zip(INLINE_CASES, results):
+        assert got["start"] >= 0, f"{where}: 원문에서 앵커를 못 찾았다"
+        assert got["span"], f"{where}: 표시 구간으로 못 옮겼다"
+        # 밑줄 구간의 글자 == 앵커 구간에서 살아남은 글자. 하나도 어긋나면 안 된다.
+        assert got["underlined"] == got["kept"], (
+            f"{where}: 밑줄이 다른 글자를 덮는다\n  밑줄={got['underlined']!r}\n  앵커={got['kept']!r}")
+        # 표기가 없는 문장에서는 원문 글자 그대로여야 한다
+        if "*" not in sentence and "`" not in sentence:
+            assert got["underlined"] == claim.strip(), where
+        assert "**" not in got["shown"], f"{where}: 본문에 표기가 남았다"
+
+    # 표기가 앵커 밖에 있으면 밑줄 글자는 클레임 원문과 글자 단위로 같다
+    for idx in (0, 2):
+        assert results[idx]["underlined"] == INLINE_CASES[idx][1], INLINE_CASES[idx][2]
+    # snake_case 와 코드 안쪽 밑줄은 표기가 아니다 — 글자를 지우지 않는다
+    assert "snake_case" in results[4]["shown"]
+    assert "code_value" in results[4]["shown"]
 
 
 def test_only_unclaimed_whole_lines_get_manuscript_markdown_treatment():

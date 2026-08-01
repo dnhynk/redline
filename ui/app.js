@@ -598,18 +598,35 @@
 
   // 원고 열: 클레임 구절에만 밑줄. 앵커 집합이 바뀔 때만 다시 짓는다.
   function updateManuscript(slot, claims) {
+    // 앵커는 원문 좌표로 잡는다 — record_claim 이 본 것이 원문이기 때문이다.
+    // 그 다음 표시 좌표로 옮긴다. 순서가 반대면 지운 표기만큼 밑줄이 밀린다.
     var anchors = anchorsFor(slot.sentence, claims);
+    var inline = stripInline(slot.sentence);
+    for (var p = 0; p < anchors.length; p++) {
+      if (anchors[p].start < 0) continue;
+      var span = projectRange(inline.map, anchors[p].start, anchors[p].end);
+      if (!span) {
+        anchors[p].start = -1;
+        anchors[p].end = -1;
+        continue;
+      }
+      anchors[p].dstart = span[0];
+      anchors[p].dend = span[1];
+    }
     // 구조 마크다운은 주장 없는 줄에서만 걷어 낸다. 클레임이 하나라도 붙으면
-    // record_claim 과 같은 원문 좌표계로 즉시 돌아가야 밑줄 구간이 밀리지 않는다.
+    // 줄 머리를 떼는 순간 앵커가 통째로 밀린다.
     var view = claims.length ? null : manuscriptView(slot.sentence, slot.kind);
+    if (view) view = { type: view.type, level: view.level, marker: view.marker,
+                       text: stripInline(view.text).text };
     // 앵커는 등록 시점에 확정된다. 마크업 적용이 애니메이션 뒤로 밀려도
     // 여백은 이 표를 보고 「구절」 인용 여부를 정한다 — 행 높이가 나중에 안 변한다.
     slot.anchors = {};
     for (var a = 0; a < anchors.length; a++) slot.anchors[anchors[a].id] = anchors[a].start >= 0;
     var sig = JSON.stringify([
       anchors.map(function (a) {
-        return [a.id, a.start, a.end];
+        return [a.id, a.dstart, a.dend];
       }),
+      inline.text,
       view
     ]);
     if (slot.text.dataset.sig !== sig) {
@@ -617,7 +634,7 @@
         slot.text.dataset.sig = sig;
         resetManuscriptView(slot.text);
         if (view) applyManuscriptView(slot.text, view);
-        else slot.text.innerHTML = buildMarkup(slot.sentence, anchors);
+        else slot.text.innerHTML = buildMarkup(inline.text, anchors);
         for (var k = 0; k < claims.length; k++) {
           var born = slot.text.querySelector('[data-cid="' + claims[k].id + '"]');
           if (born) applyMark(born, claims[k].id, claims[k].verdict || "pending", slot.row);
@@ -633,8 +650,90 @@
     }
   }
 
-  // 문장 전체가 구조 표기일 때만 내용과 표기를 갈라낸다. 인라인 강조·코드는
-  // 일부 글자만 없애 오프셋을 바꾸므로 여기서 다루지 않는다.
+  // ---------------------------------------------------------------- 인라인 표기
+  //
+  // 본문에 ** 가 그대로 보이면 안 되지만, 글자를 지우면 record_claim 이 잡아 둔
+  // 원문 좌표가 밀린다. 그래서 지운 문자열과 함께 「표시 좌표 → 원문 좌표」 표를
+  // 만든다. 지우기만 하고 순서는 바꾸지 않으므로 대응은 단조롭고, 그래서 원문
+  // 구간 하나는 표시 구간 하나로 그대로 옮겨진다.
+
+  function isWordChar(c) {
+    return !!c && /[0-9A-Za-zÀ-ɏ]/.test(c);
+  }
+
+  // 짝이 맞는 표기 문자의 자리만 표시한다. 짝을 못 찾으면 그것은 표기가 아니라
+  // 본문의 별표다 — 건드리지 않는다.
+  function markInlineDelims(src, from, to, drop) {
+    var i = from;
+    while (i < to) {
+      var c = src.charAt(i);
+      if (c !== "*" && c !== "_" && c !== "`") {
+        i++;
+        continue;
+      }
+      var len = c !== "`" && src.charAt(i + 1) === c ? 2 : 1;
+      // snake_case 는 강조가 아니다 — 밑줄은 낱말 경계에서만 표기로 읽는다
+      if (c === "_" && isWordChar(src.charAt(i - 1))) {
+        i += len;
+        continue;
+      }
+      var close = -1;
+      for (var j = i + len; j + len <= to; j++) {
+        if (src.substr(j, len) !== src.substr(i, len)) continue;
+        if (c !== "`" && src.charAt(j + len) === c) continue; // *** 같은 긴 줄은 짝이 아니다
+        if (c === "_" && isWordChar(src.charAt(j + len))) continue;
+        close = j;
+        break;
+      }
+      if (close < 0) {
+        i += len;
+        continue;
+      }
+      var inner = src.slice(i + len, close);
+      if (!inner.length || /^\s|\s$/.test(inner)) {
+        i += len;
+        continue;
+      }
+      for (var d = 0; d < len; d++) {
+        drop[i + d] = 1;
+        drop[close + d] = 1;
+      }
+      // 코드 안쪽은 표기가 아니다. 강조 안쪽은 겹칠 수 있으니 마저 훑는다.
+      if (c !== "`") markInlineDelims(src, i + len, close, drop);
+      i = close + len;
+    }
+  }
+
+  function stripInline(src) {
+    var text = String(src == null ? "" : src);
+    var drop = {};
+    markInlineDelims(text, 0, text.length, drop);
+    var out = "";
+    var map = [];
+    for (var i = 0; i < text.length; i++) {
+      if (drop[i]) continue;
+      map.push(i);
+      out += text.charAt(i);
+    }
+    map.push(text.length); // 끝 경계
+    return { text: out, map: map };
+  }
+
+  // 원문 구간 [start, end) 을 표시 구간으로 옮긴다. 표기만으로 이루어진 구간은
+  // 옮길 자리가 없으므로 null 이고, 그때는 밑줄 대신 여백 인용으로 물러난다.
+  function projectRange(map, start, end) {
+    var lo = -1;
+    var hi = -1;
+    for (var i = 0; i + 1 < map.length; i++) {
+      if (map[i] < start || map[i] >= end) continue;
+      if (lo < 0) lo = i;
+      hi = i + 1;
+    }
+    return lo < 0 ? null : [lo, hi];
+  }
+
+  // 문장 전체가 구조 표기일 때만 내용과 표기를 갈라낸다. 인라인 표기는 위 대응표가
+  // 맡는다 — 여기서는 줄 머리의 블록 표기만 본다.
   function manuscriptView(sentence, kind) {
     var line = String(sentence == null ? "" : sentence);
     var heading = /^\s{0,3}(#{1,6})[ \t]+(.+?)(?:\s+#+\s*)?$/.exec(line);
@@ -717,20 +816,21 @@
     });
   }
 
-  function buildMarkup(sentence, anchors) {
+  // shown 은 표기를 걷어 낸 표시 문자열이고, 앵커는 이미 그 좌표로 옮겨져 있다.
+  function buildMarkup(shown, anchors) {
     var placed = anchors.filter(function (a) {
       return a.start >= 0;
     });
-    if (!placed.length) return esc(sentence);
+    if (!placed.length) return esc(shown);
     var html = "";
     var cursor = 0;
     for (var i = 0; i < placed.length; i++) {
       var a = placed[i];
-      html += esc(sentence.slice(cursor, a.start));
-      html += '<span class="claim-mark" data-cid="' + esc(a.id) + '">' + esc(sentence.slice(a.start, a.end)) + "</span>";
-      cursor = a.end;
+      html += esc(shown.slice(cursor, a.dstart));
+      html += '<span class="claim-mark" data-cid="' + esc(a.id) + '">' + esc(shown.slice(a.dstart, a.dend)) + "</span>";
+      cursor = a.dend;
     }
-    return html + esc(sentence.slice(cursor));
+    return html + esc(shown.slice(cursor));
   }
 
   // 여백 열: 클레임 id 로 재사용하고 조각만 갱신한다
