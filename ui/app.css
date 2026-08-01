@@ -872,7 +872,9 @@ a {
   background-size: 100% 4px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
-  padding-bottom: 5px;
+  /* 행간의 한가운데에 두면 아래 줄에 붙은 것으로 읽힌다 — 자기 글자 쪽에 세운다.
+     18px/1.55 에서 위아래 여백이 각각 5px 이므로 그 안쪽에 긋는다. */
+  padding-bottom: 2px;
 }
 .claim-mark[data-mark="pending"],
 .claim-mark[data-mark="non_auditable"] {
