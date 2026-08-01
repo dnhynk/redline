@@ -130,7 +130,7 @@ def test_profiles_are_the_approved_constants():
 
 
 def test_claim_caps_match_between_entry_points():
-    assert cli.CLAIM_CAPS == {"demo": 12, "surprise": 9}
+    assert cli.CLAIM_CAPS == {"demo": 18, "surprise": 14}
     try:
         import server
     except ImportError:

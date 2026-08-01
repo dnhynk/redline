@@ -16,9 +16,9 @@ from pathlib import Path
 # server.py 와 같은 승인 상수. 임의 초 입력은 지원하지 않는다 — 프로파일 이름 2종만.
 PROFILES = {"demo": 110.0, "surprise": 90.0}
 
-# 프로파일별 클레임 상한 — server.py 와 같은 값. 짧은 박스에서 상한을 낮추는 쪽이
-# 산출물 손실 없이 시간 여유를 산다.
-CLAIM_CAPS = {"demo": 12, "surprise": 9}
+# 프로파일별 클레임 상한 — server.py 와 같은 값. 타임박스에서 역산했다:
+# 클레임 하나가 기본 28초 위에 약 3.5초를 더한다(실측).
+CLAIM_CAPS = {"demo": 18, "surprise": 14}
 
 
 def _read_text(args: argparse.Namespace) -> str:

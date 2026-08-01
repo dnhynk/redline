@@ -33,14 +33,17 @@ PROFILES: dict[str, float] = {"demo": 110.0, "surprise": 90.0}
 
 # 프로파일별 클레임 상한. 짧은 박스에서 상한 12는 여유가 1~6초라 위험하고,
 # 상한 9는 누락 산출물이 같으면서 10초 빠르다 — 측정으로 정한 값.
-CLAIM_CAPS: dict[str, int] = {"demo": 12, "surprise": 9}
+# 타임박스에서 역산한 값. 클레임 하나가 기본 28초 위에 약 3.5초를 더한다(실측) —
+# 110초면 23개, 90초면 17개가 천장이고 여유 20%를 빼면 아래 값이다.
+CLAIM_CAPS: dict[str, int] = {"demo": 18, "surprise": 14}
 
-# 감사기가 실제로 읽을 수 있는 최대치. core 는 문장 80개까지만 모델에 보이고
-# (HOST_SENTENCES_MAX) 문장마다 160자에서 자른다 (HOST_SENTENCE_CHARS).
-# 그 곱이 여기 값이다. 이 너머의 글자는 봉투에 실려 화면에 줄로 오르지만
-# 판정 대상이 될 수 없다 — 감사하지 않을 것을 받아 두고 감사하는 척하지 않는다.
+# 감사기가 실제로 읽을 수 있는 최대치. core 는 문장 80개까지만 모델에 보인다
+# (HOST_SENTENCES_MAX). 한 문장을 160자로 잡으면 12,800자가 되지만, 실측한 감사 가능
+# 문장은 한국어 25~40자였다 — 그 아래를 잡아야 상한과 입력이 어긋나지 않는다.
+# 12,800자를 받으면 문장 수백 개를 받아 놓고 상한만큼만 감사하게 된다.
+# 감사하지 않을 것을 받아 두고 감사하는 척하지 않는다.
 # 이 유도가 깨지면 test_server.py 의 대조 테스트가 먼저 운다.
-TEXT_MAX_CHARS = 80 * 160
+TEXT_MAX_CHARS = 80 * 25
 
 # 본문 바이트 상한. 위 글자 수가 한글이면 UTF-8 3바이트, JSON \uXXXX 이스케이프면
 # 6바이트까지 늘어난다. 넉넉히 8배 + 여유를 두고, 그보다 큰 본문은 읽지도 않는다.
@@ -95,8 +98,15 @@ class Hub:
     """이벤트 재번호·히스토리 재생·팬아웃."""
 
     def __init__(
-        self, *, timebox_s: float, client_queue_max: int, mock: bool, history_max: int = 4000
+        self,
+        *,
+        timebox_s: float,
+        client_queue_max: int,
+        mock: bool,
+        history_max: int = 4000,
+        max_claims: int = CLAIM_CAPS["surprise"],
     ) -> None:
+        self.max_claims = int(max_claims)
         self.timebox_s = float(timebox_s)
         self.client_queue_max = int(client_queue_max)
         self.mock = bool(mock)
@@ -133,6 +143,8 @@ class Hub:
                 "active": self.active,
                 # 입력 상한의 진실은 여기 한 곳이다 — 화면이 따로 적어 두면 조용히 어긋난다.
                 "text_max_chars": TEXT_MAX_CHARS,
+                # 몇 개까지 감사하는지 붙여넣기 전에 알려 준다 — 유실을 사후 통보로 만들지 않는다.
+                "max_claims": self.max_claims,
                 # 보관 상한을 넘겨 버린 앞부분. 늦게 붙은 화면이 자기가 덜 봤다는 것을 알아야 한다.
                 "history_dropped": self.history_dropped,
                 "history_from": self.history[0]["seq"] if self.history else self.seq + 1,
@@ -257,10 +269,15 @@ def create_app(
     *,
     mock: bool = False,
     history_max: int = 4000,
+    max_claims: int = CLAIM_CAPS["surprise"],
 ) -> FastAPI:
     app = FastAPI(title="REDLINE relay", docs_url=None, redoc_url=None)
     hub = Hub(
-        timebox_s=timebox_s, client_queue_max=client_queue_max, mock=mock, history_max=history_max
+        timebox_s=timebox_s,
+        client_queue_max=client_queue_max,
+        mock=mock,
+        history_max=history_max,
+        max_claims=max_claims,
     )
     app.state.hub = hub
     run_lock = asyncio.Lock()
@@ -474,7 +491,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[mock] {path} 재생 · 배속 {args.speed}")
     else:
         source = agent_source(args.profile)
-    app = create_app(source, timebox_s=PROFILES[args.profile], mock=mock)
+    app = create_app(
+        source, timebox_s=PROFILES[args.profile], mock=mock, max_claims=CLAIM_CAPS[args.profile]
+    )
     print(f"[redline] http://{args.host}:{args.port}/  ·  /raw  ·  프로파일 {args.profile}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0

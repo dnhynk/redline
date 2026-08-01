@@ -113,19 +113,19 @@ def test_run_rejects_blank_text(text):
 def test_text_cap_is_what_the_auditor_can_actually_read():
     """상한의 근거는 core 의 상수다. 그 유도가 깨지면 여기서 먼저 운다."""
     try:
-        from core.audit import HOST_SENTENCE_CHARS, HOST_SENTENCES_MAX
+        from core.audit import HOST_SENTENCES_MAX, TYPICAL_SENTENCE_CHARS
     except ImportError:  # mock 모드는 core 없이 돈다
         return
-    assert server.TEXT_MAX_CHARS == HOST_SENTENCES_MAX * HOST_SENTENCE_CHARS
+    assert server.TEXT_MAX_CHARS == HOST_SENTENCES_MAX * TYPICAL_SENTENCE_CHARS
 
 
-@pytest.mark.parametrize("over", [1, 1000, 2_000_000 - 12_800])
+@pytest.mark.parametrize("over", [1, 1000, 2_000_000 - server.TEXT_MAX_CHARS])
 def test_run_refuses_text_past_the_cap(over):
     client = TestClient(create_app(list_source(sample_events())))
     response = client.post("/run", json={"text": "가" * (server.TEXT_MAX_CHARS + over)})
     assert response.status_code == 413
     detail = response.json()["detail"]
-    assert isinstance(detail, str) and "12,800" in detail
+    assert isinstance(detail, str) and f"{server.TEXT_MAX_CHARS:,}" in detail
     assert client.app.state.hub.run_id is None, "거부해 놓고 런을 시작했다"
 
 

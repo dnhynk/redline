@@ -118,6 +118,9 @@ EXPLORATORY_CLAIM_ID = "explore"
 SNIPPET_MAX_CHARS = 500
 HOST_SENTENCES_MAX = 80
 HOST_SENTENCE_CHARS = 160
+# 감사 가능 문장 하나의 실측 길이(한국어 산문 25~40자, 영어는 더 길다). 아래쪽을 잡는다 —
+# 입력 상한을 이 값에서 유도해야 받은 글자 수와 감사할 수 있는 양이 어긋나지 않는다.
+TYPICAL_SENTENCE_CHARS = 25
 CANDIDATE_MAX = 8
 # 정규화 기준 최소 앵커 길이 — 한두 글자짜리 조각은 아무 문장에나 들어맞는다.
 # 한 문장에 주장이 둘일 때 쓰는 정상적인 조각("성인의 62%")은 통과해야 하므로 낮게 잡고,
