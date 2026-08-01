@@ -1397,6 +1397,8 @@ class Audit:
             "evidence_cited": len(self._cited_evidence_ids()),
             "status": self.status,
             "classification": self.classification,
+            # 화면이 "모델이 보고 넘긴 문장"과 "예산이 다해 못 본 문장"을 구분하려면 상한이 필요하다.
+            "max_claims": self.max_claims,
             "source_mode": self.source_mode,
             "coverage": [covered, coverable],
             "claimable_sentence_count": coverable,

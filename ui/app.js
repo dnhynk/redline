@@ -708,11 +708,24 @@
     slot.row.dataset.verdict = claims[0].verdict || "pending";
   }
 
+  // 클레임이 안 붙은 문장. 모델이 "의견·권고"라고 판정한 것이 아니므로 그 라벨을 붙이면 안 된다 —
+  // 하지 않은 판정을 한 것처럼 말하는 것이다. 왜 안 골랐는지에 따라 갈라 쓴다.
   function bareLabel() {
     if (!state.done) return "확인 중";
     var reason = state.status && state.status.reason;
-    if (reason === "complete" || reason === "non_auditable") return VERDICT_LABEL.non_auditable;
+    if (reason === "non_auditable") return "감사 대상 아님";
+    if (reason === "complete") {
+      // 상한을 다 쓴 런에서는 이 문장을 보지 못했을 수 있다 — 그때는 단정하지 않는다.
+      return capReached() ? "감사 안 함" : "논증 문장 아님";
+    }
     return cutLabel();
+  }
+
+  function capReached() {
+    var audit = state.audit || {};
+    var cap = audit.max_claims;
+    if (!cap) return true; // 상한을 모르면 덜 단정적인 쪽으로 둔다
+    return (audit.claims || []).length >= cap;
   }
 
   function cutLabel() {
@@ -1732,9 +1745,16 @@
       $("#intake-open").addEventListener("click", function () {
         $("#intake").hidden = false;
         $("#intake-collapsed").hidden = true;
-        // 다시 입력하러 왔다는 것은 이 런이 끝났다는 뜻이다 — 단계 표시는 지난 런의 것이므로 비운다.
+        // 다시 입력하러 왔다는 것은 이 런이 끝났다는 뜻이다 —
+        // 단계 표시도 방금 감사한 글도 지난 런의 것이므로 비운다.
         state.stage = 0;
         paintStageRail();
+        var area = $("#input-text");
+        if (area) {
+          area.value = "";
+          paintInputCount();
+          area.focus();
+        }
       });
       $("#follow-run").addEventListener("click", function () {
         state.following = true;

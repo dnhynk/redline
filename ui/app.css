@@ -1335,10 +1335,12 @@ a {
 }
 
 .report-label {
-  margin: 24px 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
+  /* 상자 제목(26px) 아래 한 단 낮은 제목이다 — 본문 세리프와 크기가 겹치지 않게 sans 로 세운다. */
+  margin: 26px 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 .report {
   max-width: 74ch;
