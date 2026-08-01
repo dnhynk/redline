@@ -519,6 +519,7 @@ async def _io_call(
 async def search_web(
     wrapper: RunContextWrapper[AuditContext],
     query: str,
+    claim_id: str,
     stance: Stance,
     max_results: int = 8,
     lang: str | None = None,
@@ -531,6 +532,7 @@ async def search_web(
     결과 각 건에는 호스트가 발급한 evidence_id가 붙어 온다.
 
     Args:
+        claim_id: 이 검색이 어느 클레임의 일인가 ("C1"…). 아직 클레임을 고르는 중이면 "explore"
         stance: 이 검색의 방향. support=주장을 뒷받침할 자료, challenge=반박·한정할 자료.
             쿼리 자체가 달라야 한다 — 라벨만 바꾼 같은 쿼리는 반증 검색이 아니다
         max_results: 최대 결과 수 (1~20, 호스트 클램프)
@@ -538,6 +540,11 @@ async def search_web(
         date_range: 기간 필터. 생략(null) 시 전 기간
     """
     ctx = wrapper.context
+    # 귀속·중복 검사는 예산을 깎기 전에 한다 — 거부된 검색이 남은 호출 수를 갉아먹지 않는다.
+    refusal = ctx.audit.check_search(claim_id, stance, query)
+    if refusal is not None:
+        ctx.tool_calls_refused += 1
+        return _reply(ctx, ok=False, error=refusal["error"], data=refusal["data"])
     if not ctx.charge_call():
         return _reply(
             ctx,
@@ -546,7 +553,7 @@ async def search_web(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
-    entry = ctx.audit.note_search(stance, query)
+    entry = ctx.audit.note_search(stance, query, claim_id=claim_id, endpoint="web")
     reply = await _io_call(
         ctx,
         lambda: _io_search_web(
@@ -560,6 +567,7 @@ async def search_web(
 async def search_scholar(
     wrapper: RunContextWrapper[AuditContext],
     query: str,
+    claim_id: str,
     stance: Stance,
     max_results: int = 8,
     lang: str | None = None,
@@ -573,6 +581,7 @@ async def search_scholar(
 
     Args:
         query: 검색 질의 (영어 권장)
+        claim_id: 이 검색이 어느 클레임의 일인가 ("C1"…). 아직 클레임을 고르는 중이면 "explore"
         stance: 이 검색의 방향. support=주장을 뒷받침할 자료, challenge=반박·한정할 자료
             (limitations · contrary · no effect · systematic review 류가 들어간다)
         max_results: 최대 결과 수 (1~20, 호스트 클램프)
@@ -580,6 +589,11 @@ async def search_scholar(
         date_range: 기간 필터. 생략(null) 시 전 기간
     """
     ctx = wrapper.context
+    # 귀속·중복 검사는 예산을 깎기 전에 한다 — 거부된 검색이 남은 호출 수를 갉아먹지 않는다.
+    refusal = ctx.audit.check_search(claim_id, stance, query)
+    if refusal is not None:
+        ctx.tool_calls_refused += 1
+        return _reply(ctx, ok=False, error=refusal["error"], data=refusal["data"])
     if not ctx.charge_call():
         return _reply(
             ctx,
@@ -588,7 +602,7 @@ async def search_scholar(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
-    entry = ctx.audit.note_search(stance, query)
+    entry = ctx.audit.note_search(stance, query, claim_id=claim_id, endpoint="scholar")
     reply = await _io_call(
         ctx,
         lambda: _io_search_scholar(

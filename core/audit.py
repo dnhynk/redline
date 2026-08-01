@@ -9,6 +9,25 @@
 2. **증거 원장** — 검색·페치가 실제로 받아온 결과만 `register_evidence()`로 들어온다.
    판정과 누락 증거는 원장 id로만 출처를 가리킬 수 있다.
 3. **판정 계산** — 신뢰도 갱신·verdict 파생·예산 계산은 전부 순수 함수다.
+
+## 알려진 한계 — 자료구조가 표현하지 못하는 것 둘
+
+고치지 않기로 한 것이고, 그 판단의 근거를 여기 남긴다. 침묵으로 넘기지 않는다.
+
+1. **두 문장에 걸친 주장을 하나로 등록할 수 없다.** `Claim.index`는 정수 하나이고
+   화면 하이라이트가 그 좌표 위에 선다. `index_span`을 더하려면 좌표계를 소비하는
+   화면 코드가 함께 바뀌어야 하는데, 그 코드는 이 모듈의 소유가 아니다. 좌표계는 이
+   제품이 서 있는 유일한 축이라 한쪽만 바꾸는 것이 더 위험하다.
+   → **결과**: "A이므로 B" 식으로 두 문장에 걸친 인과 주장은 대표 문장 하나에 앵커되고,
+   나머지 절반은 판정의 `evidence`와 최종 보고에서 풀어 쓰는 것으로만 드러난다
+   (프롬프트 §1의 문맥 의존 문장 규칙이 그 서술을 요구한다).
+
+2. **등록한 클레임을 철회할 수 없다.** 삭제하면 뒤 클레임의 id가 흔들리거나(발급이
+   길이 기반이다) 화면에 유령 카드가 남는다 — 클레임 목록을 그리는 코드도 이 모듈의
+   소유가 아니다. 오등록의 주된 원인이던 중복 등록은 `_find_duplicate_claim`이 접어
+   상한을 먹지 않게 했다.
+   → **결과**: 잘못 고른 클레임이 남으면 모델은 그 클레임을 정직하게 종결해야 한다
+   (축1 `undecidable` = "확인하지 못했다"). 완주 게이트는 그것을 확정으로 인정한다.
 """
 
 from __future__ import annotations
@@ -56,6 +75,14 @@ SENTENCE_KINDS = (
 STRUCTURAL_KINDS = frozenset({"heading", "table_header", "code_fence", "divider"})
 
 CLAIM_TYPES = ("statistical", "causal", "attribution", "definitional", "normative")
+INPUT_KINDS = (
+    "ai_answer",
+    "research_report",
+    "academic_paragraph",
+    "news_or_blog",
+    "opinion_or_creative",
+    "unknown",
+)
 OUTCOMES = ("pass", "fail", "skip", "undecidable")
 AXES = (1, 2, 3)
 VERDICTS = (
@@ -84,6 +111,10 @@ AUDIT_STATUSES = ("running", "complete", "partial", "non_auditable", "error")
 # 방향을 툴에서 구분하지 못하면 반증 검색은 셀 수도 강제할 수도 없는 부탁으로 남는다.
 STANCES = ("support", "challenge")
 
+# 클레임 등록 전의 탐색에 쓰는 예약 귀속값. 이 검색은 클레임별 쌍 계산에서 빠진다 —
+# 귀속을 요구하되 "고르기 전에 훑어본다"는 정상 경로를 막지 않기 위한 값이다.
+EXPLORATORY_CLAIM_ID = "explore"
+
 SNIPPET_MAX_CHARS = 500
 HOST_SENTENCES_MAX = 80
 HOST_SENTENCE_CHARS = 160
@@ -96,7 +127,10 @@ MIN_ANCHOR_CHARS = 3
 CATALOG_MAX = 20
 
 # 화면의 %가 무엇인지 — 반환값에 그대로 실어 모델·시청자가 오독하지 않게 한다.
-SCORE_MEANS = "확보한 지지 근거의 양(진실 확률 아님)"
+# ★ 이 수는 축별 outcome이 정해진 폭만큼 움직이는 **단계 점수**다. 인용 증거가 1건이든
+# 10건이든 같은 outcome이면 같은 폭으로 움직인다 — 그러니 "근거의 양"이라고 부르면 안 된다.
+# 실제 근거의 양은 `evidence_count`·`fetched_source_count`로 따로 센다.
+SCORE_MEANS = "호스트 규칙이 정한 단계 점수 — 축별 판정이 정해진 폭만큼 움직인다. 진실 확률도, 근거 개수도 아니다"
 
 
 # ── 자료구조 ─────────────────────────────────────────────────────────────────
@@ -157,6 +191,9 @@ _QUOTE_RE = re.compile(r"^\s{0,3}>+\s?")
 _BULLET_RE = re.compile(
     r"^\s*(?:[-*+•‣·]|\d{1,2}[.)]|\(\d{1,2}\)|[a-zA-Z][.)])\s+"
 )
+# ISO 639-1 두 글자(+선택 지역 태그). 형식 검증은 호스트 몫이다 — strict 스키마는
+# pattern·minLength 같은 키워드를 지원하지 않아 모델 스키마에 넣을 수 없다.
+_LANG_RE = re.compile(r"^[A-Za-z]{2}(?:[-_][A-Za-z0-9]{2,8})?$")
 _TERMINAL_PUNCT = ".!?。！？…"
 _SENT_SPLIT_RE = re.compile(r"(?<=[.!?。！？…])[\"'”’」』)\]]*\s+")
 
@@ -543,16 +580,59 @@ class Audit:
         return rec
 
     # ── 검색 기록 (발사 시점) ───────────────────────────────────────────
-    def note_search(self, stance: str, query: str) -> dict:
+    def check_search(self, claim_id: str, stance: str, query: str) -> dict | None:
+        """발사 전 검사 — 통과하면 None, 막을 이유가 있으면 거부 dict.
+
+        검색이 어느 클레임의 일인지 호스트가 모르면 "클레임마다 확증·반증 한 쌍"은
+        집행할 수 없는 부탁으로 남는다. 그래서 귀속을 요구하되, 클레임 등록 **전**의
+        탐색 경로는 막지 않는다 — `EXPLORATORY_CLAIM_ID`로 쏘고 쌍 계산에서 빠진다.
+        """
+        if not (query or "").strip():
+            return _fail("검색 질의가 비어 있다.")
+        if claim_id != EXPLORATORY_CLAIM_ID:
+            claim = self.get_claim(claim_id)
+            if claim is None:
+                return _fail(
+                    f"모르는 claim_id '{claim_id}'다. 먼저 record_claim으로 등록하고 그 id로 "
+                    f"검색하라. 아직 클레임을 고르는 중이면 claim_id=\"{EXPLORATORY_CLAIM_ID}\"로 "
+                    "쏠 수 있다(이 검색은 클레임 쌍 계산에서 빠진다).",
+                    known_claim_ids=[c["id"] for c in self.claims],
+                    exploratory_claim_id=EXPLORATORY_CLAIM_ID,
+                )
+            if not claim["auditable"]:
+                return _fail(
+                    f"{claim_id}은 의견·권고로 등록된 클레임이라 감사 대상이 아니다 — 검색하지 마라.",
+                    known_claim_ids=[c["id"] for c in self.claims if c["auditable"]],
+                )
+        key = normalize_for_match(query)
+        for entry in self.searches:
+            if entry["claim_id"] != claim_id or normalize_for_match(entry["query"]) != key:
+                continue
+            if entry["stance"] != stance:
+                return _fail(
+                    f"{claim_id}에 이미 같은 질의를 {entry['stance']} 방향으로 쐈다 — 라벨만 바꾼 "
+                    "같은 질의는 반증 검색이 아니다. 반박·한정 자료를 겨냥한 다른 질의를 써라 "
+                    "(limitations · contrary · no effect · systematic review 류).",
+                    existing_stance=entry["stance"],
+                    existing_query=entry["query"],
+                )
+        return None
+
+    def note_search(
+        self, stance: str, query: str, *, claim_id: str = EXPLORATORY_CLAIM_ID, endpoint: str = "web"
+    ) -> dict:
         """검색이 나가는 순간을 기록한다. 반환한 항목에 `mark_search_result`로 회수를 적는다.
 
         발사 기록은 관측용이다. 완주 게이트가 세는 것은 **회수**다 —
         같은 질의를 세 번 쏜 것도, 전부 실패한 검색도 감사를 한 것이 아니다.
         """
         entry = {
+            "claim_id": claim_id,
+            "endpoint": endpoint,
             "stance": stance if stance in STANCES else "support",
             "query": query,
-            "at": round(self._clock() - self._started_at, 3),
+            "dispatched_at": round(self._clock() - self._started_at, 3),
+            "result_status": "pending",
             "ok": None,
             "result_count": 0,
         }
@@ -565,6 +645,39 @@ class Audit:
             return
         entry["ok"] = bool(ok)
         entry["result_count"] = max(0, int(result_count or 0))
+        entry["result_status"] = "ok" if ok and entry["result_count"] else ("empty" if ok else "failed")
+
+    def search_ledger(self) -> list[dict]:
+        """파이프라인을 사후 검증할 수 있게 하는 작은 원장 — 누가 어느 방향으로 무엇을 쐈는가."""
+        return [
+            {
+                "claim_id": e["claim_id"],
+                "endpoint": e["endpoint"],
+                "stance": e["stance"],
+                "query": e["query"],
+                "dispatched_at": e["dispatched_at"],
+                "result_status": e["result_status"],
+            }
+            for e in self.searches
+        ]
+
+    def paired_claims(self) -> list[str]:
+        """확증·반증을 **서로 다른 질의로** 둘 다 쏜 감사 대상 클레임."""
+        by_claim: dict[str, dict[str, set[str]]] = {}
+        for e in self.searches:
+            if e["claim_id"] == EXPLORATORY_CLAIM_ID:
+                continue
+            key = normalize_for_match(e["query"])
+            if key:
+                by_claim.setdefault(e["claim_id"], {s: set() for s in STANCES})[e["stance"]].add(key)
+        paired = []
+        for c in self.claims:
+            if not c["auditable"]:
+                continue
+            rows = by_claim.get(c["id"])
+            if rows and rows["support"] and rows["challenge"] and rows["support"] != rows["challenge"]:
+                paired.append(c["id"])
+        return paired
 
     def search_counts(self) -> dict[str, int]:
         counts = {s: 0 for s in STANCES}
@@ -622,28 +735,74 @@ class Audit:
         sentence_count: int,
         rationale: str,
     ) -> dict:
+        if input_kind not in INPUT_KINDS:
+            return _fail(
+                f"input_kind '{input_kind}'은 허용되지 않는다.", allowed_input_kinds=list(INPUT_KINDS)
+            )
+        if not _LANG_RE.match((lang or "").strip()):
+            return _fail(
+                f"lang '{lang}'은 ISO 639-1 형식이 아니다 — 'ko'·'en'처럼 두 글자로 적어라.",
+                example=["ko", "en", "ja"],
+            )
+        if int(sentence_count) < 0:
+            return _fail(f"sentence_count는 0 이상이어야 한다(받은 값 {sentence_count}).")
+        if not (rationale or "").strip():
+            return _fail("rationale이 비어 있다 — 이 분류의 근거를 한 문장으로 적어라.")
+
+        decision = {"input_kind": input_kind, "lang": lang.strip(), "auditable": bool(auditable)}
+        previous = self.classification
+        if previous is not None:
+            already = {k: previous[k] for k in decision}
+            if already == decision:
+                # 같은 분류를 다시 보낸 것은 무해하다 — 상태를 바꾸지 않고 그대로 확인해 준다.
+                return self._classification_reply(
+                    warning="이미 같은 분류가 기록돼 있다 — 상태는 바뀌지 않았다.", recorded=False
+                )
+            if self.claims:
+                return _fail(
+                    "클레임이 이미 등록된 뒤에는 분류를 바꿀 수 없다 — 등록된 클레임의 전제가 "
+                    "무너진다. 개별 주장의 성격은 record_claim의 claim_type으로 말하라.",
+                    recorded_classification=already,
+                    claims_recorded=len(self.claims),
+                )
+            if already["auditable"] != decision["auditable"]:
+                return _fail(
+                    "감사 가능 여부를 뒤집을 수 없다 — 첫 결정이 화면의 첫 이벤트로 이미 나갔다.",
+                    recorded_classification=already,
+                )
+
         self.classification = {
-            "input_kind": input_kind,
-            "lang": lang,
-            "auditable": bool(auditable),
+            **decision,
             "sentence_count_model": int(sentence_count),
             "sentence_count_host": len(self.sentences),
             "rationale": rationale,
         }
         if not auditable:
             self.status = "non_auditable"
-        claimable = self.claimable_indices()
         warning = None
         if int(sentence_count) != len(self.sentences):
             warning = (
                 f"네가 센 문장 수({sentence_count})와 호스트 분할({len(self.sentences)})이 다르다. "
                 "호스트 좌표가 정본이니 host_sentences의 index를 써라."
             )
+        if input_kind == "opinion_or_creative" and auditable:
+            # 막지는 않는다 — 사설·칼럼에도 검증 가능한 통계가 섞인다. 다만 그 조합을
+            # 골랐다는 사실은 알려준다.
+            note = (
+                "input_kind가 opinion_or_creative인데 감사 가능으로 분류했다 — 사실 주장이 "
+                "실제로 있으면 그대로 진행하고, 가치명제뿐이면 auditable=false가 맞다."
+            )
+            warning = f"{warning} {note}" if warning else note
+        return self._classification_reply(warning=warning)
+
+    def _classification_reply(self, *, warning: str | None, recorded: bool = True) -> dict:
+        claimable = self.claimable_indices()
+        auditable = bool((self.classification or {}).get("auditable"))
         return {
             "ok": True,
             "error": None,
             "data": {
-                "recorded": True,
+                "recorded": recorded,
                 "classification": self.classification,
                 "host_sentences": self.host_sentences(),
                 "host_sentence_count": len(self.sentences),
@@ -674,6 +833,37 @@ class Audit:
                 f"claim_type '{claim_type}'은 허용되지 않는다.",
                 allowed_claim_types=list(CLAIM_TYPES),
             )
+        if claim_type == "normative" and auditable:
+            return _fail(
+                "normative(가치·당위 주장)는 참·거짓을 물을 수 없으므로 auditable=false로 등록한다. "
+                "참·거짓을 물을 수 있는 주장이면 claim_type을 사실 유형으로 고쳐라.",
+                allowed_claim_types=[t for t in CLAIM_TYPES if t != "normative"],
+            )
+        duplicate = self._find_duplicate_claim(index, text, claim_type)
+        if duplicate is not None:
+            # 같은 문장·같은 텍스트·같은 유형은 같은 주장이다. 상한을 먹이지 않고 기존 id를
+            # 돌려준다 — 지금까지 이것이 접혔던 것은 호스트 제약이 아니라 모델 행동이었다.
+            return {
+                "ok": True,
+                "error": None,
+                "data": {
+                    "recorded": False,
+                    "duplicate_of": duplicate["id"],
+                    "claim_id": duplicate["id"],
+                    "index": duplicate["index"],
+                    "sentence": self.sentences[duplicate["index"]],
+                    "sentence_kind": self.sentence_kinds[duplicate["index"]],
+                    "auditable": duplicate["auditable"],
+                    "claims_recorded": len(self.claims),
+                    "claims_remaining": max(0, self.max_claims - len(self.claims)),
+                    "expected_next_axis": self.expected_next_axis(duplicate),
+                    "next_action": (
+                        f"이미 {duplicate['id']}로 등록된 주장이다 — 상한은 소모되지 않았다. "
+                        "새로 등록하지 말고 그 id로 판정을 이어가라."
+                    ),
+                    "warning": "같은 주장을 다시 등록하려 했다 — 클레임 예산은 서로 다른 주장에 써라.",
+                },
+            }
         if len(self.claims) >= self.max_claims:
             return _fail(
                 f"클레임 상한 {self.max_claims}개를 이미 채웠다. 새 클레임 대신 등록된 클레임의 판정을 마무리하라.",
@@ -784,6 +974,17 @@ class Audit:
             },
         }
 
+    def _find_duplicate_claim(self, index: int, text: str, claim_type: str) -> Claim | None:
+        key = normalize_for_match(text)
+        for c in self.claims:
+            if (
+                c["index"] == index
+                and c["claim_type"] == claim_type
+                and normalize_for_match(c["text"]) == key
+            ):
+                return c
+        return None
+
     def get_claim(self, claim_id: str) -> Claim | None:
         for c in self.claims:
             if c["id"] == claim_id:
@@ -870,6 +1071,23 @@ class Audit:
                 available_evidence=self.evidence_catalog(),
                 evidence_total=len(self.evidence),
             )
+        if outcome == "fail" and axis in (2, 3) and not known_ids:
+            # 축2 fail은 "출처와 대조했다", 축3 fail은 "반대 자료를 찾았다"는 사건이다 —
+            # 둘 다 본 것이 있어야 성립한다. 부재의 주장은 축1 fail 하나뿐이다.
+            what = "출처와 대조한 근거" if axis == 2 else "찾아낸 반대·한정 자료"
+            return _fail(
+                f"축{axis} fail은 {what}의 evidence_ids가 최소 1개 필요하다. "
+                "접근하지 못했으면 undecidable, 출처 자체를 못 찾았으면 축1 fail로 기록하라 — "
+                "본 것 없이 내리는 부정 판정은 감사가 아니다."
+                + ("" if self.evidence else " 아직 원장이 비어 있다 — 먼저 검색을 호출하라."),
+                available_evidence=self.evidence_catalog(),
+                evidence_total=len(self.evidence),
+            )
+        if not (evidence or "").strip():
+            return _fail(
+                "evidence(판정 근거 한 문장)가 비어 있다 — 이 문장은 시청자가 읽는 글이다. "
+                "무엇을 보고 그렇게 판단했는지 한 문장으로 적어라."
+            )
 
         confidence_before = claim["confidence"]
         raw = axis_delta(axis, outcome)
@@ -931,8 +1149,11 @@ class Audit:
                 "confidence_before": confidence_before,
                 "confidence_after": claim["confidence"],
                 "delta": round(claim["confidence"] - confidence_before, 6),
-                "evidence_score_before": confidence_before,
-                "evidence_score_after": claim["confidence"],
+                "stage_score_before": confidence_before,
+                "stage_score_after": claim["confidence"],
+                # 실제로 확보한 근거의 양은 점수가 아니라 이 두 수다.
+                "evidence_count": len(self.cited_evidence_ids(claim)),
+                "fetched_source_count": self.fetched_evidence_count(claim),
                 "score_means": SCORE_MEANS,
                 "verdict": claim["verdict"],
                 "axis_chain": [r["axis"] for r in claim["axis_results"]],
@@ -949,10 +1170,28 @@ class Audit:
         }
 
     def record_omission(self, *, claim_id: str, evidence_id: str, summary: str) -> dict:
-        if self.get_claim(claim_id) is None:
+        claim = self.get_claim(claim_id)
+        if claim is None:
             return _fail(
                 f"모르는 claim_id '{claim_id}'다.",
                 known_claim_ids=[c["id"] for c in self.claims],
+            )
+        if not claim["auditable"]:
+            return _fail(
+                f"{claim_id}은 의견·권고로 등록된 클레임이다 — 사실 판정 대상이 아니므로 "
+                "반박 문헌도 붙지 않는다.",
+                known_claim_ids=[c["id"] for c in self.claims if c["auditable"]],
+            )
+        if any(r["axis"] == 1 and r["outcome"] == "fail" for r in claim["axis_results"]):
+            return _fail(
+                f"{claim_id}은 축1 확인 실패로 종결된 클레임이다 — 출처를 확인하지 못한 주장에 "
+                "'이 글이 언급하지 않은 반대 문헌'을 붙이는 것은 성립하지 않는다.",
+                claim_terminal=True,
+            )
+        if not (summary or "").strip():
+            return _fail(
+                "summary가 비어 있다 — 이 문헌이 무엇을 반박하거나 한정하는지 한 문장으로 적어라. "
+                "그 문장이 반박 패널에 그대로 표시된다."
             )
         known, unknown = self._resolve_evidence([evidence_id])
         if unknown or not known:
@@ -981,6 +1220,14 @@ class Audit:
             "summary": summary,
         }
         self.omissions.append(omission)
+        warning = None
+        if rec["stance"] != "challenge":
+            # 확증 검색에서 우연히 나온 반대 자료도 실재하는 자료다 — 막지 않는다.
+            # 다만 반증 검색이 데려온 것과 같은 무게로 세지는 않는다.
+            warning = (
+                f"{eid}는 확증(support) 검색에서 나온 자료다 — 반박 자료로 쓸 수는 있지만 "
+                "반증 검색이 찾아낸 것과 같지 않다. 이 클레임의 반증 검색을 따로 발사하라."
+            )
         return {
             "ok": True,
             "error": None,
@@ -988,7 +1235,9 @@ class Audit:
                 "recorded": True,
                 "omission": omission,
                 "omission_count": len(self.omissions),
-                "warning": None,
+                "evidence_stance": rec["stance"],
+                "stance_mismatch": rec["stance"] != "challenge",
+                "warning": warning,
             },
         }
 
@@ -1097,11 +1346,28 @@ class Audit:
             "challenge_queries": challenge_queries,
             "challenge_required": challenge_required,
             "challenge_dispatched": self.challenge_query_count(),
+            "claims_with_support_challenge_pair": len(self.paired_claims()),
             "search_counts": self.search_counts(),
             "omission_count": len(self.omissions),
         }
 
     # ── 직렬화 ──────────────────────────────────────────────────────────
+    def cited_evidence_ids(self, claim: Claim) -> set[str]:
+        """이 클레임의 판정이 인용한 증거 id — 판정 점수와 달리 실제로 본 자료의 수다."""
+        ids: set[str] = set()
+        for r in claim["axis_results"]:
+            ids.update(r["evidence_ids"])
+        ids.update(o["evidence_id"] for o in self.omissions if o["claim_id"] == claim["id"])
+        return ids
+
+    def fetched_evidence_count(self, claim: Claim) -> int:
+        """그중 본문을 실제로 가져와 대조한 자료의 수."""
+        return sum(
+            1
+            for eid in self.cited_evidence_ids(claim)
+            if self._evidence_by_id.get(eid, {}).get("tool") == "fetch_source"
+        )
+
     def _cited_evidence_ids(self) -> set[str]:
         ids = {o["evidence_id"] for o in self.omissions}
         for c in self.claims:
@@ -1138,6 +1404,7 @@ class Audit:
             "no_source_count": self.no_source_count(),
             "audited_claim_count": self.audited_claim_count(),
             "claims_by_index": self.claims_by_index(),
+            "searches": self.search_ledger(),
             "omission_count": len(self.omissions),
         }
         if not stream:

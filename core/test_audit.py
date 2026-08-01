@@ -7,6 +7,7 @@ import pytest
 from core.audit import (
     BASE_CONFIDENCE,
     DEFAULT_MAX_CLAIMS,
+    EXPLORATORY_CLAIM_ID,
     SENTENCE_KINDS,
     STRUCTURAL_KINDS,
     Audit,
@@ -562,6 +563,227 @@ def test_challenge_search_promotes_the_stance_of_a_known_document():
     # 반대 방향으로는 강등되지 않는다.
     audit.register_evidence(tool="search_web", query="coffee benefits", url="https://ex.test/a")
     assert audit.evidence[0]["stance"] == "challenge"
+
+
+# ── 검색 귀속과 쌍 (T-02) ────────────────────────────────────────────────────
+def test_search_must_name_a_registered_claim_or_declare_exploration():
+    audit = _with_evidence()
+    assert audit.check_search("C9", "support", "질의") is not None  # 모르는 클레임
+    assert audit.check_search("C1", "support", "질의") is None
+    # 클레임 등록 전 탐색 경로는 막지 않는다.
+    assert audit.check_search(EXPLORATORY_CLAIM_ID, "support", "질의") is None
+    assert audit.check_search("C1", "support", "   ") is not None  # 빈 질의
+
+
+def test_relabelled_same_query_is_refused():
+    """라벨만 바꾼 같은 질의는 반증 검색이 아니다 — 프롬프트 규칙을 호스트 규칙으로 만든다."""
+    audit = _with_evidence()
+    audit.note_search("support", "커피 각성 효과 근거", claim_id="C1", endpoint="web")
+    refusal = audit.check_search("C1", "challenge", "커피  각성 효과 근거!")
+    assert refusal is not None
+    assert refusal["data"]["existing_stance"] == "support"
+    # 다른 질의는 통과하고, 다른 클레임이면 같은 질의도 통과한다.
+    assert audit.check_search("C1", "challenge", "커피 각성 효과 한계 반박") is None
+
+
+def test_non_auditable_claim_cannot_be_searched():
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다", claim_type="normative", auditable=False)
+    assert audit.check_search("C1", "support", "질의") is not None
+
+
+def test_pair_metric_counts_claims_with_two_distinct_queries():
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    _claim(audit, 1, "성인의 62%가 매일 마신다")
+    audit.note_search("support", "커피 각성 근거", claim_id="C1", endpoint="web")
+    audit.note_search("challenge", "커피 각성 한계 반박", claim_id="C1", endpoint="web")
+    audit.note_search("support", "섭취율 통계", claim_id="C2", endpoint="web")
+    # 탐색용 반증은 어느 클레임의 쌍으로도 세지 않는다.
+    audit.note_search("challenge", "아무 반박", claim_id=EXPLORATORY_CLAIM_ID, endpoint="web")
+    assert audit.paired_claims() == ["C1"]
+    assert audit.completion_report()["claims_with_support_challenge_pair"] == 1
+
+
+def test_search_ledger_is_exposed_for_after_the_fact_audit():
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    entry = audit.note_search("challenge", "반박 질의", claim_id="C1", endpoint="scholar")
+    audit.mark_search_result(entry, True, 2)
+    row = audit.to_dict()["searches"][0]
+    assert set(row) == {
+        "claim_id",
+        "endpoint",
+        "stance",
+        "query",
+        "dispatched_at",
+        "result_status",
+    }
+    assert (row["claim_id"], row["endpoint"], row["stance"], row["result_status"]) == (
+        "C1",
+        "scholar",
+        "challenge",
+        "ok",
+    )
+    audit.mark_search_result(entry, True, 0)
+    assert audit.to_dict()["searches"][0]["result_status"] == "empty"
+    audit.mark_search_result(entry, False, 0)
+    assert audit.to_dict()["searches"][0]["result_status"] == "failed"
+
+
+# ── 부정 판정의 근거 (F-04) ──────────────────────────────────────────────────
+@pytest.mark.parametrize("axis", [2, 3])
+def test_negative_findings_need_evidence(axis):
+    """축2 fail은 대조했다는 사건, 축3 fail은 찾아냈다는 사건이다 — 본 것이 있어야 한다."""
+    audit = _with_evidence()
+    audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
+    if axis == 3:
+        audit.update_verdict(claim_id="C1", axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
+    out = audit.update_verdict(
+        claim_id="C1", axis=axis, outcome="fail", evidence="근거 없이 부정", evidence_ids=[]
+    )
+    assert out["ok"] is False
+    assert "undecidable" in out["error"] and "축1" in out["error"]
+    # 인용하면 통과한다.
+    assert audit.update_verdict(
+        claim_id="C1", axis=axis, outcome="fail", evidence="대조 결과", evidence_ids=["E1"]
+    )["ok"] is True
+
+
+def test_axis1_fail_may_still_cite_nothing():
+    audit = _with_evidence()
+    out = audit.update_verdict(
+        claim_id="C1", axis=1, outcome="fail", evidence="지목된 출처를 못 찾음", evidence_ids=[]
+    )
+    assert out["ok"] is True  # 부재의 주장은 축1에서만 성립한다
+
+
+def test_empty_evidence_sentence_is_rejected():
+    audit = _with_evidence()
+    out = audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="  ", evidence_ids=["E1"])
+    assert out["ok"] is False and "evidence" in out["error"]
+
+
+def test_omission_requires_an_auditable_surviving_claim_and_a_summary():
+    audit = _with_evidence()
+    assert audit.record_omission(claim_id="C1", evidence_id="E1", summary="  ")["ok"] is False
+
+    audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
+    blocked = audit.record_omission(claim_id="C1", evidence_id="E1", summary="반박 자료다")
+    assert blocked["ok"] is False and blocked["data"]["claim_terminal"] is True
+
+    opinion = Audit("정부는 규제를 강화해야 한다.")
+    opinion.register_evidence(tool="search_web", query="q", url="https://a.test")
+    opinion.record_claim(
+        index=0, text="정부는 규제를 강화해야 한다", claim_type="normative", auditable=False
+    )
+    assert opinion.record_omission(claim_id="C1", evidence_id="E1", summary="반박")["ok"] is False
+
+
+def test_omission_from_a_support_search_is_allowed_but_flagged():
+    audit = _with_evidence()  # E1은 support 검색에서 왔다
+    audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
+    out = audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
+    assert out["ok"] is True  # 실재하는 자료를 막지는 않는다
+    assert out["data"]["stance_mismatch"] is True
+    assert "확증(support) 검색" in out["data"]["warning"]
+
+
+# ── 점수의 뜻 (F-05) ─────────────────────────────────────────────────────────
+def test_score_is_described_as_a_stage_score_not_an_amount_of_evidence():
+    from core.audit import SCORE_MEANS
+
+    assert "단계 점수" in SCORE_MEANS
+    assert "근거의 양" not in SCORE_MEANS
+
+    audit = _with_evidence()
+    audit.register_evidence(tool="fetch_source", query="u", url="https://a.test/doc")
+    one = audit.update_verdict(
+        claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"]
+    )
+    many = audit.update_verdict(
+        claim_id="C1", axis=2, outcome="pass", evidence="대조", evidence_ids=["E1", "E2"]
+    )
+    # 같은 판정이면 근거가 몇 건이든 같은 폭으로 움직인다. 실제 양은 따로 센다.
+    assert one["data"]["evidence_count"] == 1
+    assert many["data"]["evidence_count"] == 2
+    assert many["data"]["fetched_source_count"] == 1
+    assert many["data"]["score_means"] == SCORE_MEANS
+
+
+# ── 분류·클레임 불변식 (F-06) ────────────────────────────────────────────────
+def _classify(audit: Audit, **kw):
+    args = dict(
+        input_kind="ai_answer", lang="ko", auditable=True, sentence_count=2, rationale="사실 주장이 있다"
+    )
+    args.update(kw)
+    return audit.record_classification(**args)
+
+
+def test_classification_is_idempotent_and_cannot_flip_after_claims():
+    audit = _audit_two_sentences()
+    assert _classify(audit)["ok"] is True
+    same = _classify(audit, rationale="같은 결정, 다른 문장")
+    assert same["ok"] is True and same["data"]["recorded"] is False
+
+    flipped = _classify(audit, auditable=False)
+    assert flipped["ok"] is False and "뒤집을 수 없다" in flipped["error"]
+    assert audit.classification["auditable"] is True
+
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    after = _classify(audit, input_kind="news_or_blog")
+    assert after["ok"] is False and "클레임이 이미 등록된" in after["error"]
+
+
+def test_opinion_input_with_auditable_true_is_allowed_with_a_note():
+    audit = _audit_two_sentences()
+    out = _classify(audit, input_kind="opinion_or_creative")
+    assert out["ok"] is True  # 사설에도 검증 가능한 통계가 섞인다
+    assert "opinion_or_creative" in out["data"]["warning"]
+
+
+def test_normative_claims_cannot_be_registered_as_auditable():
+    audit = _audit_two_sentences()
+    out = _claim(audit, 0, "커피는 각성 효과가 있다", claim_type="normative", auditable=True)
+    assert out["ok"] is False and "normative" in out["error"]
+
+
+def test_duplicate_claim_folds_without_spending_the_cap():
+    audit = Audit("가나다라마 바사아자차. 다른 문장이다.", max_claims=2)
+    first = _claim(audit, 0, "가나다라마 바사아자차")
+    again = _claim(audit, 0, "가나다라마  바사아자차!")
+    assert first["data"]["claim_id"] == "C1"
+    assert again["ok"] is True and again["data"]["duplicate_of"] == "C1"
+    assert again["data"]["recorded"] is False
+    assert len(audit.claims) == 1
+    assert again["data"]["claims_remaining"] == 1  # 상한을 먹지 않았다
+
+
+# ── 값 형식 (F-07) ───────────────────────────────────────────────────────────
+@pytest.mark.parametrize(
+    "kwargs,fragment",
+    [
+        ({"lang": "korean"}, "ISO 639-1"),
+        ({"lang": ""}, "ISO 639-1"),
+        ({"sentence_count": -3}, "0 이상"),
+        ({"rationale": "   "}, "rationale"),
+        ({"input_kind": "essay"}, "input_kind"),
+    ],
+)
+def test_classification_values_are_validated(kwargs, fragment):
+    audit = _audit_two_sentences()
+    out = _classify(audit, **kwargs)
+    assert out["ok"] is False and fragment in out["error"]
+    assert audit.classification is None
+
+
+
+def test_prompt_score_language_matches_the_computation():
+    from core.agent import PROMPT_PATH
+
+    prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    assert "단계 점수" in prompt
+    assert "evidence_count" in prompt
 
 
 def test_axis_order_violation_is_rejected_with_recovery_path():
