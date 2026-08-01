@@ -13,12 +13,9 @@ import os
 import sys
 from pathlib import Path
 
-# server.py 와 같은 승인 상수. 임의 초 입력은 지원하지 않는다 — 프로파일 이름 2종만.
-PROFILES = {"demo": 110.0, "surprise": 90.0}
-
-# 프로파일별 클레임 상한 — server.py 와 같은 값. 타임박스에서 역산했다:
-# 클레임 하나가 기본 28초 위에 약 3.5초를 더한다(실측).
-CLAIM_CAPS = {"demo": 18, "surprise": 14}
+# server.py 와 같은 제품 상수. 발표 상황에 따라 달라지지 않는다.
+TIMEBOX_S = 90.0
+MAX_CLAIMS = 14
 
 
 def _read_text(args: argparse.Namespace) -> str:
@@ -69,22 +66,22 @@ async def _run(text: str, *, timebox_s: float, max_claims: int, model: str | Non
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 출력 인코딩을 인자 파싱보다 먼저 세운다 — --help 는 파싱 도중에 찍히므로
+    # 나중에 세우면 한글 콘솔에서 도움말이 깨진다.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("text", nargs="?", help="감사할 텍스트 (생략 시 --file 또는 stdin)")
     parser.add_argument("--file", help="텍스트 파일 경로 (UTF-8)")
-    parser.add_argument("--profile", choices=sorted(PROFILES), default="surprise",
-                        help="타임박스 프로파일 (demo=110s, surprise=90s)")
     parser.add_argument("--mock", action="store_true",
                         help="검색·수집을 픽스처로 대체 (LINER_MOCK=1)")
     parser.add_argument("--model", default=None, help="모델 이름 재정의")
     parser.add_argument("--save-events", default=None, metavar="PATH",
                         help="원본 이벤트를 JSONL 로 저장")
     args = parser.parse_args(argv)
-
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):
-        pass
 
     try:
         from dotenv import load_dotenv
@@ -97,8 +94,7 @@ def main(argv: list[str] | None = None) -> int:
 
     text = _read_text(args)
     save = Path(args.save_events) if args.save_events else None
-    payload = asyncio.run(_run(text, timebox_s=PROFILES[args.profile],
-                               max_claims=CLAIM_CAPS[args.profile],
+    payload = asyncio.run(_run(text, timebox_s=TIMEBOX_S, max_claims=MAX_CLAIMS,
                                model=args.model, save_events=save))
 
     report = payload.get("final_report") or ""

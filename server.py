@@ -28,14 +28,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
-# 타임박스 프로파일. 사용자 소유 상수 — 이 두 값 밖의 값을 만들지 않는다.
-PROFILES: dict[str, float] = {"demo": 110.0, "surprise": 90.0}
+# 감사 하나에 주는 시간. 제품 상수다 — 발표 상황에 따라 달라지지 않는다.
+# 가장 좁은 자리가 즉석 태스크 2분이고, 입력과 설명에 30초를 남기면 여기 값이 된다.
+TIMEBOX_S = 90.0
 
-# 프로파일별 클레임 상한. 짧은 박스에서 상한 12는 여유가 1~6초라 위험하고,
-# 상한 9는 누락 산출물이 같으면서 10초 빠르다 — 측정으로 정한 값.
-# 타임박스에서 역산한 값. 클레임 하나가 기본 28초 위에 약 3.5초를 더한다(실측) —
-# 110초면 23개, 90초면 17개가 천장이고 여유 20%를 빼면 아래 값이다.
-CLAIM_CAPS: dict[str, int] = {"demo": 18, "surprise": 14}
+# 그 시간 안에 끝낼 수 있는 주장 수. 실측: 기본 27초 + 클레임당 약 3.2초,
+# 툴 지연의 산포가 20초 가까이 된다 — 14개가 71초에 들어와 19초를 남긴다.
+# 이 수를 올리려면 타임박스를 올려야 하고, 타임박스는 2분 슬롯이 막는다.
+MAX_CLAIMS = 14
 
 # 감사기가 실제로 읽을 수 있는 최대치. core 는 문장 80개까지만 모델에 보인다
 # (HOST_SENTENCES_MAX). 한 문장을 160자로 잡으면 12,800자가 되지만, 실측한 감사 가능
@@ -104,7 +104,7 @@ class Hub:
         client_queue_max: int,
         mock: bool,
         history_max: int = 4000,
-        max_claims: int = CLAIM_CAPS["surprise"],
+        max_claims: int = MAX_CLAIMS,
     ) -> None:
         self.max_claims = int(max_claims)
         self.timebox_s = float(timebox_s)
@@ -262,12 +262,12 @@ def _page(name: str) -> HTMLResponse:
 
 def create_app(
     source: EventSource,
-    timebox_s: float = PROFILES["surprise"],
+    timebox_s: float = TIMEBOX_S,
     client_queue_max: int = 2048,
     *,
     mock: bool = False,
     history_max: int = 4000,
-    max_claims: int = CLAIM_CAPS["surprise"],
+    max_claims: int = MAX_CLAIMS,
 ) -> FastAPI:
     app = FastAPI(title="REDLINE relay", docs_url=None, redoc_url=None)
     hub = Hub(
@@ -437,11 +437,11 @@ def load_jsonl(path: Path) -> list[dict]:
     return events
 
 
-def agent_source(profile: str) -> EventSource:
+def agent_source() -> EventSource:
     """실 모드. core 는 여기서만, 그것도 호출 시점에 import 한다."""
 
-    timebox = PROFILES[profile]
-    max_claims = CLAIM_CAPS[profile]
+    timebox = TIMEBOX_S
+    max_claims = MAX_CLAIMS
 
     async def source(text: str) -> AsyncIterator[dict]:
         from core.agent import run_audit  # noqa: PLC0415 — mock 모드는 core 없이 돈다
@@ -459,7 +459,6 @@ def agent_source(profile: str) -> EventSource:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="REDLINE 릴레이 서버")
-    parser.add_argument("--profile", choices=sorted(PROFILES), default="surprise")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8486)
     parser.add_argument("--mock", action="store_true", help="저장된 이벤트를 재생한다")
@@ -488,11 +487,11 @@ def main(argv: list[str] | None = None) -> int:
         source: EventSource = jsonl_source(path, speed=args.speed)
         print(f"[mock] {path} 재생 · 배속 {args.speed}")
     else:
-        source = agent_source(args.profile)
+        source = agent_source()
     app = create_app(
-        source, timebox_s=PROFILES[args.profile], mock=mock, max_claims=CLAIM_CAPS[args.profile]
+        source, timebox_s=TIMEBOX_S, mock=mock, max_claims=MAX_CLAIMS
     )
-    print(f"[redline] http://{args.host}:{args.port}/  ·  /raw  ·  프로파일 {args.profile}")
+    print(f"[redline] http://{args.host}:{args.port}/  ·  /raw  ·  타임박스 {TIMEBOX_S:.0f}s")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 

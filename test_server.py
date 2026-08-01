@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
-from server import PROFILES, Hub, create_app, load_jsonl
+from server import MAX_CLAIMS, TIMEBOX_S, Hub, create_app, load_jsonl
 
 ROOT = Path(__file__).resolve().parent
 UI = ROOT / "ui"
@@ -82,11 +82,11 @@ def strip_tags(html: str) -> str:
 # --------------------------------------------------------------------------
 
 
-def test_profiles_are_the_approved_constants():
-    assert PROFILES == {"demo": 110.0, "surprise": 90.0}
+def test_the_timebox_and_cap_are_product_constants():
+    assert TIMEBOX_S == 90.0 and MAX_CLAIMS == 14
 
 
-def test_create_app_defaults_to_surprise():
+def test_create_app_uses_the_product_timebox():
     app = create_app(list_source([]))
     assert app.state.hub.timebox_s == 90.0
     assert app.state.hub.client_queue_max == 2048
@@ -191,11 +191,11 @@ def test_source_failure_ends_with_a_done_status():
 
 
 def test_config_arrives_first_and_carries_timebox():
-    app = create_app(list_source([]), timebox_s=PROFILES["demo"], mock=True)
+    app = create_app(list_source([]), timebox_s=TIMEBOX_S, mock=True)
     with TestClient(app) as client, client.websocket_connect("/ws/events") as ws:
         config = ws.receive_json()
     assert config["kind"] == "config"
-    assert config["payload"]["timebox_s"] == 110.0
+    assert config["payload"]["timebox_s"] == 90.0
     assert config["payload"]["mock"] is True
     # 재생 dedup 비대상 — seq 도 run 도 없다
     assert "seq" not in config and "run" not in config

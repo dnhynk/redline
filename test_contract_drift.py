@@ -120,19 +120,13 @@ def test_run_reason_enum():
     assert set(PARTIAL_REASONS) < set(RUN_REASONS)
 
 
-def test_profiles_are_the_approved_constants():
-    assert cli.PROFILES == {"demo": 110.0, "surprise": 90.0}
+def test_the_timebox_and_claim_cap_are_one_product_constant():
+    """발표 상황마다 다른 제품이 되면 안 된다 — 두 진입점이 같은 값을 쓴다."""
+    assert cli.TIMEBOX_S == 90.0
+    assert cli.MAX_CLAIMS == 14
     try:
         import server
     except ImportError:
         return
-    assert server.PROFILES == cli.PROFILES
-
-
-def test_claim_caps_match_between_entry_points():
-    assert cli.CLAIM_CAPS == {"demo": 18, "surprise": 14}
-    try:
-        import server
-    except ImportError:
-        return
-    assert server.CLAIM_CAPS == cli.CLAIM_CAPS
+    assert server.TIMEBOX_S == cli.TIMEBOX_S
+    assert server.MAX_CLAIMS == cli.MAX_CLAIMS
