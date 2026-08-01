@@ -30,7 +30,6 @@ RAW = (UI / "raw.html").read_text(encoding="utf-8")
 RUN_REASONS = {"complete", "incomplete", "timebox", "max_turns", "non_auditable", "error"}
 EVENT_KINDS = {"raw", "run_item", "audit", "status"}
 CONTRACT_STRUCTURAL_KINDS = {"heading", "table_header", "code_fence", "divider"}
-CONTRACT_NETWORK_TOOLS = {"search_web", "search_scholar", "fetch_source"}
 
 MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
@@ -41,10 +40,7 @@ MAIN_IDS = [
     "status-band", "sb-gauge", "sb-fill",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",
 ]
-RAW_IDS = [
-    "raw-events", "state-claims", "tool-count", "tool-max", "elapsed", "timebox", "axis-track",
-    "pause-scroll", "connection-label",
-]
+RAW_IDS = ["raw-events", "pause-scroll", "connection-label", "source-banner"]
 
 
 # --------------------------------------------------------------------------
@@ -509,11 +505,6 @@ def test_no_red_where_a_source_was_merely_not_found():
             assert token not in block.lower(), f"확인 실패에 빨강: {selector.strip()}"
 
 
-def test_the_projector_meter_never_borrows_red_for_a_missing_source():
-    block = CSS.split(".state-card[data-mark=\"no_source\"]")[1].split("}")[0]
-    assert "--p-red" not in block
-
-
 def test_section_accents_do_not_borrow_verdict_colours():
     assert "--rebut-line: #1e3a5f" in CSS
     assert "--fix-line: #12594e" in CSS
@@ -687,7 +678,7 @@ def test_stage_classes_only_touch_paint_properties():
 
 
 def test_live_lists_are_never_rebuilt_wholesale():
-    for host in ("#sentences", "#state-claims", "#omissions", "#fix-list"):
+    for host in ("#sentences", "#omissions", "#fix-list"):
         assert not re.search(rf'\$\("{host}"\)\.innerHTML\s*=', JS), f"{host} 전체 재생성"
     assert "ensureRows" in JS and "whenIdle" in JS
 
@@ -1111,13 +1102,6 @@ def test_structural_kinds_match_the_contract():
     assert set(re.findall(r"(\w+):", block)) == CONTRACT_STRUCTURAL_KINDS
 
 
-def test_the_tool_gauge_counts_network_tools_only():
-    block = JS.split("NETWORK_TOOLS = {")[1].split("}")[0]
-    assert set(re.findall(r"(\w+):", block)) == CONTRACT_NETWORK_TOOLS
-    counter = [line for line in JS.splitlines() if "state.netCalls++" in line]
-    assert counter and all("NETWORK_TOOLS" in line for line in counter)
-
-
 def test_the_banner_separates_the_two_mock_modes():
     """서버가 이벤트를 트는 것과, 검색만 픽스처인 것은 다른 사실이다."""
     block = JS.split("var SOURCE_NOTE = {")[1].split("\n  };")[0]
@@ -1311,39 +1295,11 @@ def test_replaying_a_fixture_reaches_the_terminal_status():
 STANCES = {"support", "challenge"}
 
 
-def test_the_two_search_directions_do_not_share_a_colour():
-    support = re.search(r"--p-support:\s*(#[0-9a-f]{6})", CSS).group(1)
-    challenge = re.search(r"--p-challenge:\s*(#[0-9a-f]{6})", CSS).group(1)
-    assert support != challenge, "같은 색이면 두 방향이 안 보인다"
-    for token in ("#ff8078", "#ff8c84", "#d0021b", "#a3000f"):
-        assert challenge != token, "반증 검색이 판정 빨강을 빌려 썼다"
-    assert '.ev[data-tool="search"][data-stance="challenge"]' in CSS
-    assert '.ev[data-tool="search"][data-stance="support"]' in CSS
-
-
-def test_direction_is_never_carried_by_colour_alone():
-    assert 'el("span", "ev-stance", STANCE_LABEL[info.stance])' in JS
-    assert 'class="stance-legend"' in RAW
-    text = strip_tags(RAW)
-    assert "뒷받침 검색" in text and "반박 검색" in text
-
-
 def test_stance_labels_use_the_screen_vocabulary():
-    labels = JS.split("STANCE_LABEL = {")[1].split("}")[0]
-    assert '"뒷받침"' in labels and '"반박"' in labels
     searches = JS.split("STANCE_SEARCH = {")[1].split("}")[0]
     assert '"뒷받침 검색"' in searches and '"반박 검색"' in searches
     for enum in ("확증", "반증"):
         assert enum not in strip_tags(RAW), f"화면에 내부 어휘 {enum}"
-
-
-def test_stance_is_read_from_a_half_arrived_argument_blob():
-    """조각난 인자 위에서도, 파이썬 repr 봉투에서도 방향이 읽혀야 한다."""
-    pattern = re.search(r"var found = /(.+?)/\.exec", JS).group(1)
-    probe = re.compile(pattern)
-    assert probe.search('{"query":"x","stance":"challenge"')
-    assert probe.search("{'ok': True, 'stance': 'support'}")
-    assert not probe.search('{"query":"stance of the paper"}')
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
@@ -1382,25 +1338,11 @@ def test_stance_display_is_defensive_when_the_ledger_has_none():
     """원장에 방향이 없으면 표시를 생략한다 — 없는 것을 그리지 않는다."""
     assert "STANCE_SEARCH[stance]" in JS
     assert 'var stance = om.stance || record.stance || "";' in JS
-    assert 'out.stance = declared || state.stance[index] || ""' in JS
 
 
 # --------------------------------------------------------------------------
-# 툴 예산 분모
+# 툴 예산 — 코어가 내는 상한이 봉투에 실려 있는지
 # --------------------------------------------------------------------------
-
-
-def test_the_tool_ceiling_is_not_written_into_the_page():
-    assert 'id="tool-max"' in RAW
-    assert not re.search(r'id="tool-count"[^<]*</b>\s*/\s*30', RAW), "분모가 하드코딩돼 있다"
-    assert "status.max_tool_calls" in JS
-    assert "DEFAULT_TOOL_MAX = 30" in JS
-
-
-def test_the_tool_ceiling_falls_back_when_the_run_does_not_say():
-    block = JS.split("function toolMaxOf(")[1].split("\n  }")[0]
-    assert "max_tool_calls" in block and "tool_calls_max" in block
-    assert "state.toolMax || DEFAULT_TOOL_MAX" in JS
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
@@ -1594,6 +1536,180 @@ def test_fixture_suppressed_count_tells_clean_runs_from_burnt_ones():
 
 def test_the_mock_fallback_plays_the_current_build():
     assert server.DEFAULT_FIXTURE == LIVE_CAPTURE
+
+
+# --------------------------------------------------------------------------
+# 프로젝터 /raw — 툴 호출과 그 결과를, 가공 없이
+#
+# 대회 규칙이다: tool_call / tool_result 이벤트를 가공 없이 세컨드 화면에 실시간
+# 출력한다. 심사위원이 아무것도 누르지 않아도 실제 API 호출이 보여야 하므로,
+# 아래 셋은 우리가 나중에 편할 대로 바꿀 수 있는 화면 취향이 아니라 규칙이다.
+# --------------------------------------------------------------------------
+
+PROJECTOR_EVENTS = {
+    ("raw", "response.function_call_arguments.done"),  # API 가 직접 보낸 호출
+    ("run_item", "tool_called"),                       # SDK 가 본 같은 호출
+    ("run_item", "tool_output"),                       # 툴이 돌려준 결과
+}
+
+
+def _wire_name(event: dict) -> tuple[str, str | None]:
+    payload = event["payload"]
+    return event["kind"], payload.get("type") if event["kind"] == "raw" else payload.get("name")
+
+
+def _payload_string(event: dict):
+    """화면이 꺼내는 그 자리. app.js 의 payloadOf 와 같은 경로여야 한다."""
+    payload = event["payload"]
+    if event["kind"] == "raw":
+        return payload.get("arguments")
+    item = payload.get("item", {})
+    raw_item = item.get("raw_item", {})
+    if payload.get("name") != "tool_output":
+        return raw_item.get("arguments")
+    return raw_item["output"] if raw_item.get("output") is not None else item.get("output")
+
+
+def test_the_projector_shows_tool_calls_and_their_results_and_nothing_else():
+    block = JS.split("var SHOWN = {")[1].split("};")[0]
+    shown = {tuple(key.split("/", 1)) for key in re.findall(r'"([^"]+)":', block)}
+    assert shown == PROJECTOR_EVENTS, shown
+    picker = JS.split("function roleOf(")[1].split("\n  }")[0]
+    assert 'SHOWN[event.kind + "/" + (event.kind === "raw" ? p.type : p.name)]' in picker
+    append = JS.split("function appendRaw(")[1].split("\n  }")[0]
+    assert re.search(r"var role = roleOf\(event\);\s*\n\s*if \(!role\) return;", append), (
+        "고르는 문이 없으면 모든 이벤트가 화면에 흐른다")
+
+
+def test_the_projector_leaves_out_what_the_rule_did_not_name():
+    """실제로 재생하는 기록에서 무엇이 걸리는지 — 규칙이 지목한 것만 남는다."""
+    counts: dict[tuple, int] = {}
+    for event in load_jsonl(LIVE_CAPTURE):
+        key = _wire_name(event)
+        counts[key] = counts.get(key, 0) + 1
+    shown = {key: n for key, n in counts.items() if key in PROJECTOR_EVENTS}
+    assert set(shown) == PROJECTOR_EVENTS, "기록에 세 종류가 다 있어야 화면이 그것을 보여 준다"
+    on_screen = sum(shown.values())
+    # 본문 델타가 가장 많다. 그것이 흐르면 정작 봐야 할 호출을 덮는다.
+    assert counts[("raw", "response.output_text.delta")] > on_screen
+    assert on_screen * 4 < sum(counts.values()), "거의 안 거른다면 고르는 의미가 없다"
+
+
+def test_the_payload_string_reaches_the_screen_untouched():
+    """들여쓰기를 고치거나 키 순서를 바꾸거나 긴 값을 자르면 그게 가공이다."""
+    picker = JS.split("function payloadOf(")[1].split("\n  }")[0]
+    for touch in ("JSON", "slice", "substring", "replace", "clip(", "trim", "esc("):
+        assert touch not in picker, f"페이로드를 꺼내며 {touch} 를 거친다"
+    for path in ("p.arguments", "rawItem.output", "rawItem.arguments"):
+        assert path in picker, path
+    text = JS.split("function payloadText(")[1].split("\n  }")[0]
+    assert 'if (typeof value === "string") return value;' in text, "받은 문자열을 그대로 안 돌려준다"
+    append = JS.split("function appendRaw(")[1].split("\n  }")[0]
+    assert 'el("pre", "ev-payload", payloadText(value))' in append
+    assert "innerHTML" not in append and "JSON.stringify" not in append
+
+
+def test_the_replayed_capture_carries_every_payload_as_a_string():
+    """화면이 꺼내는 자리에 문자열이 실제로 앉아 있어야 글자 단위로 같을 수 있다."""
+    seen: dict[str, int] = {}
+    for event in load_jsonl(LIVE_CAPTURE):
+        kind, name = _wire_name(event)
+        if (kind, name) not in PROJECTOR_EVENTS:
+            continue
+        payload = _payload_string(event)
+        assert isinstance(payload, str) and payload, f"#{event.get('seq')} {name}: 문자열이 아니다"
+        seen[name] = seen.get(name, 0) + 1
+    assert len(seen) == 3, seen
+
+
+def test_a_structured_result_says_so_instead_of_passing_for_the_received_string():
+    """합성 픽스처는 결과를 문자열이 아니라 파싱된 봉투로 들고 온다. 그 자리에서
+    화면은 빈 칸을 내밀지도, 옮긴 것을 받은 그대로인 척하지도 않는다."""
+    picker = JS.split("function payloadOf(")[1].split("\n  }")[0]
+    assert "rawItem.output != null ? rawItem.output : item.output" in picker, (
+        "결과가 raw_item 에 없을 때 화면이 빈 칸을 낸다")
+    append = JS.split("function appendRaw(")[1].split("\n  }")[0]
+    assert 'row.dataset.form = "object";' in append
+    assert 'el("span", "ev-note", OBJECT_NOTE)' in append
+    structured = 0
+    for path in FIXTURES:
+        for event in load_jsonl(path):
+            if _wire_name(event) != ("run_item", "tool_output"):
+                continue
+            payload = _payload_string(event)
+            assert payload, f"{path.stem}: 결과 자리가 비었다"
+            structured += not isinstance(payload, str)
+    assert structured, "구조체로 오는 경우가 픽스처에 없다 — 이 경로가 죽었다"
+
+
+def test_nothing_on_the_projector_is_folded():
+    """접힌 것은, 아무도 누르지 않는 화면에서는 없는 것과 같다."""
+    assert "<details" not in RAW and "<summary" not in RAW
+    append = JS.split("function appendRaw(")[1].split("\n  }")[0]
+    for folding in ('"details"', '"summary"', "hidden", "open"):
+        assert folding not in append, f"행에 접는 장치: {folding}"
+    for selector, block in _rules(CSS):
+        if not re.search(r"\.(ev|ev-payload|stream)\b", selector):
+            continue
+        for cut in ("max-height", "line-clamp", "text-overflow"):
+            assert cut not in block, f"행을 잘라 보여 준다: {selector.strip()}"
+
+
+def test_the_projector_wraps_instead_of_scrolling_sideways():
+    """프로젝터에서 가로로 밀린 글자는 못 본 글자다."""
+    block = CSS.split(".ev-payload {")[1].split("}")[0]
+    assert "white-space: pre-wrap" in block, "받은 줄바꿈을 안 지킨다"
+    assert "overflow-wrap: anywhere" in block, "긴 값이 가로로 넘친다"
+    assert "overflow-x: hidden" in CSS.split(".stream {")[1].split("}")[0]
+
+
+def _luminance(colour: str) -> float:
+    channels = [int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    high, low = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def _token(name: str) -> str:
+    return re.search(rf"{name}:\s*(#[0-9a-f]{{6}})", CSS).group(1)
+
+
+def test_the_projector_stays_readable_from_the_back_row():
+    body = CSS.split(".ev-payload {")[1].split("}")[0]
+    size = int(re.search(r"font-size:\s*(\d+)px", body).group(1))
+    assert size >= 18, f"본문 {size}px — 뒷자리에서 못 읽는다"
+    head = int(re.search(r"font-size:\s*(\d+)px", CSS.split(".ev-head {")[1].split("}")[0]).group(1))
+    assert head >= 15, f"행 머리 {head}px"
+    # 프로젝터는 실측 대비가 화면보다 떨어진다 — AA 를 넘겨 잡는다.
+    bg = _token("--p-bg")
+    assert _contrast(_token("--p-fg"), bg) >= 14, "본문 명암비"
+    for token in ("--p-muted", "--p-call", "--p-sdk", "--p-result"):
+        assert _contrast(_token(token), bg) >= 7, f"{token} 명암비"
+
+
+def test_the_three_streams_are_told_apart_by_name_not_only_by_colour():
+    """색만으로 갈라 두면 색이 안 보이는 자리에서는 한 덩어리가 된다."""
+    for role in ("call", "sdk", "result"):
+        assert f'.ev[data-role="{role}"]' in CSS
+        assert f'data-role="{role}"' in RAW, "범례가 그 갈래를 이름으로 안 적는다"
+    text = strip_tags(RAW)
+    for wire in ("response.function_call_arguments.done", "tool_called", "tool_output"):
+        assert wire in text, f"범례에 {wire} 가 없다"
+    append = JS.split("function appendRaw(")[1].split("\n  }")[0]
+    assert 'el("span", "ev-kind", event.kind)' in append
+    assert 'el("span", "ev-type", head.type)' in append
+
+
+def test_the_projector_head_only_repeats_what_the_envelope_carries():
+    """이름표를 우리가 추론해 채우면 그 줄은 더 이상 봉투의 말이 아니다."""
+    head = JS.split("function headOf(")[1].split("\n  }")[0]
+    for field in ("p.type", "p.item_id", "p.name", "rawItem.name", "rawItem.call_id"):
+        assert field in head, field
+    assert "state." not in head, "이전 이벤트에서 이름을 끌어와 채운다"
 
 
 # --------------------------------------------------------------------------

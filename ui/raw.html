@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>REDLINE — RAW / STATE</title>
+<title>REDLINE — RAW</title>
 <link rel="preload" as="font" type="font/woff2" href="/ui/fonts/JetBrainsMonoVariable-latin.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="/ui/fonts/PretendardVariable.subset.woff2" crossorigin>
 <link rel="stylesheet" href="/ui/app.css?v=__V__">
@@ -12,62 +12,18 @@
 
 <header class="topbar">
   <a class="wordmark" href="/raw">RED<span class="wm-b">LINE</span></a>
+  <p class="raw-note">툴 호출과 그 결과만 · 받은 문자열 그대로 · 접지 않은 전문</p>
   <span class="conn" id="connection-label">연결 중</span>
   <button class="btn-pause" id="pause-scroll" type="button" aria-pressed="false">자동 스크롤 일시정지</button>
 </header>
 
-<div class="lanes">
+<ul class="raw-legend">
+  <li data-role="call"><b>raw / response.function_call_arguments.done</b> API 가 보낸 호출</li>
+  <li data-role="sdk"><b>run_item / tool_called</b> SDK 가 본 호출</li>
+  <li data-role="result"><b>run_item / tool_output</b> 툴이 돌려준 결과</li>
+</ul>
 
-  <section class="lane">
-    <div class="lane-head">
-      <div>
-        <p class="lane-brow">LANE 01</p>
-        <h2>RAW</h2>
-      </div>
-      <div class="lane-side">
-        <p class="lane-note">가공 없는 relay 이벤트 · 행을 클릭하면 원문 전체</p>
-        <ul class="stance-legend">
-          <li data-stance="support"><i></i>뒷받침 검색</li>
-          <li data-stance="challenge"><i></i>반박 검색</li>
-        </ul>
-      </div>
-    </div>
-    <div class="feed" id="raw-events"></div>
-  </section>
-
-  <section class="lane">
-    <div class="lane-head">
-      <div>
-        <p class="lane-brow">LANE 02</p>
-        <h2>STATE</h2>
-      </div>
-      <p class="lane-note">현재 감사 상태 · % = 지지 근거량 (확률 아님)</p>
-    </div>
-
-    <div class="budget-row">
-      <div class="budget">
-        <h3>TOOL BUDGET</h3>
-        <p><b id="tool-count">0</b> / <span id="tool-max">30</span></p>
-      </div>
-      <div class="budget">
-        <h3>TIMEBOX</h3>
-        <p><b id="elapsed">0s</b> / <span id="timebox">90s</span></p>
-      </div>
-    </div>
-
-    <div class="axis-track" id="axis-track">
-      <span class="axis-node" data-axis="1"><i>1</i>출처</span>
-      <span class="axis-link"></span>
-      <span class="axis-node" data-axis="2"><i>2</i>내용</span>
-      <span class="axis-link"></span>
-      <span class="axis-node" data-axis="3"><i>3</i>반박</span>
-    </div>
-
-    <div class="state-list" id="state-claims"></div>
-    <p class="lane-empty" id="state-empty">이벤트를 기다리는 중입니다.</p>
-  </section>
-
-</div>
+<main class="stream" id="raw-events"></main>
 
 <div class="source-banner" id="source-banner" role="status" hidden></div>
 

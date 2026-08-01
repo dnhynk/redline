@@ -1835,32 +1835,32 @@ a {
 }
 
 /* ==========================================================================
-   프로젝터 /raw — 어두운 연속 스트림. 단계로 끊지 않는다.
+   프로젝터 /raw — 툴 호출과 그 결과만, 전폭, 받은 문자열 그대로.
+   접는 장치도 요약도 없다. 뒷자리에서 읽히는 것이 이 화면의 유일한 일이다.
    ========================================================================== */
 
+:root {
+  --p-bg: #14161a;
+  --p-line: #363b44;
+  --p-fg: #fbfaf7;
+  --p-muted: #aba598;
+  /* 세 갈래는 색과 글자 양쪽으로 갈린다 — 색은 거들 뿐이고 행마다 이름이 적힌다 */
+  --p-call: #ffd365;
+  --p-sdk: #7dceff;
+  --p-result: #6fdf9f;
+}
+
 body.page-raw {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   background: var(--p-bg);
   color: var(--p-fg);
   overflow: hidden;
 }
-:root {
-  --p-bg: #14161a;
-  --p-panel: #1b1e24;
-  --p-line: #363b44;
-  --p-fg: #fbfaf7;
-  --p-muted: #aba598;
-  --p-search: #ffd365;
-  --p-fetch: #7dceff;
-  --p-record: #6fdf9f;
-  --p-red: #ff8078;
-  --p-track: #262b33;
-  --p-muted-panel: #b3ada0;
-  --p-red-text: #ff8c84;
-  --p-support: #ffd365;
-  --p-challenge: #9fb4ff;
-}
 
 .page-raw .topbar {
+  flex: none;
   background: var(--p-bg);
   border-bottom: 1px solid var(--p-line);
   backdrop-filter: none;
@@ -1869,7 +1869,13 @@ body.page-raw {
   font-size: 25px;
   color: var(--p-fg);
 }
+.raw-note {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--p-muted);
+}
 .page-raw .conn {
+  font-size: 14px;
   color: var(--p-muted);
   margin-left: auto;
 }
@@ -1877,417 +1883,144 @@ body.page-raw {
   background: var(--p-line);
 }
 .page-raw .conn.is-live::before {
-  background: var(--p-record);
+  background: var(--p-result);
 }
 .btn-pause {
   padding: 9px 16px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--p-fg);
   background: transparent;
   border: 1px solid var(--p-line);
 }
 .btn-pause.is-on {
-  color: #171000;
-  background: var(--p-search);
-  border-color: var(--p-search);
+  color: var(--p-bg);
+  background: var(--p-call);
+  border-color: var(--p-call);
 }
 
-.lanes {
-  display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
-  height: calc(100vh - var(--topbar-h));
-}
-body.has-banner .lanes {
-  height: calc(100vh - var(--topbar-h) - 47px);
-}
-.lane {
+/* 무엇이 화면에 오르는지를 이름으로 적어 둔다 — 색만 남기면 아무것도 안 말한다 */
+.raw-legend {
+  flex: none;
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  padding: 20px 24px;
-}
-.lane + .lane {
-  border-left: 1px solid var(--p-line);
-}
-.lane-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 20px;
-  align-items: end;
-  padding-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px 30px;
+  padding: 10px max(28px, 4vw);
   border-bottom: 1px solid var(--p-line);
-}
-.lane-brow {
   font-family: var(--f-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  font-size: 14px;
   color: var(--p-muted);
 }
-.lane-head h2 {
-  font-family: var(--f-mono);
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-.lane-note {
-  font-size: 13px;
-  color: var(--p-muted);
-  text-align: right;
-}
-.lane-side {
+.raw-legend li {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  align-items: baseline;
+  gap: 9px;
 }
-.stance-legend {
-  display: flex;
-  gap: 16px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--p-muted);
-}
-.stance-legend li {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.stance-legend i {
+.raw-legend li::before {
+  content: "";
+  align-self: center;
   width: 16px;
-  height: 3px;
-  background: var(--p-support);
+  height: 4px;
+  background: var(--p-line);
 }
-.stance-legend li[data-stance="challenge"] i {
-  background: var(--p-challenge);
+.raw-legend li[data-role="call"]::before {
+  background: var(--p-call);
 }
-
-.ev-gap {
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  border-left: 3px solid var(--p-search);
-  background: var(--p-panel);
-  font-family: var(--f-mono);
-  font-size: 15px;
-  line-height: 1.5;
+.raw-legend li[data-role="sdk"]::before {
+  background: var(--p-sdk);
+}
+.raw-legend li[data-role="result"]::before {
+  background: var(--p-result);
+}
+.raw-legend b {
+  font-weight: 700;
   color: var(--p-fg);
 }
 
-.feed {
+.stream {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-top: 8px;
+  padding: 14px max(28px, 4vw) 28px;
 }
-.ev {
-  font-variant-ligatures: none;
-  border-left: 3px solid var(--p-line);
-  padding: 3px 0 3px 12px;
-  margin-bottom: 2px;
+/* 재생 배너는 화면 아래에 떠 있다 — 마지막 행이 그 밑으로 들어가지 않게 자리를 둔다 */
+body.has-banner .stream {
+  padding-bottom: 76px;
 }
-.ev[data-tool="search"] {
-  border-left-color: var(--p-search);
-}
-.ev[data-tool="search"][data-stance="support"] {
-  border-left-color: var(--p-support);
-}
-.ev[data-tool="search"][data-stance="challenge"] {
-  border-left-color: var(--p-challenge);
-}
-.ev[data-tool="fetch"] {
-  border-left-color: var(--p-fetch);
-}
-.ev[data-tool="record"] {
-  border-left-color: var(--p-record);
-}
-.ev[data-tool="audit"] {
-  border-left-color: var(--p-fg);
-}
-.ev > summary {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+
+.ev-gap {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 4px solid var(--p-call);
   font-family: var(--f-mono);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  cursor: pointer;
-  list-style: none;
+  color: var(--p-fg);
 }
-.ev > summary::-webkit-details-marker {
-  display: none;
+
+.ev {
+  --role: var(--p-line);
+  border-left: 4px solid var(--role);
+  padding: 7px 0 9px 14px;
+  margin-bottom: 10px;
+}
+.ev[data-role="call"] {
+  --role: var(--p-call);
+}
+.ev[data-role="sdk"] {
+  --role: var(--p-sdk);
+}
+.ev[data-role="result"] {
+  --role: var(--p-result);
+}
+.ev-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  font-family: var(--f-mono);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--p-muted);
+}
+.ev-seq,
+.ev-at {
+  font-variant-numeric: tabular-nums;
 }
 .ev-seq {
-  color: var(--p-muted);
-  font-variant-numeric: tabular-nums;
-  flex: none;
+  min-width: 62px;
+}
+.ev-at {
+  min-width: 58px;
+}
+.ev-kind {
+  min-width: 66px;
 }
 .ev-type {
-  font-size: 15px;
-  color: var(--p-muted);
-  flex: none;
+  font-weight: 700;
+  color: var(--p-fg);
 }
 .ev-name {
   font-weight: 700;
-  flex: none;
+  color: var(--role);
 }
-.ev[data-tool="search"] .ev-name {
-  color: var(--p-search);
-}
-.ev[data-tool="search"][data-stance="challenge"] .ev-name {
-  color: var(--p-challenge);
-}
-.ev-stance {
-  flex: none;
-  padding: 1px 7px;
-  font-size: 13px;
+.ev-note {
+  padding: 1px 8px;
   font-weight: 700;
-  color: #14161a;
-  background: var(--p-support);
-}
-.ev[data-stance="challenge"] .ev-stance {
-  background: var(--p-challenge);
-}
-.ev[data-tool="fetch"] .ev-name {
-  color: var(--p-fetch);
-}
-.ev[data-tool="record"] .ev-name {
-  color: var(--p-record);
-}
-.ev-hint {
-  color: var(--p-fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ev[data-kind="status"] > summary {
-  color: var(--p-muted);
-}
-.ev[open] {
-  background: var(--p-panel);
-  box-shadow: inset 0 0 0 1px var(--p-line);
-}
-.ev pre {
-  margin: 6px 0 8px;
-  font-family: var(--f-mono);
-  font-size: 15px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--p-fg);
-}
-
-/* STATE 레인 */
-.budget-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin: 16px 0 18px;
-}
-.budget {
-  padding: 12px 16px 14px;
-  background: var(--p-panel);
-  border: 1px solid var(--p-line);
-}
-.budget h3 {
-  font-family: var(--f-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--p-muted-panel);
-}
-.budget p {
-  margin-top: 8px;
-  font-family: var(--f-mono);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  color: var(--p-muted-panel);
-}
-.budget b {
-  display: inline-block;
-  min-width: 68px;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--p-search);
-}
-
-.axis-track {
-  display: flex;
-  align-items: center;
-  margin-bottom: 18px;
-}
-.axis-node {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--f-mono);
-  font-size: 13px;
-  color: var(--p-muted);
-  flex: none;
-}
-.axis-node i {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid var(--p-line);
-  display: grid;
-  place-items: center;
-  font-style: normal;
-  transition: background-color var(--dur-settle) var(--ease-ink),
-    border-color var(--dur-settle) var(--ease-ink),
-    color var(--dur-settle) var(--ease-ink);
-}
-.axis-node.on {
-  color: var(--p-fg);
-}
-.axis-node.on i {
-  background: var(--p-red);
-  border-color: var(--p-red);
-  color: #14161a;
-}
-.axis-link {
-  flex: 1;
-  height: 1px;
-  background: var(--p-line);
-  margin: 0 10px;
-}
-
-.state-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-right: 4px;
-}
-.state-card {
-  padding: 14px 16px 16px;
-  background: var(--p-panel);
-  border-left: 4px solid var(--p-line);
-}
-.state-card[data-mark="unsupported"] {
-  border-left-color: var(--p-red);
-}
-.state-card[data-mark="supported"] {
-  border-left-color: var(--p-record);
-}
-.state-card[data-mark="overstated"] {
-  border-left-color: var(--p-search);
-}
-.state-card[data-mark="no_source"],
-.state-card[data-mark="undecidable"] {
-  border-left-style: dotted;
-  border-left-color: var(--p-muted);
-}
-.state-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.state-id {
-  font-family: var(--f-mono);
-  font-size: 17px;
-  font-weight: 700;
-}
-.state-axis {
-  font-family: var(--f-mono);
-  font-size: 12px;
-  color: var(--p-muted-panel);
-}
-.state-verdict {
-  margin-left: auto;
-  min-width: 102px;
-  text-align: right;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--p-muted-panel);
-}
-.state-card[data-mark="unsupported"] .state-verdict {
-  color: var(--p-red-text);
-}
-.state-card[data-mark="supported"] .state-verdict {
-  color: var(--p-record);
-}
-.state-card[data-mark="overstated"] .state-verdict {
-  color: var(--p-search);
-}
-.state-text {
-  margin-top: 10px;
-  font-family: var(--f-serif);
-  font-size: 17px;
-  line-height: 1.5;
-}
-.state-meter {
-  position: relative;
-  height: 16px;
-  margin-top: 12px;
-  background: var(--p-track);
-}
-.state-meter span {
-  display: block;
-  height: 100%;
-  width: 100%;
-  transform: scaleX(0);
-  transform-origin: left center;
+  color: var(--p-bg);
   background: var(--p-muted);
-  transition: transform var(--dur-stage) var(--ease-ink);
 }
-.state-card[data-mark="unsupported"] .state-meter span {
-  background: var(--p-red);
-}
-.state-card[data-mark="supported"] .state-meter span {
-  background: var(--p-record);
-}
-.state-card[data-mark="overstated"] .state-meter span {
-  background: var(--p-search);
-}
-.state-pct {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+.ev-payload {
+  margin-top: 5px;
   font-family: var(--f-mono);
-  font-size: 12px;
-  font-weight: 700;
+  font-variant-ligatures: none;
+  font-size: 18px;
+  line-height: 1.45;
   color: var(--p-fg);
-  font-variant-numeric: tabular-nums;
-  mix-blend-mode: difference;
-}
-.state-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 10px;
-  font-family: var(--f-mono);
-  font-size: 13px;
-  color: var(--p-muted-panel);
-}
-.state-chips .chip {
-  color: var(--p-muted-panel);
-  text-decoration: underline;
-  text-decoration-color: var(--p-line);
-  text-underline-offset: 3px;
-  max-width: 100%;
-}
-.state-chips .chip[data-stance="support"] {
-  text-decoration-color: var(--p-support);
-}
-.state-chips .chip[data-stance="challenge"] {
-  text-decoration-color: var(--p-challenge);
-}
-@media (hover: hover) and (pointer: fine) {
-  .state-chips .chip:hover {
-    color: var(--p-fg);
-  }
-}
-.lane-empty {
-  padding: 20px 0;
-  font-size: 15px;
-  color: var(--p-muted);
+  /* 줄바꿈만 한다. 가로로 밀리면 프로젝터에서는 못 본 글자가 된다. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* --- 움직임은 줄이고, 이해를 돕는 것은 남긴다 ---------------------------
@@ -2390,19 +2123,5 @@ html.force-reduced .tabpanel {
     border-top: 1px dotted var(--rule);
     padding: 12px 0 0;
     margin-top: 10px;
-  }
-  .lanes {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-  .lane {
-    height: 80vh;
-  }
-  .lane + .lane {
-    border-left: 0;
-    border-top: 1px solid var(--p-line);
-  }
-  body.page-raw {
-    overflow: auto;
   }
 }

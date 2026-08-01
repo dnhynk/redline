@@ -29,9 +29,7 @@
     "pending"
   ];
   // 검색 방향. 메인 화면의 어휘(뒷받침 / 반박)를 그대로 쓴다.
-  var STANCE_LABEL = { support: "뒷받침", challenge: "반박" };
   var STANCE_SEARCH = { support: "뒷받침 검색", challenge: "반박 검색" };
-  var DEFAULT_TOOL_MAX = 30;
   // 서버가 config 로 알려 주기 전까지 쓰는 값. 진실은 서버에 있다.
   var textMaxChars = 2000;
   // 한꺼번에 도착한 반박 카드를 차례로 드러내는 간격과, 그 전체 창의 상한.
@@ -45,7 +43,6 @@
   var ROW_WINDOW_MS = 360;
   var MARKED = { supported: 1, unsupported: 1, overstated: 1, no_source: 1, undecidable: 1 };
   var STRUCTURAL_KINDS = { heading: 1, table_header: 1, code_fence: 1, divider: 1 };
-  var NETWORK_TOOLS = { search_web: 1, search_scholar: 1, fetch_source: 1 };
   var AXIS_NAME = ["감사 준비", "논문·웹 출처 확인", "내용 확인", "반박 찾기"];
   var TERMINAL = {
     complete: { title: "감사 완료", reason: "설정된 감사 범위를 모두 확인했습니다.", outcome: "complete", note: "" },
@@ -275,16 +272,11 @@
     rowSig: "",
     rows: [],
     pctSeen: {},
-    verdictSeen: {},
     foldOpen: false,
-    outputItems: {},
-    args: {},
-    stance: {},
     historyGap: 0,
     historyFrom: 1,
     historyRun: null,
-    netCalls: 0,
-    toolMax: DEFAULT_TOOL_MAX,
+    t0: null,
     elapsed: 0,
     elapsedWall: 0,
     done: false,
@@ -351,7 +343,6 @@
       state.replay = !!cfg.mock;
       paintSource();
       noteHistoryGap(cfg);
-      paintBudget();
       return;
     }
     if (event.run && event.run !== state.run) resetRun(event.run);
@@ -359,6 +350,8 @@
     if (state.seen[key]) return;
     state.seen[key] = 1;
     if (typeof event.seq === "number" && event.seq > state.lastSeq) state.lastSeq = event.seq;
+    // 런의 첫 봉투가 시계의 0 이다 — 프로젝터의 경과 시간은 여기서 잰다
+    if (state.t0 == null && typeof event.t === "number") state.t0 = event.t;
 
     if (event.kind === "audit") {
       state.audit = event.payload || {};
@@ -379,7 +372,6 @@
 
     if (isRaw) appendRaw(event);
     if (isMain) paintMain(event);
-    else paintRawState(event);
   }
 
   // 서버 보관 상한에 걸려 앞부분이 재생되지 않았으면 화면이 그렇게 말한다.
@@ -442,13 +434,8 @@
     state.rowSig = "";
     state.rows = [];
     state.pctSeen = {};
-    state.verdictSeen = {};
     state.foldOpen = false;
-    state.outputItems = {};
-    state.args = {};
-    state.stance = {};
-    state.netCalls = 0;
-    state.toolMax = DEFAULT_TOOL_MAX;
+    state.t0 = null;
     state.elapsed = 0;
     state.elapsedWall = 0;
     state.done = false;
@@ -481,8 +468,6 @@
     }
     if (isRaw) {
       $("#raw-events").textContent = "";
-      $("#state-claims").textContent = "";
-      $("#state-empty").hidden = false;
       // 이 런의 재생이 잘렸다는 사실은 피드를 비워도 남아야 한다
       if (state.historyRun !== run) state.historyGap = 0;
       noteHistoryGap(null);
@@ -1994,230 +1979,91 @@
   }
 
   // ================================================================ 프로젝터
+  //
+  // 대회 규칙: tool_call / tool_result 이벤트를 가공 없이 세컨드 화면에 실시간
+  // 출력한다. 그래서 이 화면에 오르는 것은 아래 셋뿐이다.
+  //
+  //   raw      / response.function_call_arguments.done   API 가 직접 보낸 호출
+  //   run_item / tool_called                             SDK 가 본 같은 호출
+  //   run_item / tool_output                             툴이 돌려준 결과
+  //
+  // tool_result 는 API 스트림에 없다 — 결과는 우리가 API 로 보내는 것이라
+  // run_item/tool_output 에만 있다. 첫 줄이 있어야 「실제 API 호출」이 API 자신의
+  // 이벤트로 뒷받침된다. 나머지는 규칙이 지목한 것이 아니고, 정작 봐야 할 것을 덮는다.
+  var SHOWN = {
+    "raw/response.function_call_arguments.done": "call",
+    "run_item/tool_called": "sdk",
+    "run_item/tool_output": "result"
+  };
 
-  var TYPE_SHORT = [
-    [/^response\./, ""],
-    [/^function_call_arguments/, "args"],
-    [/^output_text/, "text"]
-  ];
+  // 봉투가 문자열이 아니라 구조체로 온 경우에만 붙는 말. 한 줄 JSON 으로 옮겼다는
+  // 사실을 행이 직접 말한다 — 옮긴 것을 받은 그대로인 척하지 않는다.
+  var OBJECT_NOTE = "구조체로 도착 · JSON 한 줄";
 
-  function shortType(type) {
-    var s = String(type || "");
-    for (var i = 0; i < TYPE_SHORT.length; i++) s = s.replace(TYPE_SHORT[i][0], TYPE_SHORT[i][1]);
-    return s;
+  function roleOf(event) {
+    var p = event.payload || {};
+    return SHOWN[event.kind + "/" + (event.kind === "raw" ? p.type : p.name)] || "";
   }
 
-  function toolClass(name) {
-    if (!name) return "";
-    if (/^search_/.test(name)) return "search";
-    if (name === "fetch_source") return "fetch";
-    if (/^record_/.test(name) || name === "update_verdict") return "record";
-    return "";
+  // 페이로드 문자열이 봉투에 앉아 있는 자리. 꺼내기만 한다 — 여기서 자르거나 다시
+  // 짜면 심사위원이 보는 것은 API 가 보낸 것이 아니라 우리가 만든 것이 된다.
+  function payloadOf(event) {
+    var p = event.payload || {};
+    if (event.kind === "raw") return p.arguments;
+    var item = p.item || {};
+    var rawItem = item.raw_item || {};
+    if (p.name !== "tool_output") return rawItem.arguments;
+    // 결과 문자열은 raw_item 에 앉는다. 합성 픽스처는 그 자리 대신 파싱된 봉투만
+    // 들고 오므로 그때는 그것을 쓰고, 문자열이 아니라는 사실을 행이 말한다.
+    return rawItem.output != null ? rawItem.output : item.output;
   }
 
-  // 검색이 선언한 방향. 조각난 인자 위에서도 읽히고, 파이썬 repr 로 온 봉투도 읽는다.
-  function stanceIn(text) {
-    var found = /["']stance["']\s*:\s*["'](support|challenge)["']/.exec(String(text == null ? "" : text));
-    return found ? found[1] : "";
+  // 문자열이면 그대로 돌려준다. 그것이 이 화면의 전부다.
+  function payloadText(value) {
+    if (typeof value === "string") return value;
+    return value == null ? "" : JSON.stringify(value);
+  }
+
+  // 행 머리에는 봉투가 스스로 들고 있는 이름표만 쓴다. 이름이 없는 이벤트는
+  // 이름 자리를 비운 채로 나간다 — 우리가 추론해 채우지 않는다.
+  function headOf(event) {
+    var p = event.payload || {};
+    if (event.kind === "raw") return { type: p.type || "", name: "", id: p.item_id || "" };
+    var rawItem = (p.item || {}).raw_item || {};
+    return { type: p.name || "", name: rawItem.name || "", id: rawItem.call_id || "" };
+  }
+
+  // 런의 첫 봉투를 0 으로 잡은 경과. t 는 적재 시각이라 재생에서도 그 런이 실제로
+  // 걸린 시간을 말한다 — 재생 속도가 아니라.
+  function sinceStart(event) {
+    if (typeof event.t !== "number" || state.t0 == null) return "";
+    return Math.max(0, event.t - state.t0).toFixed(1) + "s";
   }
 
   function appendRaw(event) {
+    var role = roleOf(event);
+    if (!role) return;
+    var head = headOf(event);
+    var value = payloadOf(event);
+    var row = el("article", "ev");
+    row.dataset.role = role;
+    var line = el("div", "ev-head");
+    line.appendChild(el("span", "ev-seq", "#" + (event.seq || 0)));
+    line.appendChild(el("span", "ev-at", sinceStart(event)));
+    line.appendChild(el("span", "ev-kind", event.kind));
+    line.appendChild(el("span", "ev-type", head.type));
+    if (head.name) line.appendChild(el("span", "ev-name", head.name));
+    if (head.id) line.appendChild(el("span", "ev-id", head.id));
+    if (typeof value !== "string") {
+      row.dataset.form = "object";
+      line.appendChild(el("span", "ev-note", OBJECT_NOTE));
+    }
+    row.appendChild(line);
+    // 접지 않는다. 처음부터 전문이 보이고, 줄바꿈 말고는 아무것도 하지 않는다.
+    row.appendChild(el("pre", "ev-payload", payloadText(value)));
     var host = $("#raw-events");
-    var info = summarize(event);
-    var row = el("details", "ev");
-    row.dataset.kind = event.kind;
-    if (info.tool) row.dataset.tool = info.tool;
-    if (info.stance) row.dataset.stance = info.stance;
-    var summary = el("summary");
-    summary.appendChild(el("span", "ev-seq", "#" + pad(event.seq || 0, 3)));
-    if (info.type) summary.appendChild(el("span", "ev-type", info.type));
-    if (info.name) summary.appendChild(el("span", "ev-name", info.name));
-    // 색만으로 방향을 전달하지 않는다 — 라벨을 나란히 붙인다
-    if (info.stance) summary.appendChild(el("span", "ev-stance", STANCE_LABEL[info.stance]));
-    if (info.hint) summary.appendChild(el("span", "ev-hint", info.hint));
-    row.appendChild(summary);
-    row.appendChild(el("pre", null, JSON.stringify(event, null, 2)));
     host.appendChild(row);
     if (!state.paused) host.scrollTop = host.scrollHeight;
-  }
-
-  function summarize(event) {
-    var p = event.payload || {};
-    if (event.kind === "raw") return summarizeRaw(p);
-    if (event.kind === "run_item") {
-      var item = p.item || {};
-      var raw = item.raw_item || {};
-      var name = raw.name || item.name || "";
-      return {
-        type: "run_item",
-        name: p.name || "",
-        hint: "",
-        tool: toolClass(name) || "",
-        stance: toolClass(name) === "search" ? stanceIn(raw.arguments) : ""
-      };
-    }
-    if (event.kind === "audit") return { type: "audit", name: "", hint: auditHint(p), tool: "audit" };
-    if (event.kind === "status") {
-      var tail = p.done ? "종결 · " + ((TERMINAL[p.reason] || {}).title || p.reason || "") : "진행 중";
-      return {
-        type: "status",
-        name: "",
-        hint: "축 " + (p.axis || 0) + " · 툴 " + (p.tool_calls || 0) + " · " + tail,
-        tool: ""
-      };
-    }
-    return { type: event.kind, name: "", hint: "", tool: "" };
-  }
-
-  function summarizeRaw(p) {
-    var type = shortType(p.type);
-    var index = p.output_index;
-    var known = state.outputItems[index];
-    var out = { type: type, name: "", hint: "", tool: "" };
-
-    if (p.type === "response.created" || p.type === "response.completed") {
-      out.name = (p.response && p.response.model) || "";
-      var size = JSON.stringify(p).length;
-      if (p.type === "response.created" && size > 2048)
-        out.hint = "페이로드 " + (size / 1024).toFixed(1) + "KB — 펼치면 전문";
-      return out;
-    }
-    if (p.type === "response.output_item.added" || p.type === "response.output_item.done") {
-      var item = p.item || {};
-      if (item.name) state.outputItems[index] = item.name;
-      if (item.name && p.type === "response.output_item.added" && NETWORK_TOOLS[item.name]) state.netCalls++;
-      out.name = item.name || "";
-      out.hint = p.type === "response.output_item.added" ? item.call_id || "" : "";
-      out.tool = toolClass(item.name);
-      var declared = stanceIn(item.arguments);
-      if (declared) state.stance[index] = declared;
-      if (out.tool === "search") out.stance = declared || state.stance[index] || "";
-      return out;
-    }
-    if (/function_call_arguments/.test(p.type)) {
-      out.name = known || "";
-      out.tool = toolClass(known);
-      var text = p.delta != null ? p.delta : p.arguments;
-      if (/\.delta$/.test(p.type)) {
-        state.args[index] = (state.args[index] || "") + (p.delta || "");
-        text = state.args[index];
-      }
-      var seen = stanceIn(text) || stanceIn(state.args[index]);
-      if (seen) state.stance[index] = seen;
-      if (out.tool === "search") out.stance = seen || state.stance[index] || "";
-      out.hint = clip(text, 76);
-      return out;
-    }
-    if (/output_text/.test(p.type)) {
-      out.hint = clip(p.delta != null ? p.delta : p.text, 76);
-      return out;
-    }
-    out.hint = clip(p.delta || p.text || "", 76);
-    return out;
-  }
-
-  function auditHint(p) {
-    var claims = Array.isArray(p.claims) ? p.claims : [];
-    for (var i = 0; i < claims.length; i++) {
-      var prev = state.verdictSeen[claims[i].id];
-      var now = claims[i].verdict || "pending";
-      if (prev !== now) {
-        state.verdictSeen[claims[i].id] = now;
-        if (now !== "pending") return claims[i].id + " → " + (VERDICT_LABEL[now] || now);
-      }
-    }
-    return "클레임 " + claims.length + "건 · 원장 " + (p.evidence_total || (p.evidence || []).length) + "건";
-  }
-
-  function paintRawState(event) {
-    var audit = state.audit;
-    paintBudget();
-    var axis = (state.status && state.status.axis) || 0;
-    var nodes = $("#axis-track").querySelectorAll(".axis-node");
-    for (var i = 0; i < nodes.length; i++) nodes[i].classList.toggle("on", i < axis);
-    if (!audit) return;
-    var claims = claimsOf(audit);
-    if (!claims.length) return;
-    $("#state-empty").hidden = true;
-    var host = $("#state-claims");
-    var evidence = ledger(audit);
-    for (var c = 0; c < claims.length; c++) {
-      var claim = claims[c];
-      var card = host.querySelector('[data-cid="' + CSS.escape(claim.id) + '"]');
-      if (!card) {
-        card = buildStateCard(claim);
-        host.appendChild(card);
-      }
-      updateStateCard(card, claim, evidence);
-    }
-  }
-
-  function buildStateCard(claim) {
-    var card = el("div", "state-card");
-    card.dataset.cid = claim.id;
-    var head = el("div", "state-head");
-    head.appendChild(el("span", "state-id", claim.id));
-    head.appendChild(el("span", "state-axis", "AXIS 0"));
-    head.appendChild(el("span", "state-verdict", VERDICT_LABEL.pending));
-    card.appendChild(head);
-    card.appendChild(el("p", "state-text", claim.text || ""));
-    var meter = el("div", "state-meter");
-    meter.appendChild(el("span"));
-    meter.appendChild(el("b", "state-pct", "0%"));
-    card.appendChild(meter);
-    card.appendChild(el("div", "state-chips"));
-    return card;
-  }
-
-  function updateStateCard(card, claim, evidence) {
-    var verdict = claim.verdict || "pending";
-    if (card.getAttribute("data-mark") !== verdict) card.setAttribute("data-mark", verdict);
-    var axes = claim.axis_results || [];
-    var reached = axes.length ? axes[axes.length - 1].axis : 0;
-    setText(card.querySelector(".state-axis"), "AXIS " + reached);
-    setText(card.querySelector(".state-verdict"), VERDICT_LABEL[verdict] || verdict);
-    setText(card.querySelector(".state-text"), claim.text || "");
-    var fill = card.querySelector(".state-meter span");
-    var target = "scaleX(" + pct(claim.confidence) / 100 + ")";
-    if (fill.dataset.born !== "1") {
-      fill.dataset.born = "1";
-      requestAnimationFrame(function () {
-        fill.style.transform = target;
-      });
-    } else if (fill.style.transform !== target) {
-      fill.style.transform = target;
-    }
-    setText(card.querySelector(".state-pct"), pct(claim.confidence) + "%");
-    var chips = chipsFor(claim, evidence);
-    var host = card.querySelector(".state-chips");
-    var sig = JSON.stringify(chips);
-    if (host.dataset.sig === sig) return;
-    host.dataset.sig = sig;
-    host.textContent = "";
-    for (var i = 0; i < chips.length; i++) host.appendChild(chipNode(chips[i]));
-  }
-
-  function toolMaxOf(status) {
-    if (!status) return 0;
-    var budget = status.budget || {};
-    var candidates = [status.max_tool_calls, status.tool_calls_max, budget.tool_calls_max, budget.max_tool_calls];
-    for (var i = 0; i < candidates.length; i++) {
-      if (typeof candidates[i] === "number" && candidates[i] > 0) return candidates[i];
-    }
-    return 0;
-  }
-
-  function paintBudget() {
-    var count = $("#tool-count");
-    if (!count) return;
-    var reported = (state.status && state.status.tool_calls) || 0;
-    state.toolMax = toolMaxOf(state.status) || state.toolMax || DEFAULT_TOOL_MAX;
-    setText($("#tool-max"), String(state.toolMax));
-    setText(count, String(Math.max(reported, state.netCalls)));
-    setText($("#timebox"), Math.round(state.timebox) + "s");
-    var shown = state.elapsed;
-    if (!state.done && state.elapsedWall) shown = state.elapsed + (Date.now() - state.elapsedWall) / 1000;
-    setText($("#elapsed"), Math.min(Math.round(shown), Math.round(state.timebox)) + "s");
   }
 
   // ================================================================ 배선
@@ -2307,7 +2153,6 @@
         pause.setAttribute("aria-pressed", state.paused ? "true" : "false");
         pause.textContent = state.paused ? "자동 스크롤 재개" : "자동 스크롤 일시정지";
       });
-      setInterval(paintBudget, 500);
     }
     connect();
   }
