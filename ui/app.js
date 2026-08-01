@@ -269,6 +269,7 @@
     stage: 0,
     tab: 0,
     fixCount: 0,
+    reportParts: null,
     following: false,
     burstUntil: 0,
     rowSig: "",
@@ -437,6 +438,7 @@
     state.stage = 0;
     state.tab = 0;
     state.fixCount = 0;
+    state.reportParts = null;
     state.rowSig = "";
     state.rows = [];
     state.pctSeen = {};
@@ -459,7 +461,19 @@
       $("#sentences").textContent = "";
       $("#omissions").textContent = "";
       $("#final-report").textContent = "";
+      delete $("#final-report").dataset.sig;
       $("#missing-actions").textContent = "";
+      for (var s = 0; s < 2; s++) {
+        var summary = $(s ? "#rebut-summary" : "#sentence-summary");
+        if (!summary) continue;
+        summary.hidden = true;
+        summary.open = false;
+        var summaryReport = $(s ? "#rebut-summary-report" : "#sentence-summary-report");
+        if (summaryReport) {
+          summaryReport.textContent = "";
+          delete summaryReport.dataset.sig;
+        }
+      }
 
       $("#omissions-empty").hidden = false;
       $("#galley-empty").hidden = false;
@@ -1296,18 +1310,25 @@
     var md = status.reason === "error" ? "" : status.final_report || "";
     if (report.dataset.sig !== md) {
       report.dataset.sig = md;
-      var parts = md ? renderReport(md) : { report: "", fixes: [] };
-      report.innerHTML = parts.report;
+      state.reportParts = md
+        ? renderReport(md)
+        : { report: "", fixes: [], sentenceSummary: "", rebutSummary: "" };
+      report.innerHTML = state.reportParts.report;
       $("#report-empty").hidden = !!md;
-      paintFixes(parts.fixes);
+      paintFixes(state.reportParts.fixes);
     }
     paintReportFacts(status, !!md);
+    paintPanelSummaries(status, state.reportParts);
   }
 
   // 아래 보고문은 모델이 쓴 글이라 수치를 잘못 적을 수 있다. 호스트가 센 값을
   // 그 위에 나란히 두고, 어긋나면 이쪽이 정본이라고 화면이 말하게 한다.
   function paintReportFacts(status, hasReport) {
     var line = $("#report-facts");
+    paintReportFactsAt(line, status, hasReport);
+  }
+
+  function paintReportFactsAt(line, status, hasReport) {
     if (!line) return;
     var audit = (status && status.audit) || state.audit;
     if (!hasReport || !audit) {
@@ -1327,6 +1348,41 @@
     line.appendChild(el("b", null, "감사가 센 값"));
     line.appendChild(el("span", "rf-nums", bits.join("  ·  ")));
     line.appendChild(el("span", "rf-note", "아래 보고문과 수치가 다르면 이 줄이 맞습니다"));
+  }
+
+  function paintPanelSummaries(status, parts) {
+    parts = parts || { sentenceSummary: "", rebutSummary: "" };
+    paintPanelSummary(
+      $("#sentence-summary"),
+      $("#sentence-summary-report"),
+      $("#sentence-summary-facts"),
+      status,
+      parts.sentenceSummary
+    );
+    paintPanelSummary(
+      $("#rebut-summary"),
+      $("#rebut-summary-report"),
+      $("#rebut-summary-facts"),
+      status,
+      parts.rebutSummary
+    );
+  }
+
+  function paintPanelSummary(details, host, facts, status, html) {
+    if (!details || !host) return;
+    details.hidden = !html;
+    if (!html) {
+      details.open = false;
+      host.textContent = "";
+      delete host.dataset.sig;
+      paintReportFactsAt(facts, status, false);
+      return;
+    }
+    if (host.dataset.sig !== html) {
+      host.dataset.sig = html;
+      host.innerHTML = html;
+    }
+    paintReportFactsAt(facts, status, true);
   }
 
   // 추천 수정안 — 목록 전체를 다시 짓지 않고 있는 줄만 갈아 끼운다
@@ -1537,6 +1593,11 @@
     flushPara();
     flushItems();
 
+    // 패널 안 요약은 보고문을 다시 해석하지 않고, 이 파서가 만든 같은 블록에서
+    // 해당 절만 고른다. 절 제목을 못 찾으면 빈 문자열이라 토글 자체가 숨는다.
+    var sentenceBlocks = reportSection(blocks, "감사 결과", ["이 글에 대한 반박", "추천 수정안"]);
+    var rebutBlocks = reportSection(blocks, "이 글에 대한 반박", ["추천 수정안"]);
+
     // 추천 절은 최종 보고에서 떼어 자기 탭으로 보낸다 — 같은 글이 두 곳에 있으면 안 된다
     var fix = -1;
     for (var b = 0; b < blocks.length; b++) {
@@ -1568,7 +1629,41 @@
       }
       html += renderBlock(blocks[n], false);
     }
-    return { report: html, fixes: fixes };
+    return {
+      report: html,
+      fixes: fixes,
+      sentenceSummary: renderBlocks(sentenceBlocks),
+      rebutSummary: renderBlocks(rebutBlocks)
+    };
+  }
+
+  function reportSection(blocks, title, stopTitles) {
+    var start = -1;
+    var level = 4;
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].type === "h" && blocks[i].text.trim() === title) {
+        start = i;
+        level = blocks[i].level;
+        break;
+      }
+    }
+    if (start < 0) return [];
+    var end = blocks.length;
+    for (var n = start + 1; n < blocks.length; n++) {
+      if (blocks[n].type !== "h") continue;
+      var namedStop = stopTitles.indexOf(blocks[n].text.trim()) >= 0;
+      if (namedStop || blocks[n].level < level) {
+        end = n;
+        break;
+      }
+    }
+    return blocks.slice(start + 1, end);
+  }
+
+  function renderBlocks(blocks) {
+    var html = "";
+    for (var i = 0; i < blocks.length; i++) html += renderBlock(blocks[i], false);
+    return html;
   }
 
   // 판정 사유·근거 설명도 최종 보고와 똑같이 이스케이프·제한 서식을 거친다.

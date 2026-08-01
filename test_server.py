@@ -769,6 +769,48 @@ def test_the_tabs_carry_the_roles_a_screen_reader_needs():
     assert 'role="tablist"' in INDEX
 
 
+def test_each_reading_panel_has_an_inline_report_summary_not_a_new_tab():
+    sentence_panel = INDEX.split('id="galley"')[1].split("</section>")[0]
+    rebut_panel = INDEX.split('id="omissions-section"')[1].split("</section>")[0]
+    assert 'id="sentence-summary"' in sentence_panel
+    assert 'id="rebut-summary"' in rebut_panel
+    assert sentence_panel.index('id="sentence-summary-facts"') < sentence_panel.index(
+        'id="sentence-summary-report"')
+    assert rebut_panel.index('id="rebut-summary-facts"') < rebut_panel.index(
+        'id="rebut-summary-report"')
+    assert TAB_IDS == ["tab-sentences", "tab-rebut", "tab-fix", "tab-report"]
+
+
+def test_a_summary_toggle_never_opens_an_empty_box():
+    for summary_id in ("sentence-summary", "rebut-summary"):
+        tag = re.search(rf'<details[^>]*id="{summary_id}"([^>]*)>', INDEX)
+        assert tag and "hidden" in tag.group(1), summary_id
+    block = JS.split("function paintPanelSummary(")[1].split("\n  }")[0]
+    assert "details.hidden = !html" in block
+    assert "details.open = false" in block
+    assert 'host.textContent = ""' in block
+
+
+def test_report_sections_come_from_the_existing_renderer():
+    report = JS.split("function renderReport(")[1].split("\n  function ")[0]
+    assert 'reportSection(blocks, "감사 결과"' in report
+    assert 'reportSection(blocks, "이 글에 대한 반박"' in report
+    assert "sentenceSummary: renderBlocks(sentenceBlocks)" in report
+    assert "rebutSummary: renderBlocks(rebutBlocks)" in report
+    section = JS.split("function reportSection(")[1].split("\n  }")[0]
+    assert 'blocks[i].type === "h"' in section and "return []" in section
+
+
+def test_panel_summaries_repeat_the_host_canonical_figures():
+    wiring = JS.split("function paintPanelSummaries(")[1].split("\n  }")[0]
+    for node_id in ("sentence-summary-facts", "rebut-summary-facts"):
+        assert f'$("#{node_id}")' in wiring
+    facts = JS.split("function paintReportFactsAt(")[1].split("\n  }")[0]
+    for field in ("unsupported_rate", "no_source_count", "coverage"):
+        assert field in facts
+    assert "이 줄이 맞습니다" in facts
+
+
 def test_the_tab_row_stays_down_until_there_is_something_in_it():
     tabs = re.search(r'<div class="tabs" id="result-tabs"([^>]*)>', INDEX)
     assert tabs and "hidden" in tabs.group(1), "런 시작 전에도 탭 줄이 뜬다"
@@ -932,7 +974,7 @@ def test_the_recommendations_live_in_one_place():
     """같은 글이 최종 보고와 탭 양쪽에 있으면 안 된다."""
     block = JS.split("function renderReport(")[1].split("\n  function ")[0]
     assert "fixbox" not in JS, "최종 보고가 추천 절을 아직 그린다"
-    assert "return { report: html, fixes: fixes };" in block
+    assert "report: html" in block and "fixes: fixes" in block
     assert "paintFixes" in JS and "#fix-list" in JS
 
 
@@ -1071,7 +1113,7 @@ def test_the_host_count_stands_above_the_model_prose():
     assert 'id="report-facts"' in INDEX
     assert INDEX.index('id="report-facts"') < INDEX.index('id="final-report"'), (
         "호스트 수치가 보고문 아래에 있다")
-    block = JS.split("function paintReportFacts(")[1].split("\n  }")[0]
+    block = JS.split("function paintReportFactsAt(")[1].split("\n  }")[0]
     for field in ("unsupported_rate", "no_source_count", "coverage"):
         assert field in block, field
     assert "audit" in block and "final_report" not in block, "모델 글에서 수치를 읽는다"
