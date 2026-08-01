@@ -24,7 +24,13 @@
         <p class="lane-brow">LANE 01</p>
         <h2>RAW</h2>
       </div>
-      <p class="lane-note">가공 없는 relay 이벤트 · 행을 클릭하면 원문 전체</p>
+      <div class="lane-side">
+        <p class="lane-note">가공 없는 relay 이벤트 · 행을 클릭하면 원문 전체</p>
+        <ul class="stance-legend">
+          <li data-stance="support"><i></i>뒷받침 검색</li>
+          <li data-stance="challenge"><i></i>반박 검색</li>
+        </ul>
+      </div>
     </div>
     <div class="feed" id="raw-events"></div>
   </section>
@@ -41,7 +47,7 @@
     <div class="budget-row">
       <div class="budget">
         <h3>TOOL BUDGET</h3>
-        <p><b id="tool-count">0</b> / 30</p>
+        <p><b id="tool-count">0</b> / <span id="tool-max">30</span></p>
       </div>
       <div class="budget">
         <h3>TIMEBOX</h3>

@@ -28,18 +28,36 @@
     "supported",
     "pending"
   ];
+  // 검색 방향. 메인 화면의 어휘(뒷받침 / 반박)를 그대로 쓴다.
+  var STANCE_LABEL = { support: "뒷받침", challenge: "반박" };
+  var STANCE_SEARCH = { support: "뒷받침 검색", challenge: "반박 검색" };
+  var DEFAULT_TOOL_MAX = 30;
   var MARKED = { supported: 1, unsupported: 1, overstated: 1, no_source: 1, undecidable: 1 };
   var STRUCTURAL_KINDS = { heading: 1, table_header: 1, code_fence: 1, divider: 1 };
   var NETWORK_TOOLS = { search_web: 1, search_scholar: 1, fetch_source: 1 };
   var AXIS_NAME = ["감사 준비", "논문·웹 출처 확인", "내용 확인", "반박 찾기"];
   var TERMINAL = {
-    complete: { title: "감사 완료", reason: "설정된 감사 범위를 모두 확인했습니다.", outcome: "complete" },
-    incomplete: { title: "부분 감사", reason: "감사를 끝내지 못한 항목이 있어 확인한 범위까지만 표시합니다.", outcome: "partial" },
-    timebox: { title: "부분 감사", reason: "시간 제한에 도달해 확인한 범위까지만 표시합니다.", outcome: "partial" },
-    max_turns: { title: "부분 감사", reason: "내부 반복 한도에 도달해 확인한 범위까지만 표시합니다.", outcome: "partial" },
-    non_auditable: { title: "감사 대상 아님", reason: "", outcome: "non_auditable" },
-    error: { title: "중단됨", reason: "", outcome: "error" }
+    complete: { title: "감사 완료", reason: "설정된 감사 범위를 모두 확인했습니다.", outcome: "complete", note: "" },
+    incomplete: { title: "부분 감사", reason: "감사를 끝내지 못한 항목이 있어 확인한 범위까지만 표시합니다.", outcome: "partial", note: "미완 항목" },
+    timebox: { title: "부분 감사", reason: "시간 제한에 도달해 확인한 범위까지만 표시합니다.", outcome: "partial", note: "시간 제한" },
+    max_turns: { title: "부분 감사", reason: "내부 반복 한도에 도달해 확인한 범위까지만 표시합니다.", outcome: "partial", note: "반복 한도" },
+    non_auditable: { title: "감사 대상 아님", reason: "", outcome: "non_auditable", note: "" },
+    error: { title: "중단됨", reason: "", outcome: "error", note: "" }
   };
+  // 코어가 준 미완 사유에는 내부 어휘가 섞여 온다. 화면 어휘로 옮긴다.
+  var ACTION_TERMS = [
+    [/축\s*1\s*\([^)]*\)/g, "논문·웹 출처 확인"],
+    [/축\s*2\s*\([^)]*\)/g, "내용 확인"],
+    [/축\s*3\s*\([^)]*\)/g, "반박 찾기"],
+    [/축\s*1(?![0-9])/g, "논문·웹 출처 확인"],
+    [/축\s*2(?![0-9])/g, "내용 확인"],
+    [/축\s*3(?![0-9])/g, "반박 찾기"],
+    [/미확정 클레임/g, "판정이 남은 클레임"],
+    // 바꿔 넣은 말이 모음으로 끝나므로 뒤따르던 조사를 함께 고친다
+    [/반박 찾기을/g, "반박 찾기를"],
+    [/반박 찾기은/g, "반박 찾기는"],
+    [/반박 찾기이/g, "반박 찾기가"]
+  ];
   var STAGES = [
     null,
     { target: "#galley", peek: 0 },
@@ -235,7 +253,9 @@
     foldOpen: false,
     outputItems: {},
     args: {},
+    stance: {},
     netCalls: 0,
+    toolMax: DEFAULT_TOOL_MAX,
     elapsed: 0,
     elapsedWall: 0,
     done: false,
@@ -345,7 +365,9 @@
     state.foldOpen = false;
     state.outputItems = {};
     state.args = {};
+    state.stance = {};
     state.netCalls = 0;
+    state.toolMax = DEFAULT_TOOL_MAX;
     state.elapsed = 0;
     state.done = false;
     deferred = [];
@@ -740,6 +762,7 @@
       node.target = "_blank";
       node.rel = "noopener";
     }
+    if (chip.stance) node.dataset.stance = chip.stance;
     node.title = chip.title;
     return node;
   }
@@ -773,7 +796,11 @@
         byDomain[dom].count++;
         var rec = evidence[id];
         if (rec) {
-          byDomain[dom].titles.push((id || "") + " · " + (rec.tool || "") + " · " + (rec.title || ""));
+          var stance = STANCE_SEARCH[rec.stance];
+          byDomain[dom].titles.push(
+            (id || "") + " · " + (rec.tool || "") + (stance ? " · " + stance : "") + " · " + (rec.title || "")
+          );
+          if (stance && !byDomain[dom].stance) byDomain[dom].stance = rec.stance;
           var cc = rec.extra && rec.extra.citation_count;
           if (typeof cc === "number" && byDomain[dom].cites == null) byDomain[dom].cites = cc;
         } else if (id) {
@@ -790,7 +817,7 @@
         if (chipWidth(full) <= 224) label = full;
         else title = "인용 " + d.cites + "회\n" + title;
       }
-      return { label: label, url: d.url, title: title };
+      return { label: label, url: d.url, title: title, stance: d.stance || "" };
     });
   }
 
@@ -880,6 +907,7 @@
 
   function paintOmissions(audit) {
     var host = $("#omissions");
+    var evidence = ledger(audit);
     var list = (audit && Array.isArray(audit.omissions) ? audit.omissions : []).slice();
     if (!list.length) {
       $("#omissions-empty").hidden = false;
@@ -900,13 +928,13 @@
       var om = list[i];
       var key = om.claim_id + "/" + om.evidence_id;
       if (host.querySelector('[data-key="' + CSS.escape(key) + '"]')) continue;
-      var card = buildOmission(om, key);
+      var card = buildOmission(om, key, evidence);
       host.appendChild(card); // 붙인 뒤에 정착 — 문서 밖에서는 애니메이션이 시작되지 않는다
       fireOnce(card, "arrive");
     }
   }
 
-  function buildOmission(om, key) {
+  function buildOmission(om, key, evidence) {
     var href = safeHref(om.url);
     var card = el(href ? "a" : "div", "rebut-card");
     card.dataset.key = key;
@@ -915,8 +943,16 @@
       card.target = "_blank";
       card.rel = "noopener";
     }
+    var record = (evidence || {})[om.evidence_id] || {};
+    var stance = om.stance || record.stance || "";
     var brow = el("div", "rebut-brow");
     brow.appendChild(el("span", null, "반박 근거 · " + om.claim_id));
+    if (STANCE_SEARCH[stance]) {
+      // 확증 검색에서 나온 반박 자료는 약한 증거다 — 어느 방향에서 왔는지 밝힌다
+      var tag = el("span", "stance-tag", STANCE_SEARCH[stance]);
+      tag.dataset.stance = stance;
+      brow.appendChild(tag);
+    }
     if (om.url) brow.appendChild(el("span", "chip", domainOf(om.url)));
     card.appendChild(brow);
     card.appendChild(el("h3", null, om.title || om.url || "제목 없음"));
@@ -940,10 +976,10 @@
     } else {
       var map = TERMINAL[status.reason] || TERMINAL.error;
       badge.textContent =
-        map.outcome === "complete" ? "감사 완료"
+        (map.outcome === "complete" ? "감사 완료"
           : map.outcome === "partial" ? "부분 감사"
           : map.outcome === "non_auditable" ? "감사 대상 아님"
-          : "중단됨";
+          : "중단됨") + (map.note ? " · " + map.note : "");
       badge.setAttribute("data-outcome", map.outcome);
       paintTerminal(status, map);
     }
@@ -954,13 +990,16 @@
     section.hidden = false;
     section.setAttribute("data-outcome", map.outcome);
     setText($("#terminal-title"), map.title);
+    var note = $("#terminal-note");
+    note.hidden = !map.note;
+    setText(note, map.note);
     var reason = map.reason;
     if (status.reason === "non_auditable")
       reason = status.reason_detail || "검증 가능한 사실 주장을 찾지 못했습니다.";
     if (status.reason === "error") reason = status.error || "감사가 중단됐습니다.";
     setText($("#terminal-reason"), reason);
 
-    var missing = (status.completion && status.completion.missing_actions) || [];
+    var missing = missingActions(status);
     var list = $("#missing-actions");
     list.hidden = !missing.length;
     if (missing.length && list.dataset.sig !== JSON.stringify(missing)) {
@@ -986,6 +1025,29 @@
       report.innerHTML = md ? renderReport(md) : "";
       $(".report-label").hidden = !md;
     }
+  }
+
+  function humanizeAction(text) {
+    var out = String(text == null ? "" : text);
+    for (var i = 0; i < ACTION_TERMS.length; i++) out = out.replace(ACTION_TERMS[i][0], ACTION_TERMS[i][1]);
+    return out;
+  }
+
+  function missingActions(status) {
+    var completion = status.completion || {};
+    var raw = Array.isArray(completion.missing_actions) ? completion.missing_actions.slice() : [];
+    var done = pickNumber(status.axis3_done, completion.axis3_done);
+    var expected = pickNumber(status.axis3_expected, completion.axis3_expected);
+    if (!raw.length && expected > 0 && done < expected)
+      raw.push("반박 찾기를 " + done + "/" + expected + " 클레임에 실행했다");
+    return raw.map(humanizeAction);
+  }
+
+  function pickNumber() {
+    for (var i = 0; i < arguments.length; i++) {
+      if (typeof arguments[i] === "number") return arguments[i];
+    }
+    return 0;
   }
 
   // ---------------------------------------------------------------- 보고 본문
@@ -1254,16 +1316,25 @@
     return "";
   }
 
+  // 검색이 선언한 방향. 조각난 인자 위에서도 읽히고, 파이썬 repr 로 온 봉투도 읽는다.
+  function stanceIn(text) {
+    var found = /["']stance["']\s*:\s*["'](support|challenge)["']/.exec(String(text == null ? "" : text));
+    return found ? found[1] : "";
+  }
+
   function appendRaw(event) {
     var host = $("#raw-events");
     var info = summarize(event);
     var row = el("details", "ev");
     row.dataset.kind = event.kind;
     if (info.tool) row.dataset.tool = info.tool;
+    if (info.stance) row.dataset.stance = info.stance;
     var summary = el("summary");
     summary.appendChild(el("span", "ev-seq", "#" + pad(event.seq || 0, 3)));
     if (info.type) summary.appendChild(el("span", "ev-type", info.type));
     if (info.name) summary.appendChild(el("span", "ev-name", info.name));
+    // 색만으로 방향을 전달하지 않는다 — 라벨을 나란히 붙인다
+    if (info.stance) summary.appendChild(el("span", "ev-stance", STANCE_LABEL[info.stance]));
     if (info.hint) summary.appendChild(el("span", "ev-hint", info.hint));
     row.appendChild(summary);
     row.appendChild(el("pre", null, JSON.stringify(event, null, 2)));
@@ -1276,8 +1347,15 @@
     if (event.kind === "raw") return summarizeRaw(p);
     if (event.kind === "run_item") {
       var item = p.item || {};
-      var name = (item.raw_item && item.raw_item.name) || item.name || "";
-      return { type: "run_item", name: p.name || "", hint: "", tool: toolClass(name) || "" };
+      var raw = item.raw_item || {};
+      var name = raw.name || item.name || "";
+      return {
+        type: "run_item",
+        name: p.name || "",
+        hint: "",
+        tool: toolClass(name) || "",
+        stance: toolClass(name) === "search" ? stanceIn(raw.arguments) : ""
+      };
     }
     if (event.kind === "audit") return { type: "audit", name: "", hint: auditHint(p), tool: "audit" };
     if (event.kind === "status") {
@@ -1312,6 +1390,9 @@
       out.name = item.name || "";
       out.hint = p.type === "response.output_item.added" ? item.call_id || "" : "";
       out.tool = toolClass(item.name);
+      var declared = stanceIn(item.arguments);
+      if (declared) state.stance[index] = declared;
+      if (out.tool === "search") out.stance = declared || state.stance[index] || "";
       return out;
     }
     if (/function_call_arguments/.test(p.type)) {
@@ -1322,6 +1403,9 @@
         state.args[index] = (state.args[index] || "") + (p.delta || "");
         text = state.args[index];
       }
+      var seen = stanceIn(text) || stanceIn(state.args[index]);
+      if (seen) state.stance[index] = seen;
+      if (out.tool === "search") out.stance = seen || state.stance[index] || "";
       out.hint = clip(text, 76);
       return out;
     }
@@ -1411,23 +1495,25 @@
     if (host.dataset.sig === sig) return;
     host.dataset.sig = sig;
     host.textContent = "";
-    for (var i = 0; i < chips.length; i++) {
-      var href = safeHref(chips[i].url);
-      var chip = el(href ? "a" : "span", null, chips[i].label);
-      if (href) {
-        chip.href = href;
-        chip.target = "_blank";
-        chip.rel = "noopener";
-      }
-      chip.title = chips[i].title;
-      host.appendChild(chip);
+    for (var i = 0; i < chips.length; i++) host.appendChild(chipNode(chips[i]));
+  }
+
+  function toolMaxOf(status) {
+    if (!status) return 0;
+    var budget = status.budget || {};
+    var candidates = [status.max_tool_calls, status.tool_calls_max, budget.tool_calls_max, budget.max_tool_calls];
+    for (var i = 0; i < candidates.length; i++) {
+      if (typeof candidates[i] === "number" && candidates[i] > 0) return candidates[i];
     }
+    return 0;
   }
 
   function paintBudget() {
     var count = $("#tool-count");
     if (!count) return;
     var reported = (state.status && state.status.tool_calls) || 0;
+    state.toolMax = toolMaxOf(state.status) || state.toolMax || DEFAULT_TOOL_MAX;
+    setText($("#tool-max"), String(state.toolMax));
     setText(count, String(Math.max(reported, state.netCalls)));
     setText($("#timebox"), Math.round(state.timebox) + "s");
     var shown = state.elapsed;

@@ -36,11 +36,12 @@ MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
     "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
     "terminal-summary", "terminal-title", "terminal-reason", "terminal-coverage", "missing-actions",
-    "final-report", "follow-run", "source-banner", "intake", "intake-process", "intake-collapsed",
+    "final-report", "terminal-note", "follow-run", "source-banner", "intake", "intake-process",
+    "intake-collapsed",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",
 ]
 RAW_IDS = [
-    "raw-events", "state-claims", "tool-count", "elapsed", "timebox", "axis-track",
+    "raw-events", "state-claims", "tool-count", "tool-max", "elapsed", "timebox", "axis-track",
     "pause-scroll", "connection-label",
 ]
 
@@ -481,7 +482,9 @@ FIXTURES = sorted((UI / "fixtures").glob("*.jsonl"))
 
 
 def test_fixtures_exist():
-    assert {p.stem for p in FIXTURES} == {"complete", "timebox", "non_auditable", "error", "structured"}
+    assert {p.stem for p in FIXTURES} == {
+        "complete", "timebox", "incomplete", "non_auditable", "error", "structured",
+    }
 
 
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
@@ -547,3 +550,148 @@ def test_replaying_a_fixture_reaches_the_terminal_status():
             received = [ws.receive_json() for _ in range(len(events))]
     assert received[-1]["payload"]["reason"] == "non_auditable"
     assert received[-1]["seq"] == len(events)
+
+
+# --------------------------------------------------------------------------
+# 검색 방향 — 확증과 반증이 나란히 뜨는 순간이 보여야 한다
+# --------------------------------------------------------------------------
+
+STANCES = {"support", "challenge"}
+
+
+def test_the_two_search_directions_do_not_share_a_colour():
+    support = re.search(r"--p-support:\s*(#[0-9a-f]{6})", CSS).group(1)
+    challenge = re.search(r"--p-challenge:\s*(#[0-9a-f]{6})", CSS).group(1)
+    assert support != challenge, "같은 색이면 두 방향이 안 보인다"
+    for token in ("#ff8078", "#ff8c84", "#d0021b", "#a3000f"):
+        assert challenge != token, "반증 검색이 판정 빨강을 빌려 썼다"
+    assert '.ev[data-tool="search"][data-stance="challenge"]' in CSS
+    assert '.ev[data-tool="search"][data-stance="support"]' in CSS
+
+
+def test_direction_is_never_carried_by_colour_alone():
+    assert 'el("span", "ev-stance", STANCE_LABEL[info.stance])' in JS
+    assert 'class="stance-legend"' in RAW
+    text = strip_tags(RAW)
+    assert "뒷받침 검색" in text and "반박 검색" in text
+
+
+def test_stance_labels_use_the_screen_vocabulary():
+    labels = JS.split("STANCE_LABEL = {")[1].split("}")[0]
+    assert '"뒷받침"' in labels and '"반박"' in labels
+    searches = JS.split("STANCE_SEARCH = {")[1].split("}")[0]
+    assert '"뒷받침 검색"' in searches and '"반박 검색"' in searches
+    for enum in ("확증", "반증"):
+        assert enum not in strip_tags(RAW), f"화면에 내부 어휘 {enum}"
+
+
+def test_stance_is_read_from_a_half_arrived_argument_blob():
+    """조각난 인자 위에서도, 파이썬 repr 봉투에서도 방향이 읽혀야 한다."""
+    pattern = re.search(r"var found = /(.+?)/\.exec", JS).group(1)
+    probe = re.compile(pattern)
+    assert probe.search('{"query":"x","stance":"challenge"')
+    assert probe.search("{'ok': True, 'stance': 'support'}")
+    assert not probe.search('{"query":"stance of the paper"}')
+
+
+@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
+def test_every_search_call_declares_a_direction(path):
+    seen = set()
+    for event in load_jsonl(path):
+        payload = event["payload"]
+        if event["kind"] != "raw" or payload.get("type") != "response.function_call_arguments.done":
+            continue
+        args = json.loads(payload["arguments"])
+        if "query" not in args:
+            continue
+        assert args.get("stance") in STANCES, f"방향 없는 검색: {args.get('query')}"
+        seen.add(args["stance"])
+    if seen:
+        assert seen == STANCES, f"한 방향만 발사됐다: {seen}"
+
+
+def test_the_ledger_remembers_which_direction_found_each_source():
+    audit = load_jsonl(UI / "fixtures" / "complete.jsonl")[-1]["payload"]["audit"]
+    ledger = {r["id"]: r for r in audit["evidence"]}
+    assert ledger, "인용된 원장이 비었다"
+    for record in ledger.values():
+        assert record.get("stance") in STANCES
+    found = {ledger[o["evidence_id"]]["stance"] for o in audit["omissions"]}
+    assert "support" in found, "확증 검색에서 나온 반박 자료가 한 건은 있어야 그 경우가 화면에 뜬다"
+
+
+def test_the_screen_says_which_direction_found_a_rebuttal():
+    assert 'el("span", "stance-tag", STANCE_SEARCH[stance])' in JS
+    assert ".stance-tag" in CSS
+    assert 'chip.stance) node.dataset.stance' in JS
+
+
+def test_stance_display_is_defensive_when_the_ledger_has_none():
+    """원장에 방향이 없으면 표시를 생략한다 — 없는 것을 그리지 않는다."""
+    assert "STANCE_SEARCH[stance]" in JS
+    assert 'var stance = om.stance || record.stance || "";' in JS
+    assert 'out.stance = declared || state.stance[index] || ""' in JS
+
+
+# --------------------------------------------------------------------------
+# 툴 예산 분모
+# --------------------------------------------------------------------------
+
+
+def test_the_tool_ceiling_is_not_written_into_the_page():
+    assert 'id="tool-max"' in RAW
+    assert not re.search(r'id="tool-count"[^<]*</b>\s*/\s*30', RAW), "분모가 하드코딩돼 있다"
+    assert "status.max_tool_calls" in JS
+    assert "DEFAULT_TOOL_MAX = 30" in JS
+
+
+def test_the_tool_ceiling_falls_back_when_the_run_does_not_say():
+    block = JS.split("function toolMaxOf(")[1].split("\n  }")[0]
+    assert "max_tool_calls" in block and "tool_calls_max" in block
+    assert "state.toolMax || DEFAULT_TOOL_MAX" in JS
+
+
+@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
+def test_status_payloads_carry_the_tool_ceiling(path):
+    for event in load_jsonl(path):
+        if event["kind"] == "status":
+            assert event["payload"].get("max_tool_calls") == 30
+
+
+# --------------------------------------------------------------------------
+# 시간이 없어 못 한 것과, 하기로 하고 안 한 것
+# --------------------------------------------------------------------------
+
+
+def test_incomplete_does_not_read_like_a_timebox_cut():
+    block = JS.split("var TERMINAL = {")[1].split("\n  };")[0]
+    notes = dict(re.findall(r"(\w+): \{[^}]*note: \"([^\"]*)\"", block))
+    reasons = dict(re.findall(r"(\w+): \{[^}]*reason: \"([^\"]*)\"", block))
+    assert notes["timebox"] and notes["incomplete"] and notes["max_turns"]
+    assert len({notes["timebox"], notes["incomplete"], notes["max_turns"]}) == 3
+    assert reasons["timebox"] != reasons["incomplete"]
+    assert 'map.note ? " · " + map.note : ""' in JS, "배지가 사유를 달고 나오지 않는다"
+
+
+def test_the_incomplete_fixture_ends_for_its_own_reason():
+    incomplete = load_jsonl(UI / "fixtures" / "incomplete.jsonl")[-1]["payload"]
+    timebox = load_jsonl(UI / "fixtures" / "timebox.jsonl")[-1]["payload"]
+    assert incomplete["reason"] == "incomplete" and timebox["reason"] == "timebox"
+    assert incomplete["axis3_done"] < incomplete["axis3_expected"]
+
+
+def test_missing_actions_are_rewritten_into_screen_words():
+    block = JS.split("var ACTION_TERMS = [")[1].split("\n  ];")[0]
+    for internal in ("축", "미확정 클레임"):
+        assert internal in block, f"{internal} 를 옮기는 규칙이 없다"
+    for shown in ("논문·웹 출처 확인", "내용 확인", "반박 찾기", "판정이 남은 클레임"):
+        assert shown in block
+    assert "humanizeAction" in JS and "missingActions(status)" in JS
+    # 바꿔 넣은 말 뒤의 조사가 어긋나면 안 된다 ("반박 찾기을")
+    assert '[/반박 찾기을/g, "반박 찾기를"]' in block
+
+
+def test_the_axis3_shortfall_can_stand_in_for_a_missing_reason():
+    block = JS.split("function missingActions(")[1].split("\n  }")[0]
+    assert "axis3_done" in block and "axis3_expected" in block
+    assert "반박 찾기를 " in block

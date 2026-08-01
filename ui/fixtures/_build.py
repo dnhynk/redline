@@ -6,7 +6,7 @@
 
     python ui/fixtures/_build.py
 
-complete / timebox / non_auditable / error / structured 다섯 개를 다시 쓴다.
+complete / timebox / incomplete / non_auditable / error / structured 여섯 개를 다시 쓴다.
 """
 
 from __future__ import annotations
@@ -262,13 +262,12 @@ def status(
         "tool_calls_refused": 0,
         "axis": axis,
         "source_mode": "mock",
+        "max_tool_calls": 30,
         "done": done,
         "reason": reason,
     }
     if extra:
         payload.update(extra)
-    payload["_timebox_s"] = timebox
-    payload.pop("_timebox_s")
     return payload
 
 
@@ -293,77 +292,79 @@ CLAIM_SPEC = [
     ("C5", 4, "따라서 병원 방문은 더 이상 필요하지 않습니다", "causal", None, 0.45),
 ]
 
+# 여덟 번째 값은 그 자료를 받아 온 검색의 방향이다.
 EVIDENCE = [
     ("E1", "search_web", "AI health chatbot diagnostic accuracy versus physicians",
      "https://pmc.ncbi.nlm.nih.gov/articles/PMC10517477/",
      "Diagnostic accuracy of generative AI in clinical vignettes: a meta-analysis",
      "83개 연구를 종합한 결과 생성형 AI의 전체 진단 정확도는 52.1%였고 의사와 유의한 차이는 없었다.",
-     {"date": "2024-11-03", "citation_count": 214, "journal": "npj Digital Medicine"}),
+     {"date": "2024-11-03", "citation_count": 214, "journal": "npj Digital Medicine"}, "challenge"),
     ("E2", "search_scholar", "AI mental health chatbot adverse effects age groups",
      "https://www.nature.com/articles/s41746-024-01123-7",
      "Age-stratified outcomes of conversational agents in primary care",
      "연령대별 하위군 분석에서 65세 이상 집단의 임상 결과 개선은 통계적으로 유의하지 않았다.",
-     {"date": "2024-06-18", "citation_count": 61, "journal": "npj Digital Medicine"}),
+     {"date": "2024-06-18", "citation_count": 61, "journal": "npj Digital Medicine"}, "support"),
     ("E3", "search_web", "conversational agent trial adverse events",
      "https://www.ncbi.nlm.nih.gov/books/NBK595113/",
      "Digital health interventions: evidence summary",
      "부작용 보고 자체가 드물어 '부작용 없음'을 결론으로 삼기 어렵다고 정리한다.",
-     {"date": "2023-09-01"}),
+     {"date": "2023-09-01"}, "challenge"),
     ("E4", "search_web", "APA advisory generative AI wellness applications",
      "https://www.apa.org/topics/artificial-intelligence-machine-learning/health-advisory",
      "Health advisory on generative AI wellness applications",
      "생성형 AI 상담 도구가 기존 취약성을 증폭할 수 있다고 경고한다.",
-     {"date": "2025-02-24"}),
+     {"date": "2025-02-24"}, "challenge"),
     ("E5", "search_scholar", "telemedicine versus in person visit outcome equivalence",
      "https://pubmed.ncbi.nlm.nih.gov/37201983/",
      "Comparative effectiveness of telemedicine and in-person care",
      "일부 만성질환 관리에서 결과가 비슷했으나 신체검사가 필요한 진료는 제외한 비교였다.",
-     {"date": "2023-05-12", "citation_count": 138, "journal": "JAMA Network Open"}),
+     {"date": "2023-05-12", "citation_count": 138, "journal": "JAMA Network Open"}, "support"),
     ("E6", "search_web", "physical examination limits of telehealth",
      "https://pmc.ncbi.nlm.nih.gov/articles/PMC9110000/",
      "Limits of the remote physical examination",
      "촉진·청진이 필요한 검사는 원격으로 대체할 수 없다고 명시한다.",
-     {"date": "2022-04-30", "citation_count": 47}),
+     {"date": "2022-04-30", "citation_count": 47}, "challenge"),
     ("E7", "search_web", "when telehealth requires in person medical visit guidance",
      "https://connectwithcare.org/telehealth-and-in-person-care/",
      "Telehealth and in-person care: how to choose",
      "원격 상담 뒤 대면 진료가 필요한 상황을 목록으로 제시한다.",
-     {"date": "2024-01-09"}),
+     {"date": "2024-01-09"}, "challenge"),
     ("E8", "search_web", "medicare telehealth still need in person visit",
      "https://www.medicare.gov/coverage/telehealth",
      "Telehealth coverage",
      "일부 항목은 대면 방문을 전제로만 급여된다고 안내한다.",
-     {"date": "2025-01-01"}),
+     {"date": "2025-01-01"}, "support"),
     ("E9", "search_web", "CMS telehealth providers in person requirement",
      "https://www.cms.gov/medicare/coverage/telehealth",
      "Telehealth for providers: what you need to know",
      "원격 논의로 대면 방문 필요성을 판단할 수 있다고 명시한다.",
-     {"date": "2024-08-20"}),
+     {"date": "2024-08-20"}, "challenge"),
     ("E10", "search_scholar", "systematic review diagnostic performance AI versus clinicians",
      "https://pmc.ncbi.nlm.nih.gov/articles/PMC11004411/",
      "A systematic review and meta-analysis of diagnostic performance",
      "AI의 진단 정확도는 52.1%였고 의사보다 항상 우월하지 않았다.",
-     {"date": "2024-01-12", "citation_count": 214, "journal": "The Lancet Digital Health"}),
+     {"date": "2024-01-12", "citation_count": 214, "journal": "The Lancet Digital Health"}, "challenge"),
     ("E11", "search_web", "generative AI amplify existing vulnerabilities warning",
      "https://www.apa.org/news/press/releases/2025/03/ai-wellness-apps",
      "AI wellness apps may amplify existing vulnerabilities",
      "부작용이 없다는 서술과 달리 취약 집단에서 해악 사례가 보고됐다고 지적한다.",
-     {"date": "2025-03-11"}),
+     {"date": "2025-03-11"}, "challenge"),
     ("E12", "search_scholar", "remote consultation misses physical findings cohort",
      "https://pubmed.ncbi.nlm.nih.gov/38102244/",
      "Missed physical findings in remote-only consultation pathways",
      "원격 단독 경로에서 신체 소견 누락이 대면 대비 2.3배였다.",
-     {"date": "2023-12-06", "citation_count": 32, "journal": "BMJ Quality & Safety"}),
+     {"date": "2023-12-06", "citation_count": 32, "journal": "BMJ Quality & Safety"}, "challenge"),
     ("E13", "search_web", "cms telehealth providers what you need to know",
      "https://www.cms.gov/files/document/telehealth-toolkit-providers.pdf",
      "TELEHEALTH FOR PROVIDERS: WHAT YOU NEED TO KNOW",
      "CMS 자료는 원격 논의로 대면 방문 필요성을 판단할 수 있다고 명시한다.",
-     {"date": "2024-08-20"}),
+     {"date": "2024-08-20"}, "challenge"),
 ]
 
 OMISSIONS = [
     ("C1", "E10", "83개 연구 메타분석은 AI의 진단 정확도를 52.1%로 보고했고, 의사보다 항상 우월하지 않았다."),
-    ("C3", "E11", "부작용이 없다는 서술과 달리 취약 집단에서 해악 사례가 보고됐다."),
+    # 확증 검색에서 걸려 나온 반박 자료 — 화면이 그 사실을 밝힌다
+    ("C3", "E2", "65세 이상 집단에서는 임상 결과 개선이 통계적으로 유의하지 않았다."),
     ("C4", "E12", "원격 단독 경로에서 신체 소견 누락이 대면 대비 2.3배였다는 코호트 연구가 있다."),
     ("C5", "E13", "CMS 자료는 원격 논의로 대면 방문 필요성을 판단할 수 있다고 명시해 병원 방문이 전혀 불필요하다는 결론을 반박한다."),
 ]
@@ -394,7 +395,7 @@ FINAL_REPORT = """## 감사 결과
 
 def evidence_records() -> list[dict]:
     out = []
-    for n, (eid, tool, query, url, title, snippet, extra) in enumerate(EVIDENCE):
+    for n, (eid, tool, query, url, title, snippet, extra, stance) in enumerate(EVIDENCE):
         out.append(
             {
                 "id": eid,
@@ -405,6 +406,7 @@ def evidence_records() -> list[dict]:
                 "snippet": snippet,
                 "retrieved_at": round(6.0 + n * 2.4, 2),
                 "extra": extra,
+                "stance": stance,
             }
         )
     return out
@@ -593,15 +595,19 @@ def build_complete() -> list[dict]:
     t += 0.4
 
     # 축1 — 검색 팬아웃
+    # 확증과 반증을 같은 구간에서 나란히 발사한다 — 화면에서 두 방향이 붙어 뜬다.
     searches = [
-        ("search_web", {"query": "AI health chatbot diagnostic accuracy versus physicians", "max_results": 8, "lang": "en", "date_range": None}, ["E1"]),
-        ("search_web", {"query": "한 연구 진단 오류 80% 감소 AI 건강 상담", "max_results": 8, "lang": "ko", "date_range": None}, []),
-        ("search_scholar", {"query": "conversational agent outcomes by age group adverse events", "max_results": 8, "lang": "en", "date_range": None}, ["E2", "E3"]),
-        ("search_scholar", {"query": "telemedicine versus in person visit outcome equivalence", "max_results": 8, "lang": "en", "date_range": None}, ["E5"]),
-        ("search_web", {"query": "medicare telehealth still need in person visit", "max_results": 8, "lang": "en", "date_range": None}, ["E8"]),
+        ("search_web", "AI health chatbot diagnostic accuracy versus physicians", "en", "support", []),
+        ("search_web", "AI health chatbot diagnostic accuracy limitations contrary evidence", "en", "challenge", ["E1"]),
+        ("search_web", "한 연구 진단 오류 80% 감소 AI 건강 상담", "ko", "support", []),
+        ("search_scholar", "conversational agent outcomes by age group", "en", "support", ["E2"]),
+        ("search_scholar", "conversational agent adverse events no effect systematic review", "en", "challenge", ["E3"]),
+        ("search_scholar", "telemedicine versus in person visit outcome equivalence", "en", "support", ["E5"]),
+        ("search_web", "medicare telehealth still need in person visit", "en", "support", ["E8"]),
     ]
     calls = 0
-    for name, args, eids in searches:
+    for name, query, lang, stance, eids in searches:
+        args = {"query": query, "max_results": 8, "lang": lang, "date_range": None, "stance": stance}
         _, call_id = raw.call(name, args, t)
         calls += 1
         results = []
@@ -662,7 +668,7 @@ def build_complete() -> list[dict]:
     for name, args, eids in [
         ("fetch_source", {"url": by_id("E1")["url"], "max_chars": 8000}, ["E1"]),
         ("fetch_source", {"url": by_id("E5")["url"], "max_chars": 8000}, ["E5"]),
-        ("search_web", {"query": "physical examination limits of telehealth", "max_results": 8, "lang": "en", "date_range": None}, ["E6"]),
+        ("search_web", {"query": "physical examination limits of telehealth", "max_results": 8, "lang": "en", "date_range": None, "stance": "challenge"}, ["E6"]),
     ]:
         _, call_id = raw.call(name, args, t)
         calls += 1
@@ -689,10 +695,10 @@ def build_complete() -> list[dict]:
 
     # 축3 — 반박 탐색
     for name, args, eids in [
-        ("search_scholar", {"query": "systematic review diagnostic performance AI versus clinicians", "max_results": 8, "lang": "en", "date_range": None}, ["E10"]),
-        ("search_web", {"query": "generative AI wellness apps amplify vulnerabilities", "max_results": 8, "lang": "en", "date_range": None}, ["E4", "E11"]),
-        ("search_scholar", {"query": "missed physical findings remote only consultation", "max_results": 8, "lang": "en", "date_range": None}, ["E12"]),
-        ("search_web", {"query": "when telehealth requires in person medical visit guidance", "max_results": 8, "lang": "en", "date_range": None}, ["E7", "E9", "E13"]),
+        ("search_scholar", {"query": "systematic review diagnostic performance AI versus clinicians", "max_results": 8, "lang": "en", "date_range": None, "stance": "challenge"}, ["E10"]),
+        ("search_web", {"query": "generative AI wellness apps amplify vulnerabilities", "max_results": 8, "lang": "en", "date_range": None, "stance": "challenge"}, ["E4", "E11"]),
+        ("search_scholar", {"query": "missed physical findings remote only consultation", "max_results": 8, "lang": "en", "date_range": None, "stance": "challenge"}, ["E12"]),
+        ("search_web", {"query": "when telehealth requires in person medical visit guidance", "max_results": 8, "lang": "en", "date_range": None, "stance": "challenge"}, ["E7", "E9", "E13"]),
     ]:
         _, call_id = raw.call(name, args, t)
         calls += 1
@@ -753,7 +759,10 @@ def build_complete() -> list[dict]:
                        "timing": {"total_s": round(t + 0.2, 2), "model_s": 41.8, "tool_wait_s": 22.4,
                                   "tool_time_serial_s": 48.1, "max_concurrent_tools": 4, "parallel_speedup": 2.15},
                        "completion": {"complete": True, "audited_claims": 5, "omissions": len(omissions_so_far),
-                                      "missing_actions": []},
+                                      "missing_actions": [], "axis3_done": 4, "axis3_expected": 4,
+                                      "axis3_required": 3},
+                       "axis3_done": 4,
+                       "axis3_expected": 4,
                        "turn_backstop": False,
                        "events_dropped": 0,
                    }),
@@ -799,9 +808,76 @@ def build_timebox() -> list[dict]:
                        "timing": {"total_s": 110.0, "model_s": 63.2, "tool_wait_s": 39.5,
                                   "tool_time_serial_s": 71.0, "max_concurrent_tools": 3, "parallel_speedup": 1.8},
                        "completion": {"complete": False, "audited_claims": 4, "omissions": 0,
-                                      "missing_actions": ["C4의 내용 확인이 남았습니다.",
-                                                          "C5는 아직 판정 전입니다.",
-                                                          "반박 찾기를 4건 중 1건만 실행했습니다."]},
+                                      "missing_actions": ["미확정 클레임 C5",
+                                                          "축3(완전성)을 1/4 클레임에만 실행했다(최소 3)"],
+                                      "axis3_done": 1, "axis3_expected": 4, "axis3_required": 3},
+                       "axis3_done": 1,
+                       "axis3_expected": 4,
+                       "turn_backstop": False,
+                       "events_dropped": 0,
+                   }),
+            t + 0.5,
+        )
+    )
+    return out
+
+
+# --------------------------------------------------------------------------
+# 시나리오 2b — 모델이 스스로 마무리했으나 남은 항목이 있다
+#
+# 타임박스와 다른 사건이다. 시간은 남았고 모델이 끝냈는데 축3 실행량이 모자라고
+# 판정 전인 클레임이 남았다 — 화면이 두 경우를 같게 보이면 안 된다.
+# --------------------------------------------------------------------------
+
+
+REPORT_INCOMPLETE = "\n".join([
+    "## 감사 결과",
+    "",
+    "확인한 범위까지 보고한다.",
+    "",
+    "- **C1 [unsupported]** 메타분석 수치가 주장을 뒷받침하지 않는다.",
+    "- **C2 [no_source]** 지목한 출처를 특정하지 못했다.",
+    "- **C3 [overstated]** 자료 범위를 넘는 단정이다.",
+    "- **C4 [overstated]** 신체검사 한계가 결론을 한정한다.",
+    "",
+])
+
+
+def build_incomplete() -> list[dict]:
+    full = build_complete()
+    out: list[dict] = []
+    for event in full:
+        if event["kind"] == "audit" and len(event["payload"].get("omissions", [])) >= 1:
+            out.append(event)
+            break
+        if event["kind"] == "status" and event["payload"].get("done"):
+            break
+        out.append(event)
+    t = out[-1]["t"] - BASE_T
+    applied = {"C1": 3, "C2": 1, "C3": 2, "C4": 2, "C5": 0}
+    claims = build_claims(applied)
+    rec = by_id(OMISSIONS[0][1])
+    omissions = [{"claim_id": OMISSIONS[0][0], "evidence_id": OMISSIONS[0][1], "title": rec["title"],
+                  "url": rec["url"], "date": rec["extra"].get("date"),
+                  "citation_count": rec["extra"].get("citation_count"), "summary": OMISSIONS[0][2]}]
+    audit = audit_payload(claims=claims, omissions=omissions, status_value="partial", evidence_total=44)
+    out.append(ev("audit", audit, t + 0.3))
+    out.append(
+        ev(
+            "status",
+            status("종결", t + 0.5, claims=5, tool_calls=14, axis=3, done=True, reason="incomplete",
+                   extra={
+                       "partial": True,
+                       "final_report": REPORT_INCOMPLETE,
+                       "audit": {**audit, "input_text": " ".join(SENTENCES)},
+                       "timing": {"total_s": 74.2, "model_s": 44.0, "tool_wait_s": 26.5,
+                                  "tool_time_serial_s": 52.0, "max_concurrent_tools": 4, "parallel_speedup": 1.96},
+                       "completion": {"complete": False, "audited_claims": 4, "omissions": 1,
+                                      "missing_actions": ["미확정 클레임 C5",
+                                                          "축3(완전성)을 1/4 클레임에만 실행했다(최소 3)"],
+                                      "axis3_done": 1, "axis3_expected": 4, "axis3_required": 3},
+                       "axis3_done": 1,
+                       "axis3_expected": 4,
                        "turn_backstop": False,
                        "events_dropped": 0,
                    }),
@@ -895,7 +971,10 @@ def build_error() -> list[dict]:
                        "timing": {"total_s": round(t + 0.5, 2), "model_s": 18.0, "tool_wait_s": 9.1,
                                   "tool_time_serial_s": 12.0, "max_concurrent_tools": 3, "parallel_speedup": 1.3},
                        "completion": {"complete": False, "audited_claims": 2, "omissions": 0,
-                                      "missing_actions": ["C3·C4·C5는 판정 전에 중단됐습니다."]},
+                                      "missing_actions": ["미확정 클레임 C3, C4, C5"],
+                                      "axis3_done": 0, "axis3_expected": 4, "axis3_required": 3},
+                       "axis3_done": 0,
+                       "axis3_expected": 4,
                        "turn_backstop": False,
                        "events_dropped": 0,
                    }),
@@ -1041,6 +1120,7 @@ def build_structured() -> list[dict]:
 SCENARIOS = {
     "complete": build_complete,
     "timebox": build_timebox,
+    "incomplete": build_incomplete,
     "non_auditable": build_non_auditable,
     "error": build_error,
     "structured": build_structured,
