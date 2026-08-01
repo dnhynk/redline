@@ -331,6 +331,10 @@ class AuditContext:
             "claims_remaining": claims_remaining,
             "fetch_allowed": self.fetch_allowed(),
             "fetch_cutoff_s": self.fetch_cutoff_s,
+            # 지금까지 나간 반증 쿼리 수 — **관측치이지 할당량이 아니다.**
+            # 필요치(더 쏴야 하는 수)를 여기 실었더니 모델이 정확히 그 수에서 멈췄고
+            # 누락 증거가 8.00 → 4.33으로 무너졌다. 하한을 알려주면 하한이 상한이 된다.
+            "challenge_queries": self.audit.challenge_query_count(),
         }
         endpoint_calls = get_endpoint_calls()
         if endpoint_calls is not None:
@@ -495,6 +499,7 @@ async def search_web(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
+    ctx.audit.note_search(stance, query)
     reply = await _io_call(
         ctx,
         lambda: _io_search_web(
@@ -536,6 +541,7 @@ async def search_scholar(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
+    ctx.audit.note_search(stance, query)
     reply = await _io_call(
         ctx,
         lambda: _io_search_scholar(
