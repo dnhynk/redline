@@ -509,6 +509,8 @@
     driveStage(event);
   }
 
+  // 문장으로 나뉘기 전의 글은 화면에 올리지 않는다. 통째로 한 덩이를 찍었다가
+  // 곧 문장 열로 갈아 끼우면 화면이 두 번 바뀌어 툭 끊긴다 — 접수했다는 것만 말한다.
   function paintPreview(text) {
     var host = $("#sentences");
     host.textContent = "";
@@ -516,7 +518,7 @@
     $("#galley-empty").hidden = true;
     var row = el("div", "s-row is-preview");
     row.appendChild(el("span", "s-num", "··"));
-    row.appendChild(el("div", "s-text", text));
+    row.appendChild(el("div", "s-text", ""));
     var margin = el("div", "s-margin");
     var bare = el("div", "bare");
     bare.appendChild(el("i", "swatch", ""));

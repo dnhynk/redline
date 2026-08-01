@@ -305,8 +305,14 @@ def split_sentences_with_kinds(text: str) -> tuple[list[str], list[str]]:
     return sentences, kinds
 
 
+# 챗봇 답변은 소제목 앞에 이모지나 기호를 자주 붙인다("💡 **요약하자면**").
+# 장식을 떼고 판정해야 그 줄이 제목이라는 것을 알아본다.
+_DECOR_RE = re.compile(r"^[^\w*_\[(<\"'가-힣]+")
+
+
 def _is_bold_heading(line: str) -> bool:
     """굵은 글씨 단독 줄 — 종결부호로 끝나면 강조 산문이지 제목이 아니다."""
+    line = _DECOR_RE.sub("", line).strip()
     m = _BOLD_ONLY_RE.match(line)
     if not m:
         return False
