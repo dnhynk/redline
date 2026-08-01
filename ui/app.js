@@ -254,6 +254,9 @@
     outputItems: {},
     args: {},
     stance: {},
+    historyGap: 0,
+    historyFrom: 1,
+    historyRun: null,
     netCalls: 0,
     toolMax: DEFAULT_TOOL_MAX,
     elapsed: 0,
@@ -316,6 +319,7 @@
       var cfg = event.payload || {};
       if (cfg.timebox_s) state.timebox = cfg.timebox_s;
       setMock(!!cfg.mock);
+      noteHistoryGap(cfg);
       paintBudget();
       return;
     }
@@ -335,12 +339,37 @@
         state.elapsed = state.status.elapsed_s;
         state.elapsedWall = Date.now();
       }
-      if (state.status.done) state.done = true;
+      if (state.status.done) {
+        state.done = true;
+        // 종결 봉투의 audit 이 정본이다. 스트림이 뒤처졌더라도 여기서 수렴한다.
+        if (state.status.audit) state.audit = state.status.audit;
+      }
     }
 
     if (isRaw) appendRaw(event);
     if (isMain) paintMain(event);
     else paintRawState(event);
+  }
+
+  // 서버 보관 상한에 걸려 앞부분이 재생되지 않았으면 화면이 그렇게 말한다.
+  // 런 경계에서 피드를 비운 뒤에도 다시 세워야 한다 — 조용히 사라지면 안 본 것을 본 줄 안다.
+  function noteHistoryGap(cfg) {
+    if (cfg) {
+      state.historyGap = Number(cfg.history_dropped) || 0;
+      state.historyFrom = Number(cfg.history_from) || 1;
+      state.historyRun = cfg.run || null;
+    }
+    var host = $("#raw-events");
+    if (!host || !state.historyGap) return;
+    var text =
+      "앞선 이벤트 " + state.historyGap + "건은 서버 보관 상한을 넘어 재생되지 않았습니다 — 이 목록은 #" +
+      state.historyFrom + " 부터입니다";
+    var existing = host.querySelector(".ev-gap");
+    if (existing) {
+      existing.textContent = text;
+      return;
+    }
+    host.insertBefore(el("p", "ev-gap", text), host.firstChild);
   }
 
   function setMock(on) {
@@ -369,6 +398,7 @@
     state.netCalls = 0;
     state.toolMax = DEFAULT_TOOL_MAX;
     state.elapsed = 0;
+    state.elapsedWall = 0;
     state.done = false;
     deferred = [];
     if (isMain) {
@@ -385,6 +415,9 @@
       $("#raw-events").textContent = "";
       $("#state-claims").textContent = "";
       $("#state-empty").hidden = false;
+      // 이 런의 재생이 잘렸다는 사실은 피드를 비워도 남아야 한다
+      if (state.historyRun !== run) state.historyGap = 0;
+      noteHistoryGap(null);
     }
   }
 
@@ -879,18 +912,36 @@
           claimable
         ];
 
-    setMetric($("#unsupported-rate"), rate[0], rate[1]);
-    setMetric($("#coverage"), cov[0], cov[1]);
-    setText($("#no-source-count"), "출처 못 찾음 " + noSource + "건");
-    setText($("#claim-count"), "등록 클레임 " + claims.length + "건");
-
     var total = typeof audit.evidence_total === "number" ? audit.evidence_total : (audit.evidence || []).length;
     var cited = typeof audit.evidence_cited === "number" ? audit.evidence_cited : (audit.evidence || []).length;
-    setText($("#evidence-summary"), "실제 받은 검색 결과 " + total + "건 · 판정에 인용 " + cited + "건");
+
+    if (crashed()) {
+      // 중단된 런의 0/0 은 정보가 아니라 오해다 — 집계 자체를 내지 않는다.
+      setDash($("#unsupported-rate"));
+      setDash($("#coverage"));
+      setText($("#no-source-count"), "집계 없음");
+      setText($("#claim-count"), "등록 클레임 " + claims.length + "건");
+      setText($("#evidence-summary"), "감사가 중단돼 집계를 내지 않았습니다");
+    } else {
+      setMetric($("#unsupported-rate"), rate[0], rate[1]);
+      setMetric($("#coverage"), cov[0], cov[1]);
+      setText($("#no-source-count"), "출처 못 찾음 " + noSource + "건");
+      setText($("#claim-count"), "등록 클레임 " + claims.length + "건");
+      setText($("#evidence-summary"), "실제 받은 검색 결과 " + total + "건 · 판정에 인용 " + cited + "건");
+    }
 
     var axis = (state.status && state.status.axis) || 0;
     var cells = $("#axis").children;
     for (var i = 0; i < cells.length; i++) cells[i].classList.toggle("on", i < axis);
+  }
+
+  function crashed() {
+    return !!(state.done && state.status && state.status.reason === "error");
+  }
+
+  function setDash(node) {
+    var html = '&mdash; <span class="sep">/</span> &mdash;';
+    if (node.innerHTML !== html) node.innerHTML = html;
   }
 
   function setMetric(node, a, b) {
@@ -912,13 +963,7 @@
     if (!list.length) {
       $("#omissions-empty").hidden = false;
       if (state.done) {
-        var reason = state.status && state.status.reason;
-        $("#omissions-empty").lastElementChild.textContent =
-          reason === "complete"
-            ? "탐색 완료 · 이 글에 대한 반박 0건. 반박까지 찾아봤지만 나오지 않았습니다 — 0건도 결과입니다."
-            : reason === "non_auditable"
-            ? "감사 대상이 아니어서 반박을 찾지 않았습니다."
-            : "반박 찾기를 끝내지 못했습니다 — 확인한 범위에서 나온 반박은 0건입니다.";
+        $("#omissions-empty").lastElementChild.textContent = emptyRebuttalCopy(audit);
         $("#omissions-empty").firstElementChild.textContent = "0";
       }
       return;
@@ -932,6 +977,41 @@
       host.appendChild(card); // 붙인 뒤에 정착 — 문서 밖에서는 애니메이션이 시작되지 않는다
       fireOnce(card, "arrive");
     }
+  }
+
+  // "찾아봤지만 나오지 않았다"는 반증 검색이 실제로 결과를 받아온 런에서만 쓸 수 있는 말이다.
+  // 근거가 없으면 단정하지 않고 무슨 일이 있었는지만 말한다.
+  function emptyRebuttalCopy(audit) {
+    var status = state.status || {};
+    var reason = status.reason;
+    if (reason === "non_auditable") return "감사 대상이 아니어서 반박을 찾지 않았습니다.";
+    if (reason === "error") return "감사가 중단돼 반박을 찾지 못했습니다.";
+    var fired = challengeSearches(status);
+    var received = evidenceReceived(audit);
+    if (reason !== "complete")
+      return fired
+        ? "반박 찾기를 끝내지 못했습니다 — 확인한 범위에서 나온 반박은 0건입니다."
+        : "반박을 찾는 검색에 도달하기 전에 감사가 끝났습니다.";
+    if (!fired) return "반박을 찾는 검색이 실행되지 않았습니다 — 0건은 탐색 결과가 아닙니다.";
+    if (!received)
+      return "반박을 찾는 검색을 " + fired + "회 실행했지만 결과를 한 건도 받지 못했습니다 — 0건은 탐색 결과가 아닙니다.";
+    return "탐색 완료 · 이 글에 대한 반박 0건. 반박까지 찾아봤지만 나오지 않았습니다 — 0건도 결과입니다.";
+  }
+
+  function challengeSearches(status) {
+    var completion = status.completion || {};
+    var counts = completion.search_counts || status.search_counts || {};
+    var candidates = [counts.challenge, completion.challenge_queries, status.challenge_queries];
+    for (var i = 0; i < candidates.length; i++) {
+      if (typeof candidates[i] === "number") return candidates[i];
+    }
+    return 0;
+  }
+
+  function evidenceReceived(audit) {
+    if (!audit) return 0;
+    if (typeof audit.evidence_total === "number") return audit.evidence_total;
+    return (audit.evidence || []).length;
   }
 
   function buildOmission(om, key, evidence) {
@@ -996,8 +1076,11 @@
     var reason = map.reason;
     if (status.reason === "non_auditable")
       reason = status.reason_detail || "검증 가능한 사실 주장을 찾지 못했습니다.";
-    if (status.reason === "error") reason = status.error || "감사가 중단됐습니다.";
+    // 중단은 사용자 문구를 고정한다. 제공자가 던진 원문은 접힌 상세 안에만 둔다 —
+    // 화면에 영문 자격증명 안내문이 뜨면 그건 우리 제품의 말이 아니다.
+    if (status.reason === "error") reason = "감사를 시작하지 못했습니다.";
     setText($("#terminal-reason"), reason);
+    paintErrorDetail(status);
 
     var missing = missingActions(status);
     var list = $("#missing-actions");
@@ -1019,7 +1102,8 @@
     }
 
     var report = $("#final-report");
-    var md = status.final_report || "";
+    // 중단된 런의 최종 보고는 시작도 못 한 감사의 수치다 — 싣지 않는다.
+    var md = status.reason === "error" ? "" : status.final_report || "";
     if (report.dataset.sig !== md) {
       report.dataset.sig = md;
       report.innerHTML = md ? renderReport(md) : "";
@@ -1048,6 +1132,18 @@
       if (typeof arguments[i] === "number") return arguments[i];
     }
     return 0;
+  }
+
+  function paintErrorDetail(status) {
+    var box = $("#error-detail");
+    if (!box) return;
+    var detail = status.reason === "error" ? String(status.error || "") : "";
+    box.hidden = !detail;
+    if (!detail || box.dataset.sig === detail) return;
+    box.dataset.sig = detail;
+    box.textContent = "";
+    box.appendChild(el("summary", null, "기술 상세"));
+    box.appendChild(el("pre", null, detail));
   }
 
   // ---------------------------------------------------------------- 보고 본문

@@ -1156,6 +1156,29 @@ a {
   line-height: 1.6;
   color: var(--muted);
 }
+.error-detail {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.error-detail > summary {
+  cursor: pointer;
+  font-weight: 600;
+  width: fit-content;
+}
+.error-detail pre {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  max-width: 74ch;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #missing-actions {
   margin-top: 14px;
   font-size: 14px;
@@ -1486,6 +1509,17 @@ body.has-banner .lanes {
 }
 .stance-legend li[data-stance="challenge"] i {
   background: var(--p-challenge);
+}
+
+.ev-gap {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--p-search);
+  background: var(--p-panel);
+  font-family: var(--f-mono);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--p-fg);
 }
 
 .feed {
