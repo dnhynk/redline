@@ -692,6 +692,59 @@ def test_live_lists_are_never_rebuilt_wholesale():
     assert "ensureRows" in JS and "whenIdle" in JS
 
 
+def test_claimed_manuscript_keeps_the_host_coordinate_system():
+    """주장이 붙은 줄은 구조 마크다운보다 record_claim 좌표가 먼저다."""
+    update = JS.split("function updateManuscript(")[1].split("\n  function ")[0]
+    assert "claims.length ? null : manuscriptView(slot.sentence, slot.kind)" in update
+    assert "anchorsFor(slot.sentence, claims)" in update
+    assert "buildMarkup(slot.sentence, anchors)" in update
+    assert "renderMarkdown" not in update and "inline(" not in update
+    build = JS.split("function buildMarkup(")[1].split("\n  }")[0]
+    assert "sentence.slice(a.start, a.end)" in build
+    assert "esc(sentence.slice" in build, "원고 슬라이스가 이스케이프를 건너뛴다"
+
+
+def test_every_fixture_claim_underlines_its_exact_recorded_text():
+    """정규화 좌표를 원문에 대입하지 않고, 실제 문장 슬라이스만 밑줄 친다."""
+    anchors = JS.split("function anchorsFor(")[1].split("\n  }")[0]
+    assert "sentence.indexOf(needle)" in anchors
+    assert "sentence.replace" not in anchors, "정규화 문자열의 인덱스를 원문에 쓴다"
+    checked = 0
+    for path in (UI / "fixtures").glob("*.jsonl"):
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            event = json.loads(raw)
+            audit = event.get("payload", {}).get("audit") if event.get("kind") == "status" else None
+            if not audit:
+                continue
+            for claim in audit.get("claims", []):
+                sentence = audit["sentences"][claim["index"]]
+                needle = re.sub(r"[.。!?！？,·:;]+$", "", claim.get("text", "").strip())
+                start = sentence.find(needle)
+                assert start >= 0, f"{path.name} {claim['id']}: exact anchor 없음"
+                assert sentence[start:start + len(needle)] == needle
+                checked += 1
+    assert checked > 0
+
+
+def test_only_unclaimed_whole_lines_get_manuscript_markdown_treatment():
+    view = JS.split("function manuscriptView(")[1].split("\n  }")[0]
+    for whole_line in ("heading", "divider", "quote", "list"):
+        assert f'type: "{whole_line}"' in view
+    assert "**" not in view and "`" not in view, "인라인 표기를 원고에서 걷어 낸다"
+    update = JS.split("function updateManuscript(")[1].split("\n  function ")[0]
+    assert re.search(r"var view = claims\.length \? null : manuscriptView", update)
+
+
+def test_model_markdown_uses_the_escaped_report_renderer():
+    omission = JS.split("function buildOmission(")[1].split("\n  }")[0]
+    assert "renderMarkdown(om.summary)" in omission
+    assert not re.search(r"innerHTML\s*=\s*om\.summary", omission)
+    inline_block = JS.split("function inline(")[1].split("\n  }")[0]
+    assert "var s = String(" in inline_block and "s = esc(s)" in inline_block
+    assert "safeHref(href)" in inline_block
+    assert 'rel="noopener"' in inline_block
+
+
 # --------------------------------------------------------------------------
 # 결과 탭 — 한 번에 하나만 보이고, 종결 수치는 탭 밖에 있다
 # --------------------------------------------------------------------------

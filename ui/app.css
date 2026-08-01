@@ -999,6 +999,44 @@ a {
   border-left: 3px solid var(--hair);
   padding-left: 14px;
 }
+.s-text.is-md-heading {
+  color: var(--ink);
+}
+.s-text.is-md-heading[data-md-level="1"] {
+  font-size: 24px;
+}
+.s-text.is-md-heading[data-md-level="2"] {
+  font-size: 21px;
+}
+.s-text.is-md-heading[data-md-level="3"] {
+  font-size: 18px;
+}
+.s-text.is-md-heading[data-md-level="4"],
+.s-text.is-md-heading[data-md-level="5"],
+.s-text.is-md-heading[data-md-level="6"] {
+  font-size: 16px;
+}
+.s-text.is-md-list {
+  position: relative;
+  padding-left: 24px;
+}
+.s-text.is-md-list::before {
+  content: attr(data-md-marker);
+  position: absolute;
+  left: 0;
+  color: var(--muted);
+  font-family: var(--f-sans);
+}
+.s-text.is-md-quote {
+  color: var(--muted);
+  border-left: 3px solid var(--rule);
+  padding-left: 14px;
+}
+.s-text.is-md-divider {
+  min-height: 1px;
+  margin: 10px 0 8px;
+  border-top: 1px solid var(--rule);
+}
 .s-row.is-preview .s-text {
   color: var(--muted);
 }
@@ -1450,6 +1488,34 @@ a {
   line-height: 1.65;
   margin-bottom: 12px;
   color: var(--ink);  text-wrap: pretty;
+}
+.rebut-copy > :first-child {
+  margin-top: 0;
+}
+.rebut-copy > :last-child {
+  margin-bottom: 12px;
+}
+.rebut-copy ul {
+  margin: 8px 0 12px;
+  padding-left: 18px;
+  list-style: square;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.rebut-copy code,
+.report code {
+  padding: 1px 4px;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  font-family: var(--f-mono);
+  font-size: 0.88em;
+}
+.rebut-copy a,
+.report a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
 }
 .rebut-meta {
   font-family: var(--f-mono);

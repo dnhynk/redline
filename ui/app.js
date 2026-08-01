@@ -606,19 +606,25 @@
   // 원고 열: 클레임 구절에만 밑줄. 앵커 집합이 바뀔 때만 다시 짓는다.
   function updateManuscript(slot, claims) {
     var anchors = anchorsFor(slot.sentence, claims);
+    // 구조 마크다운은 주장 없는 줄에서만 걷어 낸다. 클레임이 하나라도 붙으면
+    // record_claim 과 같은 원문 좌표계로 즉시 돌아가야 밑줄 구간이 밀리지 않는다.
+    var view = claims.length ? null : manuscriptView(slot.sentence, slot.kind);
     // 앵커는 등록 시점에 확정된다. 마크업 적용이 애니메이션 뒤로 밀려도
     // 여백은 이 표를 보고 「구절」 인용 여부를 정한다 — 행 높이가 나중에 안 변한다.
     slot.anchors = {};
     for (var a = 0; a < anchors.length; a++) slot.anchors[anchors[a].id] = anchors[a].start >= 0;
-    var sig = JSON.stringify(
+    var sig = JSON.stringify([
       anchors.map(function (a) {
         return [a.id, a.start, a.end];
-      })
-    );
+      }),
+      view
+    ]);
     if (slot.text.dataset.sig !== sig) {
       whenIdle(slot.text, "markup", function () {
         slot.text.dataset.sig = sig;
-        slot.text.innerHTML = buildMarkup(slot.sentence, anchors);
+        resetManuscriptView(slot.text);
+        if (view) applyManuscriptView(slot.text, view);
+        else slot.text.innerHTML = buildMarkup(slot.sentence, anchors);
         for (var k = 0; k < claims.length; k++) {
           var born = slot.text.querySelector('[data-cid="' + claims[k].id + '"]');
           if (born) applyMark(born, claims[k].id, claims[k].verdict || "pending", slot.row);
@@ -631,6 +637,49 @@
       var span = slot.text.querySelector('[data-cid="' + claim.id + '"]');
       if (!span) continue;
       applyMark(span, claim.id, claim.verdict || "pending", slot.row);
+    }
+  }
+
+  // 문장 전체가 구조 표기일 때만 내용과 표기를 갈라낸다. 인라인 강조·코드는
+  // 일부 글자만 없애 오프셋을 바꾸므로 여기서 다루지 않는다.
+  function manuscriptView(sentence, kind) {
+    var line = String(sentence == null ? "" : sentence);
+    var heading = /^\s{0,3}(#{1,6})[ \t]+(.+?)(?:\s+#+\s*)?$/.exec(line);
+    if (heading) return { type: "heading", text: heading[2], level: heading[1].length };
+    if (/^\s{0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(line))
+      return { type: "divider", text: "" };
+    var quote = /^\s{0,3}>\s?(.*)$/.exec(line);
+    if (quote) return { type: "quote", text: quote[1] };
+    var item = /^\s{0,3}([-+*]|\d{1,9}[.)])[ \t]+(.+)$/.exec(line);
+    if (item) return { type: "list", text: item[2], marker: /^\d/.test(item[1]) ? item[1] : "•" };
+    // 분할기는 목록·인용 표기를 좌표계 밖으로 이미 떼어 낸다. 주장 없는 줄에만
+    // 그 층위를 되살리고, 주장 줄은 이 경로에 들어오지 않는다.
+    if (kind === "list_item") return { type: "list", text: line, marker: "•" };
+    if (kind === "quote") return { type: "quote", text: line };
+    return null;
+  }
+
+  function resetManuscriptView(node) {
+    node.classList.remove("is-md-heading", "is-md-list", "is-md-quote", "is-md-divider");
+    delete node.dataset.mdLevel;
+    delete node.dataset.mdMarker;
+    node.removeAttribute("role");
+    node.removeAttribute("aria-level");
+    node.removeAttribute("aria-label");
+  }
+
+  function applyManuscriptView(node, view) {
+    node.textContent = view.text;
+    node.classList.add("is-md-" + view.type);
+    if (view.type === "heading") {
+      node.dataset.mdLevel = String(view.level);
+      node.setAttribute("role", "heading");
+      node.setAttribute("aria-level", String(view.level));
+    } else if (view.type === "list") {
+      node.dataset.mdMarker = view.marker;
+    } else if (view.type === "divider") {
+      node.setAttribute("role", "separator");
+      node.setAttribute("aria-label", "구분선");
     }
   }
 
@@ -653,12 +702,10 @@
       if (needle.length < 2) continue;
       var at = sentence.indexOf(needle);
       if (at < 0) {
-        var loose = needle.replace(/\s+/g, " ");
-        at = sentence.replace(/\s+/g, " ").indexOf(loose);
-        if (at < 0) {
-          out.push({ id: claims[i].id, start: -1, end: -1, quote: needle });
-          continue;
-        }
+        // 정규화한 문자열의 인덱스를 원문에 쓰면 공백 하나만 달라도 다른 글자를
+        // 밑줄 친다. 정확한 원문 슬라이스가 아니면 인용 여백으로 물러난다.
+        out.push({ id: claims[i].id, start: -1, end: -1, quote: needle });
+        continue;
       }
       var end = at + needle.length;
       var clash = false;
@@ -1138,7 +1185,11 @@
     if (om.url) brow.appendChild(el("span", "chip", domainOf(om.url)));
     card.appendChild(brow);
     card.appendChild(el("h3", null, om.title || om.url || "제목 없음"));
-    if (om.summary) card.appendChild(el("p", null, om.summary));
+    if (om.summary) {
+      var copy = el("div", "rebut-copy");
+      copy.innerHTML = renderMarkdown(om.summary);
+      card.appendChild(copy);
+    }
     var meta = [];
     if (om.date) meta.push(om.date);
     if (typeof om.citation_count === "number") meta.push("인용 " + om.citation_count + "회");
@@ -1365,9 +1416,29 @@
 
   var OPEN = "\u0001";
   var CLOSE = "\u0002";
+  var MD_OPEN = "\u0003";
+  var MD_CLOSE = "\u0004";
 
   function inline(text) {
-    var s = esc(text);
+    var tokens = [];
+    var s = String(text == null ? "" : text);
+    function keep(html) {
+      var id = tokens.length;
+      tokens.push(html);
+      return MD_OPEN + "M" + id + MD_CLOSE;
+    }
+    // 코드와 링크를 먼저 빼 두면 그 안의 별표·판정 enum·수치가 다시 꾸며지지 않는다.
+    s = s.replace(/`([^`\n]+)`/g, function (m, code) {
+      return keep("<code>" + esc(code) + "</code>");
+    });
+    s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, function (m, label, href) {
+      var safe = safeHref(href);
+      if (!safe) return keep(esc(label));
+      return keep(
+        '<a href="' + esc(safe) + '" target="_blank" rel="noopener">' + esc(label) + "</a>"
+      );
+    });
+    s = esc(s);
     s = s.replace(/\*\*([^*]+)\*\*/g, OPEN + "B" + "$1" + CLOSE + "B");
     s = s.replace(
       /\b(no_source|non_auditable|unsupported|undecidable|overstated|supported|pending)\b/g,
@@ -1384,7 +1455,7 @@
       /(\d+(?:\.\d+)?\s*\/\s*\d+|\d+(?:\.\d+)?(?:%|건|회|개|배|초|s))/g,
       OPEN + "N" + "$1" + CLOSE + "N"
     );
-    return s
+    s = s
       .replace(new RegExp(OPEN + "B", "g"), "<b>")
       .replace(new RegExp(CLOSE + "B", "g"), "</b>")
       .replace(new RegExp(OPEN + "V(\\w+)\\|", "g"), '<span class="v" data-v="$1">')
@@ -1393,6 +1464,9 @@
       .replace(new RegExp(CLOSE + "C", "g"), "</span>")
       .replace(new RegExp(OPEN + "N", "g"), '<span class="num">')
       .replace(new RegExp(CLOSE + "N", "g"), "</span>");
+    return s.replace(new RegExp(MD_OPEN + "M(\\d+)" + MD_CLOSE, "g"), function (m, id) {
+      return tokens[Number(id)];
+    });
   }
 
   // 판정 줄은 두 부분이다 — 무엇을 주장했나(머리)와 왜 그렇게 봤나(설명).
@@ -1495,6 +1569,11 @@
       html += renderBlock(blocks[n], false);
     }
     return { report: html, fixes: fixes };
+  }
+
+  // 판정 사유·근거 설명도 최종 보고와 똑같이 이스케이프·제한 서식을 거친다.
+  function renderMarkdown(md) {
+    return renderReport(md).report;
   }
 
   function renderBlock(block, inFix) {
