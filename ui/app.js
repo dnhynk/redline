@@ -390,6 +390,7 @@
 
   function paintMain(event) {
     var audit = state.audit;
+    if (audit || state.status) revealStage();
     if (audit && sentencesOf(audit).length) {
       $("#galley-empty").hidden = true;
       ensureRows(audit);
@@ -486,6 +487,10 @@
   // 원고 열: 클레임 구절에만 밑줄. 앵커 집합이 바뀔 때만 다시 짓는다.
   function updateManuscript(slot, claims) {
     var anchors = anchorsFor(slot.sentence, claims);
+    // 앵커는 등록 시점에 확정된다. 마크업 적용이 애니메이션 뒤로 밀려도
+    // 여백은 이 표를 보고 「구절」 인용 여부를 정한다 — 행 높이가 나중에 안 변한다.
+    slot.anchors = {};
+    for (var a = 0; a < anchors.length; a++) slot.anchors[anchors[a].id] = anchors[a].start >= 0;
     var sig = JSON.stringify(
       anchors.map(function (a) {
         return [a.id, a.start, a.end];
@@ -612,8 +617,18 @@
     if (!state.done) return "확인 중";
     var reason = state.status && state.status.reason;
     if (reason === "complete" || reason === "non_auditable") return VERDICT_LABEL.non_auditable;
-    if (reason === "incomplete") return "확인 못 함 · 미완료";
-    return "확인 못 함 · 중단됨";
+    return cutLabel();
+  }
+
+  function cutLabel() {
+    return (state.status && state.status.reason) === "incomplete" ? "확인 못 함 · 미완료" : "확인 못 함 · 중단됨";
+  }
+
+  function markLabel(verdict) {
+    if (verdict !== "pending") return VERDICT_LABEL[verdict] || VERDICT_LABEL.pending;
+    var reason = state.status && state.status.reason;
+    if (!state.done || reason === "complete" || reason === "non_auditable") return VERDICT_LABEL.pending;
+    return cutLabel();
   }
 
   function buildMark(claim) {
@@ -648,13 +663,13 @@
   function updateMark(node, claim, evidence, slot) {
     var verdict = claim.verdict || "pending";
     var swatch = node.querySelector(".mark-swatch");
+    var label = node.querySelector(".mark-label");
     if (swatch.getAttribute("data-mark") !== verdict) {
       swatch.setAttribute("data-mark", verdict);
-      var label = node.querySelector(".mark-label");
-      label.textContent = VERDICT_LABEL[verdict] || VERDICT_LABEL.pending;
       label.style.color = "var(--v-" + verdict + "-label)";
       fireOnce(node, "settle");
     }
+    setText(label, markLabel(verdict));
 
     var conf = node.querySelector(".mark-conf");
     if (conf) {
@@ -688,32 +703,25 @@
     if (host.dataset.sig !== chipSig) {
       host.dataset.sig = chipSig;
       host.textContent = "";
-      var show = chips.slice(0, 2);
-      for (var i = 0; i < show.length; i++) {
-        var chip = show[i];
-        var link = safeHref(chip.url);
-        var node2 = el(link ? "a" : "span", "chip", chip.label);
-        if (link) {
-          node2.href = link;
-          node2.target = "_blank";
-          node2.rel = "noopener";
+      // 첫 행 1개 + 둘째 행 [1개 + 넘침 +N]
+      for (var r = 0; r < 2 && r < chips.length; r++) {
+        var row = el("span", "chip-row");
+        row.appendChild(chipNode(chips[r]));
+        if (r === 1 && chips.length > 2) {
+          var more = el("span", "chip more", "+" + (chips.length - 2));
+          more.title = chips
+            .slice(2)
+            .map(function (c) {
+              return c.title;
+            })
+            .join("\n");
+          row.appendChild(more);
         }
-        node2.title = chip.title;
-        host.appendChild(node2);
-      }
-      if (chips.length > show.length) {
-        var more = el("span", "chip more", "+" + (chips.length - show.length));
-        more.title = chips
-          .slice(show.length)
-          .map(function (c) {
-            return c.title;
-          })
-          .join("\n");
-        host.appendChild(more);
+        host.appendChild(row);
       }
     }
 
-    var anchor = slot.text.querySelector('[data-cid="' + claim.id + '"]');
+    var anchor = slot.anchors && slot.anchors[claim.id];
     var quote = node.querySelector(".mark-quote");
     if (!anchor && claim.text) {
       var line = "「" + clip(claim.text, 60) + "」";
@@ -722,6 +730,26 @@
     } else if (!quote.hidden) {
       quote.hidden = true;
     }
+  }
+
+  function chipNode(chip) {
+    var link = safeHref(chip.url);
+    var node = el(link ? "a" : "span", "chip", chip.label);
+    if (link) {
+      node.href = link;
+      node.target = "_blank";
+      node.rel = "noopener";
+    }
+    node.title = chip.title;
+    return node;
+  }
+
+  // 칩 한 줄이 여백 열을 넘으면 줄바꿈으로 잘려 도메인을 못 읽는다.
+  // 인용 횟수는 자리가 남을 때만 붙이고, 없으면 툴팁이 들고 있는다.
+  function chipWidth(text) {
+    var width = 0;
+    for (var i = 0; i < text.length; i++) width += text.charCodeAt(i) > 0x2000 ? 13 : 7.8;
+    return width;
   }
 
   function chipsFor(claim, evidence) {
@@ -756,8 +784,13 @@
     return domains.map(function (d) {
       var label = d.domain;
       if (d.count > 1) label += " ·" + d.count;
-      if (d.cites != null) label += " · 인용 " + d.cites + "회";
-      return { label: label, url: d.url, title: d.titles.join("\n") || d.domain };
+      var title = d.titles.join("\n") || d.domain;
+      if (d.cites != null) {
+        var full = label + " · 인용 " + d.cites + "회";
+        if (chipWidth(full) <= 224) label = full;
+        else title = "인용 " + d.cites + "회\n" + title;
+      }
+      return { label: label, url: d.url, title: title };
     });
   }
 
@@ -765,7 +798,7 @@
   function applyFold() {
     if (!state.foldNote) return;
     var reason = state.status && state.status.reason;
-    var eligible = state.done && (reason === "complete" || reason === "non_auditable");
+    var eligible = state.done && reason === "complete";
     var count = 0;
     for (var i = 0; i < state.rows.length; i++) {
       var slot = state.rows[i];
@@ -851,8 +884,11 @@
     if (!list.length) {
       $("#omissions-empty").hidden = false;
       if (state.done) {
-        $("#omissions-empty").lastElementChild.textContent =
-          "탐색 완료 · 이 글에 대한 반박 0건. 반박까지 찾아봤지만 나오지 않았습니다 — 0건도 결과입니다.";
+        var reason = state.status && state.status.reason;
+        var cut = reason !== "complete" && reason !== "non_auditable";
+        $("#omissions-empty").lastElementChild.textContent = cut
+          ? "반박 찾기를 끝내지 못했습니다 — 확인한 범위에서 나온 반박은 0건입니다."
+          : "탐색 완료 · 이 글에 대한 반박 0건. 반박까지 찾아봤지만 나오지 않았습니다 — 0건도 결과입니다.";
         $("#omissions-empty").firstElementChild.textContent = "0";
       }
       return;
@@ -862,7 +898,9 @@
       var om = list[i];
       var key = om.claim_id + "/" + om.evidence_id;
       if (host.querySelector('[data-key="' + CSS.escape(key) + '"]')) continue;
-      host.appendChild(buildOmission(om, key));
+      var card = buildOmission(om, key);
+      host.appendChild(card); // 붙인 뒤에 정착 — 문서 밖에서는 애니메이션이 시작되지 않는다
+      fireOnce(card, "arrive");
     }
   }
 
@@ -884,9 +922,8 @@
     var meta = [];
     if (om.date) meta.push(om.date);
     if (typeof om.citation_count === "number") meta.push("인용 " + om.citation_count + "회");
-    if (href) meta.push("↗");
-    if (meta.length) card.appendChild(el("p", "rebut-meta", meta.join(" · ")));
-    fireOnce(card, "arrive");
+    var line = meta.join(" · ") + (href ? (meta.length ? " ↗" : "↗") : "");
+    if (line) card.appendChild(el("p", "rebut-meta", line));
     return card;
   }
 
@@ -1100,8 +1137,15 @@
     return stage;
   }
 
+  // 대기 화면은 검사 과정 밴드로 마감된다 — 무대는 런이 시작될 때 올라온다
+  function revealStage() {
+    $("#galley").hidden = false;
+    $("#omissions-section").hidden = false;
+  }
+
   function driveStage(event) {
     var next = stageFor(event);
+    if (next >= 1) revealStage();
     if (next <= state.stage) {
       paintFocus();
       return;
@@ -1151,7 +1195,7 @@
     var delta = top - from;
     if (reduced() || Math.abs(delta) < 2) {
       window.scrollTo(0, top);
-      window.__redlineStageLog.push({ stage: stage, ms: 0, reduced: true });
+      window.__redlineStageLog.push({ stage: stage, ms: 0, reduced: reduced() });
       return;
     }
     var started = performance.now();
@@ -1454,6 +1498,7 @@
         $("#intake").hidden = true;
         $("#intake-collapsed").hidden = false;
         $("#terminal-summary").hidden = true;
+        revealStage();
         paintPreview(text.trim());
       })
       .catch(function (err) {

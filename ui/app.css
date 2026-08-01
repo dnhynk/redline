@@ -97,7 +97,7 @@
   --shadow-lift: 0 2px 6px rgba(20, 22, 26, 0.08), 0 10px 24px -10px rgba(20, 22, 26, 0.16),
     0 36px 84px -30px rgba(20, 22, 26, 0.45);
 
-  --wave: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5'><path d='M0 3.6 Q2 0.6 4 3.6 T8 3.6' fill='none' stroke='%239A6300' stroke-width='1.6'/></svg>");
+  --wave: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5'><path d='M0 3.9 Q2 0.7 4 3.9 T8 3.9' fill='none' stroke='%239A6300' stroke-width='1.8'/></svg>");
 }
 
 *,
@@ -772,6 +772,7 @@ a {
   align-items: baseline;
   gap: 7px;
   flex-wrap: wrap;
+  min-height: 21px;
 }
 .mark-label {
   font-size: var(--t-verdict);
@@ -781,6 +782,7 @@ a {
 .mark-id {
   font-family: var(--f-mono);
   font-size: 11px;
+  line-height: 20px;
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -791,6 +793,7 @@ a {
   align-items: center;
   gap: 10px;
   margin-top: 9px;
+  height: 16px;
 }
 .bar-track {
   flex: 1;
@@ -810,6 +813,7 @@ a {
 .mark-pct {
   font-family: var(--f-mono);
   font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -819,15 +823,22 @@ a {
   font-weight: 700;
   color: var(--ink);
 }
+/* 두 행 자리를 등록 시점에 확보한다 — 칩이 나중에 와도 행 높이가 안 변한다 */
 .mark-chips {
   grid-column: 2;
   height: 42px;
   overflow: hidden;
   margin-top: 9px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  align-content: flex-start;
+  flex-direction: column;
+  gap: 4px;
+}
+.chip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  line-height: 17px;
 }
 .chip {
   font-family: var(--f-mono);
@@ -838,6 +849,12 @@ a {
   text-decoration: underline;
   text-decoration-color: var(--edge);
   text-underline-offset: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip.more {
+  flex: none;
 }
 .chip:hover {
   color: var(--ink);
@@ -860,6 +877,7 @@ a {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 21px;
   font-size: var(--t-verdict);
   line-height: 1.35;
   font-weight: 600;
@@ -1336,6 +1354,8 @@ body.page-raw {
   --p-record: #6fdf9f;
   --p-red: #ff8078;
   --p-track: #262b33;
+  --p-muted-panel: #b3ada0;
+  --p-red-text: #ff8c84;
 }
 
 .page-raw .topbar {
@@ -1376,10 +1396,14 @@ body.page-raw {
   grid-template-columns: 1.2fr 0.8fr;
   height: calc(100vh - var(--topbar-h));
 }
+body.has-banner .lanes {
+  height: calc(100vh - var(--topbar-h) - 47px);
+}
 .lane {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   padding: 20px 24px;
 }
 .lane + .lane {
@@ -1416,6 +1440,7 @@ body.page-raw {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-top: 8px;
 }
 .ev {
@@ -1512,14 +1537,14 @@ body.page-raw {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: var(--p-muted);
+  color: var(--p-muted-panel);
 }
 .budget p {
   margin-top: 8px;
   font-family: var(--f-mono);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
-  color: var(--p-muted);
+  color: var(--p-muted-panel);
 }
 .budget b {
   font-size: 28px;
@@ -1607,16 +1632,16 @@ body.page-raw {
 .state-axis {
   font-family: var(--f-mono);
   font-size: 12px;
-  color: var(--p-muted);
+  color: var(--p-muted-panel);
 }
 .state-verdict {
   margin-left: auto;
   font-size: 14px;
   font-weight: 700;
-  color: var(--p-muted);
+  color: var(--p-muted-panel);
 }
 .state-card[data-mark="unsupported"] .state-verdict {
-  color: var(--p-red);
+  color: var(--p-red-text);
 }
 .state-card[data-mark="supported"] .state-verdict {
   color: var(--p-record);
@@ -1673,7 +1698,7 @@ body.page-raw {
   margin-top: 10px;
   font-family: var(--f-mono);
   font-size: 13px;
-  color: var(--p-muted);
+  color: var(--p-muted-panel);
 }
 .state-chips a {
   color: inherit;
@@ -1693,22 +1718,16 @@ body.page-raw {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    transition-delay: 0ms !important;
+    animation: none !important;
+    transition: none !important;
     scroll-behavior: auto !important;
   }
 }
 html.force-reduced *,
 html.force-reduced *::before,
 html.force-reduced *::after {
-  animation-duration: 0.001ms !important;
-  animation-delay: 0ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
-  transition-delay: 0ms !important;
+  animation: none !important;
+  transition: none !important;
   scroll-behavior: auto !important;
 }
 
