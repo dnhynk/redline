@@ -7,6 +7,7 @@ import pytest
 from core.audit import (
     BASE_CONFIDENCE,
     DEFAULT_MAX_CLAIMS,
+    EXPLORATORY_CLAIM_ID,
     SENTENCE_KINDS,
     STRUCTURAL_KINDS,
     Audit,
@@ -562,6 +563,72 @@ def test_challenge_search_promotes_the_stance_of_a_known_document():
     # 반대 방향으로는 강등되지 않는다.
     audit.register_evidence(tool="search_web", query="coffee benefits", url="https://ex.test/a")
     assert audit.evidence[0]["stance"] == "challenge"
+
+
+# ── 검색 귀속과 쌍 (T-02) ────────────────────────────────────────────────────
+def test_search_must_name_a_registered_claim_or_declare_exploration():
+    audit = _with_evidence()
+    assert audit.check_search("C9", "support", "질의") is not None  # 모르는 클레임
+    assert audit.check_search("C1", "support", "질의") is None
+    # 클레임 등록 전 탐색 경로는 막지 않는다.
+    assert audit.check_search(EXPLORATORY_CLAIM_ID, "support", "질의") is None
+    assert audit.check_search("C1", "support", "   ") is not None  # 빈 질의
+
+
+def test_relabelled_same_query_is_refused():
+    """라벨만 바꾼 같은 질의는 반증 검색이 아니다 — 프롬프트 규칙을 호스트 규칙으로 만든다."""
+    audit = _with_evidence()
+    audit.note_search("support", "커피 각성 효과 근거", claim_id="C1", endpoint="web")
+    refusal = audit.check_search("C1", "challenge", "커피  각성 효과 근거!")
+    assert refusal is not None
+    assert refusal["data"]["existing_stance"] == "support"
+    # 다른 질의는 통과하고, 다른 클레임이면 같은 질의도 통과한다.
+    assert audit.check_search("C1", "challenge", "커피 각성 효과 한계 반박") is None
+
+
+def test_non_auditable_claim_cannot_be_searched():
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다", claim_type="normative", auditable=False)
+    assert audit.check_search("C1", "support", "질의") is not None
+
+
+def test_pair_metric_counts_claims_with_two_distinct_queries():
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    _claim(audit, 1, "성인의 62%가 매일 마신다")
+    audit.note_search("support", "커피 각성 근거", claim_id="C1", endpoint="web")
+    audit.note_search("challenge", "커피 각성 한계 반박", claim_id="C1", endpoint="web")
+    audit.note_search("support", "섭취율 통계", claim_id="C2", endpoint="web")
+    # 탐색용 반증은 어느 클레임의 쌍으로도 세지 않는다.
+    audit.note_search("challenge", "아무 반박", claim_id=EXPLORATORY_CLAIM_ID, endpoint="web")
+    assert audit.paired_claims() == ["C1"]
+    assert audit.completion_report()["claims_with_support_challenge_pair"] == 1
+
+
+def test_search_ledger_is_exposed_for_after_the_fact_audit():
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    entry = audit.note_search("challenge", "반박 질의", claim_id="C1", endpoint="scholar")
+    audit.mark_search_result(entry, True, 2)
+    row = audit.to_dict()["searches"][0]
+    assert set(row) == {
+        "claim_id",
+        "endpoint",
+        "stance",
+        "query",
+        "dispatched_at",
+        "result_status",
+    }
+    assert (row["claim_id"], row["endpoint"], row["stance"], row["result_status"]) == (
+        "C1",
+        "scholar",
+        "challenge",
+        "ok",
+    )
+    audit.mark_search_result(entry, True, 0)
+    assert audit.to_dict()["searches"][0]["result_status"] == "empty"
+    audit.mark_search_result(entry, False, 0)
+    assert audit.to_dict()["searches"][0]["result_status"] == "failed"
 
 
 def test_axis_order_violation_is_rejected_with_recovery_path():

@@ -123,13 +123,21 @@ CLASSIFY = _tool_call(
 )
 SEARCH = _tool_call(
     "search_web",
-    {"query": "카페인 각성 효과", "stance": "support", "max_results": 3, "lang": "ko", "date_range": None},
+    {
+        "query": "카페인 각성 효과",
+        "claim_id": "explore",
+        "stance": "support",
+        "max_results": 3,
+        "lang": "ko",
+        "date_range": None,
+    },
     "t2",
 )
 CHALLENGE = _tool_call(
     "search_web",
     {
         "query": "카페인 섭취율 통계 과대추정 한계",
+        "claim_id": "explore",
         "stance": "challenge",
         "max_results": 3,
         "lang": "ko",
@@ -485,6 +493,7 @@ def _three_claim_turns(axis3_claims: list[str]) -> list[list]:
             "search_web",
             {
                 "query": f"주장 {i} 반박·한정 자료",
+                "claim_id": "explore",
                 "stance": "challenge",
                 "max_results": 3,
                 "lang": "ko",
@@ -608,7 +617,14 @@ async def test_all_skip_run_is_not_complete():
     same_query = [
         _tool_call(
             "search_web",
-            {"query": "x", "stance": "challenge", "max_results": 1, "lang": None, "date_range": None},
+            {
+                "query": "x",
+                "claim_id": "explore",
+                "stance": "challenge",
+                "max_results": 1,
+                "lang": None,
+                "date_range": None,
+            },
             f"q{i}",
         )
         for i in range(3)
@@ -652,6 +668,80 @@ async def test_run_whose_searches_all_failed_is_not_complete(monkeypatch):
     assert status["completion"]["challenge_dispatched"] == 1
     assert status["challenge_queries"] == 0  # 회수가 없으면 세지 않는다
     assert status["reason"] == "incomplete"
+
+
+@pytest.mark.asyncio
+async def test_search_attribution_is_enforced_before_the_budget_is_spent():
+    """검색이 어느 클레임의 일인지 모르면 '클레임마다 한 쌍'은 집행할 수 없는 부탁이다."""
+    ghost = _tool_call(
+        "search_web",
+        {
+            "query": "등록되지 않은 클레임 검색",
+            "claim_id": "C9",
+            "stance": "support",
+            "max_results": 3,
+            "lang": "ko",
+            "date_range": None,
+        },
+        "g1",
+    )
+    model = FakeModel([[CLASSIFY], [ghost], [_message("끝")]])
+    events = await _collect(model, timebox_s=20)
+    status = _last_status(events)
+    outputs = [
+        e["payload"]["item"]["output"]
+        for e in events
+        if e["kind"] == "run_item" and e["payload"]["name"] == "tool_output"
+    ]
+    assert outputs[1]["ok"] is False
+    assert outputs[1]["data"]["exploratory_claim_id"] == "explore"
+    assert status["tool_calls"] == 0  # 거부된 검색은 예산을 깎지 않는다
+    assert status["tool_calls_refused"] == 1
+    assert status["audit"]["searches"] == []  # 나가지 않은 검색은 원장에도 없다
+
+
+@pytest.mark.asyncio
+async def test_exploratory_search_and_claim_search_reach_the_ledger():
+    claim_search = _tool_call(
+        "search_web",
+        {
+            "query": "카페인 섭취율 통계 반박",
+            "claim_id": "C1",
+            "stance": "challenge",
+            "max_results": 3,
+            "lang": "ko",
+            "date_range": None,
+        },
+        "cs1",
+    )
+    claim_support = _tool_call(
+        "search_web",
+        {
+            "query": "카페인 섭취율 통계 근거",
+            "claim_id": "C1",
+            "stance": "support",
+            "max_results": 3,
+            "lang": "ko",
+            "date_range": None,
+        },
+        "cs2",
+    )
+    model = FakeModel(
+        [[CLASSIFY], [SEARCH], [CLAIM], [claim_support, claim_search], [_message("끝")]]
+    )
+    status = _last_status(await _collect(model, timebox_s=20))
+    ledger = status["audit"]["searches"]
+    assert [row["claim_id"] for row in ledger] == ["explore", "C1", "C1"]
+    assert {row["endpoint"] for row in ledger} == {"web"}
+    assert [row["result_status"] for row in ledger] == ["ok", "ok", "ok"]
+    assert status["completion"]["claims_with_support_challenge_pair"] == 1
+
+
+def test_prompt_fixes_the_search_attribution_order():
+    prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    assert "claim_id" in prompt
+    assert '"explore"' in prompt
+    assert "라벨만 바꿔" in prompt
 
 
 @pytest.mark.asyncio
@@ -783,7 +873,14 @@ async def test_same_response_tool_calls_fire_concurrently(monkeypatch):
     burst = [
         _tool_call(
             "search_web",
-            {"query": f"q{i}", "stance": "support", "max_results": 3, "lang": None, "date_range": None},
+            {
+                "query": f"q{i}",
+                "claim_id": "explore",
+                "stance": "support",
+                "max_results": 3,
+                "lang": None,
+                "date_range": None,
+            },
             f"b{i}",
         )
         for i in range(3)
@@ -959,6 +1056,7 @@ async def test_stance_reaches_the_ledger_through_a_run():
         "search_web",
         {
             "query": "카페인 섭취율 통계 과대추정 비판",
+            "claim_id": "explore",
             "stance": "challenge",
             "max_results": 3,
             "lang": "ko",

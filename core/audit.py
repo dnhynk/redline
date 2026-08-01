@@ -84,6 +84,10 @@ AUDIT_STATUSES = ("running", "complete", "partial", "non_auditable", "error")
 # 방향을 툴에서 구분하지 못하면 반증 검색은 셀 수도 강제할 수도 없는 부탁으로 남는다.
 STANCES = ("support", "challenge")
 
+# 클레임 등록 전의 탐색에 쓰는 예약 귀속값. 이 검색은 클레임별 쌍 계산에서 빠진다 —
+# 귀속을 요구하되 "고르기 전에 훑어본다"는 정상 경로를 막지 않기 위한 값이다.
+EXPLORATORY_CLAIM_ID = "explore"
+
 SNIPPET_MAX_CHARS = 500
 HOST_SENTENCES_MAX = 80
 HOST_SENTENCE_CHARS = 160
@@ -543,16 +547,59 @@ class Audit:
         return rec
 
     # ── 검색 기록 (발사 시점) ───────────────────────────────────────────
-    def note_search(self, stance: str, query: str) -> dict:
+    def check_search(self, claim_id: str, stance: str, query: str) -> dict | None:
+        """발사 전 검사 — 통과하면 None, 막을 이유가 있으면 거부 dict.
+
+        검색이 어느 클레임의 일인지 호스트가 모르면 "클레임마다 확증·반증 한 쌍"은
+        집행할 수 없는 부탁으로 남는다. 그래서 귀속을 요구하되, 클레임 등록 **전**의
+        탐색 경로는 막지 않는다 — `EXPLORATORY_CLAIM_ID`로 쏘고 쌍 계산에서 빠진다.
+        """
+        if not (query or "").strip():
+            return _fail("검색 질의가 비어 있다.")
+        if claim_id != EXPLORATORY_CLAIM_ID:
+            claim = self.get_claim(claim_id)
+            if claim is None:
+                return _fail(
+                    f"모르는 claim_id '{claim_id}'다. 먼저 record_claim으로 등록하고 그 id로 "
+                    f"검색하라. 아직 클레임을 고르는 중이면 claim_id=\"{EXPLORATORY_CLAIM_ID}\"로 "
+                    "쏠 수 있다(이 검색은 클레임 쌍 계산에서 빠진다).",
+                    known_claim_ids=[c["id"] for c in self.claims],
+                    exploratory_claim_id=EXPLORATORY_CLAIM_ID,
+                )
+            if not claim["auditable"]:
+                return _fail(
+                    f"{claim_id}은 의견·권고로 등록된 클레임이라 감사 대상이 아니다 — 검색하지 마라.",
+                    known_claim_ids=[c["id"] for c in self.claims if c["auditable"]],
+                )
+        key = normalize_for_match(query)
+        for entry in self.searches:
+            if entry["claim_id"] != claim_id or normalize_for_match(entry["query"]) != key:
+                continue
+            if entry["stance"] != stance:
+                return _fail(
+                    f"{claim_id}에 이미 같은 질의를 {entry['stance']} 방향으로 쐈다 — 라벨만 바꾼 "
+                    "같은 질의는 반증 검색이 아니다. 반박·한정 자료를 겨냥한 다른 질의를 써라 "
+                    "(limitations · contrary · no effect · systematic review 류).",
+                    existing_stance=entry["stance"],
+                    existing_query=entry["query"],
+                )
+        return None
+
+    def note_search(
+        self, stance: str, query: str, *, claim_id: str = EXPLORATORY_CLAIM_ID, endpoint: str = "web"
+    ) -> dict:
         """검색이 나가는 순간을 기록한다. 반환한 항목에 `mark_search_result`로 회수를 적는다.
 
         발사 기록은 관측용이다. 완주 게이트가 세는 것은 **회수**다 —
         같은 질의를 세 번 쏜 것도, 전부 실패한 검색도 감사를 한 것이 아니다.
         """
         entry = {
+            "claim_id": claim_id,
+            "endpoint": endpoint,
             "stance": stance if stance in STANCES else "support",
             "query": query,
-            "at": round(self._clock() - self._started_at, 3),
+            "dispatched_at": round(self._clock() - self._started_at, 3),
+            "result_status": "pending",
             "ok": None,
             "result_count": 0,
         }
@@ -565,6 +612,39 @@ class Audit:
             return
         entry["ok"] = bool(ok)
         entry["result_count"] = max(0, int(result_count or 0))
+        entry["result_status"] = "ok" if ok and entry["result_count"] else ("empty" if ok else "failed")
+
+    def search_ledger(self) -> list[dict]:
+        """파이프라인을 사후 검증할 수 있게 하는 작은 원장 — 누가 어느 방향으로 무엇을 쐈는가."""
+        return [
+            {
+                "claim_id": e["claim_id"],
+                "endpoint": e["endpoint"],
+                "stance": e["stance"],
+                "query": e["query"],
+                "dispatched_at": e["dispatched_at"],
+                "result_status": e["result_status"],
+            }
+            for e in self.searches
+        ]
+
+    def paired_claims(self) -> list[str]:
+        """확증·반증을 **서로 다른 질의로** 둘 다 쏜 감사 대상 클레임."""
+        by_claim: dict[str, dict[str, set[str]]] = {}
+        for e in self.searches:
+            if e["claim_id"] == EXPLORATORY_CLAIM_ID:
+                continue
+            key = normalize_for_match(e["query"])
+            if key:
+                by_claim.setdefault(e["claim_id"], {s: set() for s in STANCES})[e["stance"]].add(key)
+        paired = []
+        for c in self.claims:
+            if not c["auditable"]:
+                continue
+            rows = by_claim.get(c["id"])
+            if rows and rows["support"] and rows["challenge"] and rows["support"] != rows["challenge"]:
+                paired.append(c["id"])
+        return paired
 
     def search_counts(self) -> dict[str, int]:
         counts = {s: 0 for s in STANCES}
@@ -1097,11 +1177,28 @@ class Audit:
             "challenge_queries": challenge_queries,
             "challenge_required": challenge_required,
             "challenge_dispatched": self.challenge_query_count(),
+            "claims_with_support_challenge_pair": len(self.paired_claims()),
             "search_counts": self.search_counts(),
             "omission_count": len(self.omissions),
         }
 
     # ── 직렬화 ──────────────────────────────────────────────────────────
+    def cited_evidence_ids(self, claim: Claim) -> set[str]:
+        """이 클레임의 판정이 인용한 증거 id — 판정 점수와 달리 실제로 본 자료의 수다."""
+        ids: set[str] = set()
+        for r in claim["axis_results"]:
+            ids.update(r["evidence_ids"])
+        ids.update(o["evidence_id"] for o in self.omissions if o["claim_id"] == claim["id"])
+        return ids
+
+    def fetched_evidence_count(self, claim: Claim) -> int:
+        """그중 본문을 실제로 가져와 대조한 자료의 수."""
+        return sum(
+            1
+            for eid in self.cited_evidence_ids(claim)
+            if self._evidence_by_id.get(eid, {}).get("tool") == "fetch_source"
+        )
+
     def _cited_evidence_ids(self) -> set[str]:
         ids = {o["evidence_id"] for o in self.omissions}
         for c in self.claims:
@@ -1138,6 +1235,7 @@ class Audit:
             "no_source_count": self.no_source_count(),
             "audited_claim_count": self.audited_claim_count(),
             "claims_by_index": self.claims_by_index(),
+            "searches": self.search_ledger(),
             "omission_count": len(self.omissions),
         }
         if not stream:
