@@ -16,8 +16,8 @@ TOOL_ORDER = [
 ]
 
 EXPECTED_REQUIRED = {
-    "search_web": ["query", "max_results", "lang", "date_range"],
-    "search_scholar": ["query", "max_results", "lang", "date_range"],
+    "search_web": ["query", "stance", "max_results", "lang", "date_range"],
+    "search_scholar": ["query", "stance", "max_results", "lang", "date_range"],
     "fetch_source": ["url", "max_chars"],
     "record_classification": ["input_kind", "lang", "auditable", "sentence_count", "rationale"],
     "record_claim": ["index", "text", "claim_type", "auditable", "cited_source"],
@@ -68,6 +68,16 @@ def test_search_defaults_and_date_range_enum():
         assert props["max_results"].get("default") == 8, name
         assert _anyof_enum(props["date_range"]) == DATE_RANGE_ENUM, name
     assert schemas["fetch_source"]["properties"]["max_chars"].get("default") == 8000
+
+
+def test_search_must_declare_a_stance():
+    """검색 방향 선언은 확증·반증 동시 발사를 집행 가능하게 만드는 장치다."""
+    schemas = _schemas()
+    for name in ("search_web", "search_scholar"):
+        props = schemas[name]["properties"]
+        assert props["stance"]["enum"] == ["support", "challenge"], name
+        assert "stance" in schemas[name]["required"], name
+    assert "stance" not in schemas["fetch_source"]["properties"]
 
 
 def test_record_tool_enums():
