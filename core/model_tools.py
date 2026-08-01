@@ -839,10 +839,10 @@ async def update_verdict(
     verdict: Literal["unsupported", "overstated", "supported", "no_source", "undecidable"]
     | None = None,
 ) -> dict:
-    """단계 판정 하나를 기록한다. 반환의 delta(하강폭)와 confidence_after가 화면에 실시간으로 뜬다.
+    """단계 판정 하나를 기록한다. evidence 한 문장이 화면에 그대로 올라간다.
 
     1단계(출처 확인) 실패는 항상 no_source로 저장된다 — 검색이 못 찾은 것과 존재하지 않는 것은 다르다.
-    같은 (클레임, 단계)를 다시 부르면 이전 판정이 교체되고 신뢰도는 시작값부터 재계산된다.
+    같은 (클레임, 단계)를 다시 부르면 이전 판정이 교체된다.
 
     Args:
         axis: 1=출처 확인(존재) 2=내용 확인(충실도) 3=반박 찾기(완전성)

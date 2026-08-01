@@ -138,13 +138,6 @@ CANDIDATE_MAX = 8
 MIN_ANCHOR_CHARS = 3
 CATALOG_MAX = 20
 
-# 화면의 %가 무엇인지 — 반환값에 그대로 실어 모델·시청자가 오독하지 않게 한다.
-# ★ 이 수는 축별 outcome이 정해진 폭만큼 움직이는 **단계 점수**다. 인용 증거가 1건이든
-# 10건이든 같은 outcome이면 같은 폭으로 움직인다 — 그러니 "근거의 양"이라고 부르면 안 된다.
-# 실제 근거의 양은 `evidence_count`·`fetched_source_count`로 따로 센다.
-SCORE_MEANS = "호스트 규칙이 정한 단계 점수 — 각 단계의 판정이 정해진 폭만큼 움직인다. 진실 확률도, 근거 개수도 아니다"
-
-
 # ── 자료구조 ─────────────────────────────────────────────────────────────────
 class AxisResult(TypedDict):
     axis: int
@@ -152,8 +145,6 @@ class AxisResult(TypedDict):
     evidence: str
     evidence_ids: list[str]
     source_urls: list[str]
-    delta: float
-    raw_delta: float
     suggested_verdict: str | None
 
 
@@ -164,8 +155,6 @@ class Claim(TypedDict):
     claim_type: str
     auditable: bool
     cited_source: str | None
-    base_confidence: float   # 호스트 상수 BASE_CONFIDENCE — 모델은 시작값을 정하지 않는다
-    confidence: float
     verdict: str
     axis_results: list[AxisResult]
 
@@ -378,26 +367,6 @@ def normalize_url(url: str) -> str:
 
 
 # ── 판정 계산 (순수 함수) ────────────────────────────────────────────────────
-# 신뢰도 변화표. 이 숫자는 "주장이 참일 확률"이 아니라 **감사가 확보한 지지 근거의 양**이다.
-# 0.0인 세 칸이 그 의미를 지킨다:
-#   (1,"undecidable")·(2,"undecidable") — 페이월·403·타임아웃은 우리가 못 읽은 것이지
-#     주장이 틀렸다는 증거가 아니다. 도구 접근 실패로 주장을 깎지 않는다.
-#   (3,"pass") — 반증을 못 찾은 것은 지지 근거가 아니다. 없는 것을 점수로 주지 않는다.
-_DELTA_TABLE: dict[tuple[int, str], float] = {
-    (1, "pass"): +0.10,
-    (1, "fail"): -0.40,
-    (1, "undecidable"): 0.0,
-    (1, "skip"): 0.0,
-    (2, "pass"): +0.20,
-    (2, "fail"): -0.45,
-    (2, "undecidable"): 0.0,
-    (2, "skip"): 0.0,
-    (3, "pass"): 0.0,
-    (3, "fail"): -0.15,
-    (3, "undecidable"): 0.0,
-    (3, "skip"): 0.0,
-}
-
 # 모델의 verdict 제안이 받아들여지는 자리. 여기 없는 제안은 무시되고 warning이 실린다.
 # (1,"fail")은 의도적으로 비어 있다 — 축1 확인 실패는 항상 no_source다.
 _ALLOWED_SUGGESTIONS: dict[tuple[int, str], frozenset[str]] = {
@@ -408,22 +377,6 @@ _ALLOWED_SUGGESTIONS: dict[tuple[int, str], frozenset[str]] = {
     # (3, "fail")은 비어 있다 — 축3은 판정 열을 만지지 못한다. 아래 decide_verdict 참조.
     (3, "undecidable"): frozenset({"undecidable"}),
 }
-
-
-# 모든 클레임이 여기서 출발한다. 시작값을 모델이 정하면 화면의 %가 "확보한 근거의 양"이
-# 아니라 "모델의 첫인상 + 근거"가 된다 — 증거를 더 적게 확보한 주장이 첫인상 덕에 더 높게
-# 뜨는 일이 실제로 일어났다. 고정하면 표시값이 증거만의 함수가 되고, 지지 판정의 상한은
-# 0.5 + 축1 0.10 + 축2 0.20 = 0.80이 되어 1.00(확실함)이 구조적으로 나올 수 없다.
-BASE_CONFIDENCE = 0.5
-
-
-def clamp01(x: float) -> float:
-    return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
-
-
-def axis_delta(axis: int, outcome: str) -> float:
-    """클램프 전 표 값. 교체(F8) 시 리플레이의 재료다."""
-    return _DELTA_TABLE.get((axis, outcome), 0.0)
 
 
 def decide_verdict(axis: int, outcome: str, suggested: str | None, current: str) -> str:
@@ -479,20 +432,6 @@ def derive_claim_verdict(axis_results: Sequence[AxisResult]) -> str:
     for r in sorted(axis_results, key=lambda x: x["axis"]):
         verdict = decide_verdict(r["axis"], r["outcome"], r.get("suggested_verdict"), verdict)
     return verdict
-
-
-def replay_confidence(base: float, axis_results: Sequence[AxisResult]) -> float:
-    """시작값부터 기록 순서대로 다시 적용해 신뢰도와 각 축의 실변화량을 재계산한다.
-
-    단순 뺄셈으로 이전 델타를 되돌리면 0/1 경계에서 잘렸던 값이 복원되지 않는다.
-    전체 리플레이만이 클램프 상호작용까지 정확하다. `AxisResult["delta"]`를 제자리 갱신한다.
-    """
-    conf = clamp01(base)
-    for r in axis_results:
-        stepped = clamp01(conf + r.get("raw_delta", 0.0))
-        r["delta"] = round(stepped - conf, 6)
-        conf = stepped
-    return round(conf, 6)
 
 
 def plan_claim_budget(remaining_tool_calls: int, remaining_claims: int) -> int:
@@ -1042,9 +981,6 @@ class Audit:
             "claim_type": claim_type,
             "auditable": bool(auditable),
             "cited_source": cited_source or None,
-            # 시작값은 호스트 상수다 — 모델도 호출자도 다른 값을 넣을 수 없다.
-            "base_confidence": BASE_CONFIDENCE,
-            "confidence": BASE_CONFIDENCE,
             "verdict": "pending",
             "axis_results": [],
         }
@@ -1242,16 +1178,12 @@ class Audit:
                 "무엇을 보고 그렇게 판단했는지 한 문장으로 적어라."
             )
 
-        confidence_before = claim["confidence"]
-        raw = axis_delta(axis, outcome)
         result: AxisResult = {
             "axis": axis,
             "outcome": outcome,
             "evidence": evidence,
             "evidence_ids": known_ids,
             "source_urls": self.source_urls_for(known_ids),
-            "delta": 0.0,
-            "raw_delta": raw,
             "suggested_verdict": verdict,
         }
         previous_outcome = None
@@ -1262,8 +1194,6 @@ class Audit:
         else:
             claim["axis_results"].append(result)
 
-        # 델타는 시작값부터 전체 리플레이로 재계산한다 — 같은 축을 다시 불러도 펌핑이 없다.
-        claim["confidence"] = replay_confidence(claim["base_confidence"], claim["axis_results"])
         claim["verdict"] = derive_claim_verdict(claim["axis_results"])
 
         warning = None
@@ -1299,15 +1229,9 @@ class Audit:
                 "previous_outcome": previous_outcome,
                 "evidence_ids": known_ids,
                 "source_urls": result["source_urls"],
-                "confidence_before": confidence_before,
-                "confidence_after": claim["confidence"],
-                "delta": round(claim["confidence"] - confidence_before, 6),
-                "stage_score_before": confidence_before,
-                "stage_score_after": claim["confidence"],
-                # 실제로 확보한 근거의 양은 점수가 아니라 이 두 수다.
+                # 확보한 근거의 양은 이 두 수가 말한다. 하나의 점수로 접지 않는다.
                 "evidence_count": len(self.cited_evidence_ids(claim)),
                 "fetched_source_count": self.fetched_evidence_count(claim),
-                "score_means": SCORE_MEANS,
                 "verdict": claim["verdict"],
                 "axis_chain": [r["axis"] for r in claim["axis_results"]],
                 "expected_next_axis": next_axis,

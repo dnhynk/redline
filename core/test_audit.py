@@ -5,14 +5,11 @@ from __future__ import annotations
 import pytest
 
 from core.audit import (
-    BASE_CONFIDENCE,
     DEFAULT_MAX_CLAIMS,
     EXPLORATORY_CLAIM_ID,
     SENTENCE_KINDS,
     STRUCTURAL_KINDS,
     Audit,
-    axis_delta,
-    clamp01,
     decide_verdict,
     derive_claim_verdict,
     normalize_for_match,
@@ -277,38 +274,6 @@ def test_invalid_claim_type_is_rejected_not_silently_defaulted():
     assert out["ok"] is False and "claim_type" in out["error"]
 
 
-def test_model_cannot_set_starting_confidence():
-    """시작값이 모델 손에 있으면 화면의 %가 '근거의 양'이 아니라 '첫인상 + 근거'가 된다."""
-    import inspect
-
-    from core.model_tools import ALL_TOOLS
-
-    schema = [t for t in ALL_TOOLS if t.name == "record_claim"][0].params_json_schema
-    assert "prior" not in schema["properties"] and "prior" not in schema["required"]
-    assert "confidence" not in schema["properties"]
-    # 우회 경로도 막는다 — 호스트 시그니처에도 시작값 인자가 없다.
-    params = inspect.signature(Audit.record_claim).parameters
-    assert "prior" not in params and "confidence" not in params
-
-    audit = _audit_two_sentences()
-    _claim(audit, 0, "커피는 각성 효과가 있다")
-    _claim(audit, 1, "성인의 62%가 매일 마신다")
-    assert [c["confidence"] for c in audit.claims] == [BASE_CONFIDENCE, BASE_CONFIDENCE]
-    assert [c["base_confidence"] for c in audit.claims] == [BASE_CONFIDENCE] * 2
-
-
-def test_supported_claim_never_displays_certainty():
-    """지지 판정의 상한은 0.80이다 — 1.00이 뜨면 '참일 확률이 아니다'라는 화면 문구가 거짓이 된다."""
-    audit = _with_evidence()
-    audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
-    out = audit.update_verdict(
-        claim_id="C1", axis=2, outcome="pass", evidence="출처가 주장을 지지한다", evidence_ids=["E1"]
-    )
-    assert out["data"]["verdict"] == "supported"
-    assert audit.claims[0]["confidence"] == pytest.approx(0.80)
-    assert audit.claims[0]["confidence"] < 1.0
-
-
 def test_claim_cap_rejects_but_does_not_break_the_run():
     audit = Audit("가. 나. 다.", max_claims=2)
     assert _claim(audit, 0, "가")["ok"] is True
@@ -502,7 +467,6 @@ def test_axis2_fail_can_be_overstated_when_suggested():
         verdict="overstated",
     )
     assert out["data"]["verdict"] == "overstated"
-    assert out["data"]["delta"] == pytest.approx(-0.45)
 
 
 def test_same_axis_recall_replaces_and_does_not_pump():
@@ -517,33 +481,9 @@ def test_same_axis_recall_replaces_and_does_not_pump():
     third = audit.update_verdict(
         claim_id="C1", axis=2, outcome="pass", evidence="e", evidence_ids=["E1"]
     )
-    assert first["data"]["confidence_after"] == third["data"]["confidence_after"]
-    assert second["data"]["delta"] == 0.0 and third["data"]["delta"] == 0.0
     assert third["data"]["replaced"] is True
     assert third["data"]["previous_outcome"] == "pass"
     assert len(audit.claims[0]["axis_results"]) == 2
-
-
-def test_axis_recall_replay_handles_clamp():
-    """클램프된 델타는 단순 뺄셈으로 복원되지 않는다 — 시작값부터 전체 리플레이해야 맞다."""
-    audit = _with_evidence()
-    audit.update_verdict(claim_id="C1", axis=1, outcome="undecidable", evidence="접근 불가", evidence_ids=[])
-    audit.update_verdict(claim_id="C1", axis=2, outcome="fail", evidence="불일치", evidence_ids=["E1"])
-    audit.update_verdict(claim_id="C1", axis=3, outcome="fail", evidence="반대 자료", evidence_ids=["E1"])
-    # 0.5 → 0.05 → 0.0(하한에서 잘림). 축3의 표 값은 -0.15인데 실변화는 -0.05다.
-    assert audit.claims[0]["confidence"] == 0.0
-    assert audit.claims[0]["axis_results"][2]["delta"] == pytest.approx(-0.05)
-
-    audit.update_verdict(claim_id="C1", axis=2, outcome="pass", evidence="정정", evidence_ids=["E1"])
-    assert audit.claims[0]["confidence"] == pytest.approx(0.55)
-    assert [r["delta"] for r in audit.claims[0]["axis_results"]] == pytest.approx([0.0, 0.20, -0.15])
-
-
-def test_access_failure_and_missing_counter_evidence_do_not_move_the_score():
-    """점수는 '참일 확률'이 아니라 '확보한 지지 근거의 양'이다."""
-    assert axis_delta(1, "undecidable") == 0.0
-    assert axis_delta(2, "undecidable") == 0.0
-    assert axis_delta(3, "pass") == 0.0
 
 
 def test_verdict_derivation_is_order_independent():
@@ -1007,25 +947,6 @@ def test_evidence_without_attribution_serves_any_claim():
 
 
 # ── 점수의 뜻 (F-05) ─────────────────────────────────────────────────────────
-def test_score_is_described_as_a_stage_score_not_an_amount_of_evidence():
-    from core.audit import SCORE_MEANS
-
-    assert "단계 점수" in SCORE_MEANS
-    assert "근거의 양" not in SCORE_MEANS
-
-    audit = _with_evidence()
-    audit.register_evidence(tool="fetch_source", query="u", url="https://a.test/doc")
-    one = audit.update_verdict(
-        claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"]
-    )
-    many = audit.update_verdict(
-        claim_id="C1", axis=2, outcome="pass", evidence="대조", evidence_ids=["E1", "E2"]
-    )
-    # 같은 판정이면 근거가 몇 건이든 같은 폭으로 움직인다. 실제 양은 따로 센다.
-    assert one["data"]["evidence_count"] == 1
-    assert many["data"]["evidence_count"] == 2
-    assert many["data"]["fetched_source_count"] == 1
-    assert many["data"]["score_means"] == SCORE_MEANS
 
 
 # ── 분류·클레임 불변식 (F-06) ────────────────────────────────────────────────
@@ -1095,12 +1016,15 @@ def test_classification_values_are_validated(kwargs, fragment):
 
 
 
-def test_prompt_score_language_matches_the_computation():
+def test_the_prompt_counts_evidence_instead_of_scoring_it():
+    """확보한 근거의 양을 하나의 점수로 접지 않는다 — 세는 것으로만 말한다."""
     from core.agent import PROMPT_PATH
 
     prompt = PROMPT_PATH.read_text(encoding="utf-8")
-    assert "단계 점수" in prompt
     assert "evidence_count" in prompt
+    assert "fetched_source_count" in prompt
+    for banned in ("단계 점수", "confidence", "화면의 %"):
+        assert banned not in prompt, banned
 
 
 def test_axis_order_violation_is_rejected_with_recovery_path():
@@ -1164,14 +1088,6 @@ def test_skip_is_not_a_verdict_and_leaves_the_claim_pending():
         claim_id="C1", axis=2, outcome="undecidable", evidence="본문으로 판단 불가", evidence_ids=[]
     )
     assert audit.claims[0]["verdict"] == "undecidable"
-
-
-def test_clamp_and_budget_helpers():
-    assert clamp01(-1) == 0.0 and clamp01(2) == 1.0
-    assert plan_claim_budget(0, 3) == 0
-    assert plan_claim_budget(12, 0) == 0
-    assert plan_claim_budget(12, 5) == 2
-    assert plan_claim_budget(2, 5) == 1
 
 
 # ── 파생 수치 · 직렬화 ───────────────────────────────────────────────────────

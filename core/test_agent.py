@@ -32,7 +32,7 @@ from core.agent import (
     resolve_model,
     run_audit,
 )
-from core.audit import BASE_CONFIDENCE, DEFAULT_MAX_CLAIMS
+from core.audit import DEFAULT_MAX_CLAIMS
 from core.model_tools import (
     ALL_TOOLS,
     FIRST_TOOL_NAME,
@@ -312,8 +312,6 @@ async def test_mini_run_reaches_an_axis1_verdict():
     assert claim["axis_results"][0]["evidence_ids"] == ["E1"]
     # URL은 모델이 쓴 것이 아니라 호스트가 원장에서 채운 것이다.
     assert claim["axis_results"][0]["source_urls"] == [audit["evidence"][0]["url"]]
-    assert claim["base_confidence"] == BASE_CONFIDENCE
-    assert claim["confidence"] > BASE_CONFIDENCE  # 축1 pass가 올린 만큼만
     assert audit["source_mode"] in ("mock", "live", "unknown")
     assert status["final_report"].startswith("### 최종 보고")
     # 축2·3을 안 했으므로 완주가 아니다 — 안 한 것을 한 것처럼 말하지 않는다.
