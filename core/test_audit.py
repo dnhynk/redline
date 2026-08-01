@@ -257,6 +257,34 @@ def test_evidence_ids_are_host_issued_and_urls_fold():
     assert len(audit.evidence) == 2
 
 
+def test_evidence_ledger_records_stance():
+    """어느 방향 검색에서 나온 자료인지 원장이 기억해야 화면이 그것을 말할 수 있다."""
+    audit = _audit_two_sentences()
+    challenged = audit.register_evidence(
+        tool="search_scholar",
+        query="green tea cancer prevention limitations",
+        url="https://a.test/meta",
+        stance="challenge",
+    )
+    # 기본값은 support — 방향을 말하지 않은 호출이 조용히 반증 자료로 둔갑하면 안 된다.
+    defaulted = audit.register_evidence(tool="search_web", query="q", url="https://b.test")
+    assert challenged["stance"] == "challenge"
+    assert defaulted["stance"] == "support"
+    assert [r["stance"] for r in audit.to_dict()["evidence"]] == ["challenge", "support"]
+
+
+def test_stance_travels_to_the_stream_snapshot():
+    audit = _with_evidence()
+    audit.register_evidence(
+        tool="search_web", query="반박 질의", url="https://c.test", stance="challenge"
+    )
+    audit.update_verdict(
+        claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1", "E2"]
+    )
+    stream = audit.to_dict(stream=True)
+    assert {r["id"]: r["stance"] for r in stream["evidence"]} == {"E1": "support", "E2": "challenge"}
+
+
 def test_evidence_reuse_fills_empty_fields_only():
     audit = _audit_two_sentences()
     audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="첫 제목")

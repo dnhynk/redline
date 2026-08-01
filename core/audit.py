@@ -66,6 +66,10 @@ SUGGESTABLE_VERDICTS = tuple(v for v in VERDICTS if v != "pending")
 
 EVIDENCE_TOOLS = ("search_web", "search_scholar", "fetch_source")
 
+# 검색의 방향. 축1이 "지지 증거가 있는가"를 묻는 순간 그 검색은 구조적으로 확증이 된다 —
+# 방향을 툴에서 구분하지 못하면 반증 검색은 셀 수도 강제할 수도 없는 부탁으로 남는다.
+STANCES = ("support", "challenge")
+
 SNIPPET_MAX_CHARS = 500
 HOST_SENTENCES_MAX = 80
 HOST_SENTENCE_CHARS = 160
@@ -118,6 +122,7 @@ class EvidenceRecord(TypedDict):
     url: str
     title: str
     snippet: str
+    stance: str              # 이 결과를 데려온 검색의 방향 (support | challenge)
     retrieved_at: float
     extra: dict
 
@@ -446,9 +451,15 @@ class Audit:
         url: str,
         title: str = "",
         snippet: str = "",
+        stance: str = "support",
         extra: dict | None = None,
     ) -> EvidenceRecord:
-        """실제로 받아온 결과 1건을 원장에 넣고 id를 발급한다. 같은 URL은 같은 id로 접힌다."""
+        """실제로 받아온 결과 1건을 원장에 넣고 id를 발급한다. 같은 URL은 같은 id로 접힌다.
+
+        `stance`는 이 결과를 데려온 검색의 방향이다. 기본값이 `support`인 것은 의도다 —
+        방향을 말하지 않은 옛 호출부가 조용히 반증 자료로 둔갑하면 안 된다.
+        """
+        stance = stance if stance in STANCES else "support"
         key = normalize_url(url)
         existing_id = self._evidence_by_url.get(key)
         if existing_id:
@@ -469,6 +480,7 @@ class Audit:
             "url": url,
             "title": title or "",
             "snippet": (snippet or "")[:SNIPPET_MAX_CHARS],
+            "stance": stance,
             "retrieved_at": round(self._clock() - self._started_at, 3),
             "extra": {k: v for k, v in (extra or {}).items() if v is not None},
         }

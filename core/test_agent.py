@@ -123,7 +123,7 @@ CLASSIFY = _tool_call(
 )
 SEARCH = _tool_call(
     "search_web",
-    {"query": "카페인 각성 효과", "max_results": 3, "lang": "ko", "date_range": None},
+    {"query": "카페인 각성 효과", "stance": "support", "max_results": 3, "lang": "ko", "date_range": None},
     "t2",
 )
 CLAIM = _tool_call(
@@ -518,7 +518,11 @@ async def test_same_response_tool_calls_fire_concurrently(monkeypatch):
 
     monkeypatch.setattr("core.model_tools._io_search_web", slow_search)
     burst = [
-        _tool_call("search_web", {"query": f"q{i}", "max_results": 3, "lang": None, "date_range": None}, f"b{i}")
+        _tool_call(
+            "search_web",
+            {"query": f"q{i}", "stance": "support", "max_results": 3, "lang": None, "date_range": None},
+            f"b{i}",
+        )
         for i in range(3)
     ]
     model = FakeModel([[CLASSIFY], burst, [_message("끝")]])
@@ -666,6 +670,51 @@ def test_search_cost_bills_successful_uncached_calls_only():
     }
     assert estimate_search_cost(calls) == pytest.approx(7 * 1.0 / 1000 + 4 * 0.3 / 1000)
     assert estimate_search_cost({"web": {"calls": 0, "cache_hits": 3, "failures": 0}}) == 0.0
+
+
+def test_search_must_declare_stance():
+    """방향을 구분하지 못하면 반증 검색은 셀 수도 강제할 수도 없는 부탁으로 남는다."""
+    for name in ("search_web", "search_scholar"):
+        schema = [t for t in ALL_TOOLS if t.name == name][0].params_json_schema
+        assert "stance" in schema["required"], name
+        assert schema["properties"]["stance"]["enum"] == ["support", "challenge"], name
+    # 페치는 이미 특정된 문서를 가져오는 것이지 탐색이 아니다.
+    fetch = [t for t in ALL_TOOLS if t.name == "fetch_source"][0].params_json_schema
+    assert "stance" not in fetch["properties"]
+
+
+def test_prompt_forbids_relabeling_the_same_query():
+    prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    assert "같은 쿼리에 라벨만 바꿔" in prompt
+    assert 'stance="support"' in prompt and 'stance="challenge"' in prompt
+    assert "하나의 응답에서 병렬로" in prompt
+
+
+@pytest.mark.asyncio
+async def test_stance_reaches_the_ledger_through_a_run():
+    challenge_search = _tool_call(
+        "search_web",
+        {
+            "query": "카페인 섭취율 통계 과대추정 비판",
+            "stance": "challenge",
+            "max_results": 3,
+            "lang": "ko",
+            "date_range": None,
+        },
+        "t2b",
+    )
+    model = FakeModel([[CLASSIFY], [SEARCH, challenge_search], [CLAIM], [_message("끝")]])
+    events = await _collect(model, timebox_s=20)
+    ledger = _last_status(events)["audit"]["evidence"]
+    stances = {r["stance"] for r in ledger}
+    assert stances == {"support", "challenge"}
+    outputs = [
+        e["payload"]["item"]["output"]
+        for e in events
+        if e["kind"] == "run_item" and e["payload"]["name"] == "tool_output"
+    ]
+    assert outputs[1]["data"]["stance"] == "support"
+    assert outputs[2]["data"]["stance"] == "challenge"
 
 
 def test_search_price_direction_is_not_inverted():

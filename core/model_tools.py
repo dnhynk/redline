@@ -181,6 +181,7 @@ MAX_CHARS_RANGE = (500, 20000)
 _IO_PASSTHROUGH = ("error_code", "retryable", "hint", "request")
 
 DateRange = Literal["past_day", "past_week", "past_month", "past_year"]
+Stance = Literal["support", "challenge"]
 
 
 # ── 실행 문맥 ────────────────────────────────────────────────────────────────
@@ -403,7 +404,7 @@ def _normalize_io_args(**pairs: tuple[int, int, int]) -> tuple[dict, dict]:
 
 
 def _register_search_evidence(
-    audit: Audit, tool: str, query: str, results: Sequence[dict]
+    audit: Audit, tool: str, query: str, results: Sequence[dict], stance: str = "support"
 ) -> list[dict]:
     """검색 결과 각 건을 원장에 넣고 evidence_id를 주입해 돌려준다."""
     out = []
@@ -419,12 +420,14 @@ def _register_search_evidence(
                 url=url,
                 title=item.get("title") or "",
                 snippet=item.get("description") or "",
+                stance=stance,
                 extra={
                     k: item.get(k)
                     for k in ("date", "citation_count", "authors", "journal", "hostname", "source")
                 },
             )
             item["evidence_id"] = rec["id"]
+            item["stance"] = rec["stance"]
         out.append(item)
     return out
 
@@ -465,6 +468,7 @@ async def _io_call(
 async def search_web(
     wrapper: RunContextWrapper[AuditContext],
     query: str,
+    stance: Stance,
     max_results: int = 8,
     lang: str | None = None,
     date_range: DateRange | None = None,
@@ -476,6 +480,8 @@ async def search_web(
     결과 각 건에는 호스트가 발급한 evidence_id가 붙어 온다.
 
     Args:
+        stance: 이 검색의 방향. support=주장을 뒷받침할 자료, challenge=반박·한정할 자료.
+            쿼리 자체가 달라야 한다 — 라벨만 바꾼 같은 쿼리는 반증 검색이 아니다
         max_results: 최대 결과 수 (1~20, 호스트 클램프)
         lang: ISO 639-1 (en, ko). 생략(null) 시 자동
         date_range: 기간 필터. 생략(null) 시 전 기간
@@ -495,13 +501,14 @@ async def search_web(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_web", query, reply, normalized)
+    return _search_reply(ctx, "search_web", query, reply, normalized, stance)
 
 
 @function_tool
 async def search_scholar(
     wrapper: RunContextWrapper[AuditContext],
     query: str,
+    stance: Stance,
     max_results: int = 8,
     lang: str | None = None,
     date_range: DateRange | None = None,
@@ -514,6 +521,8 @@ async def search_scholar(
 
     Args:
         query: 검색 질의 (영어 권장)
+        stance: 이 검색의 방향. support=주장을 뒷받침할 자료, challenge=반박·한정할 자료
+            (limitations · contrary · no effect · systematic review 류가 들어간다)
         max_results: 최대 결과 수 (1~20, 호스트 클램프)
         lang: ISO 639-1 (en, ko). 생략(null) 시 자동
         date_range: 기간 필터. 생략(null) 시 전 기간
@@ -533,11 +542,11 @@ async def search_scholar(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_scholar", query, reply, normalized)
+    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance)
 
 
 def _search_reply(
-    ctx: AuditContext, tool: str, query: str, reply: dict, normalized: dict
+    ctx: AuditContext, tool: str, query: str, reply: dict, normalized: dict, stance: str
 ) -> dict:
     passthrough = dict(reply)
     request = dict(passthrough.get("request") or {})
@@ -552,11 +561,11 @@ def _search_reply(
         return _reply(
             ctx, ok=False, error=f"tool_error: 예상하지 못한 반환 형식({type(results).__name__})"
         )
-    enriched = _register_search_evidence(ctx.audit, tool, query, results)
+    enriched = _register_search_evidence(ctx.audit, tool, query, results, stance)
     return _reply(
         ctx,
         ok=True,
-        data={"results": enriched, "result_count": len(enriched)},
+        data={"results": enriched, "result_count": len(enriched), "stance": stance},
         passthrough=passthrough,
     )
 
