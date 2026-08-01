@@ -6,8 +6,8 @@
 
     python ui/fixtures/_build.py
 
-complete / timebox / incomplete / non_auditable / error / no_start / structured
-일곱 개를 다시 쓴다.
+complete / timebox / incomplete / non_auditable / error / no_start / structured /
+found_nothing 여덟 개를 다시 쓴다.
 """
 
 from __future__ import annotations
@@ -50,6 +50,12 @@ SEARCH_CLAIM = {
     "generative AI wellness apps amplify vulnerabilities": "C3",
     "missed physical findings remote only consultation": "C4",
     "when telehealth requires in person medical visit guidance": "C5",
+    # 시나리오 7 — 반박을 찾았으나 없었다
+    "국내 전기차 누적 등록 대수 2024년": "C1",
+    "전기차 등록 통계 집계 기준 논란": "C1",
+    "electric vehicle registration statistics overstated korea": "C1",
+    "전기차 내연기관차 유지비 비교": "C2",
+    "electric vehicle total cost of ownership higher than gasoline": "C2",
 }
 
 
@@ -89,12 +95,17 @@ def ledger_from(events: list[dict]) -> list[dict]:
 
 
 def challenge_queries_for(claim_id: str, events: list[dict]) -> list[str]:
-    """그 클레임에 나가 돌아온 반증 질의문 — "찾아봤다"의 증거로 반박 기록에 함께 남는다."""
+    """그 클레임에 나가 돌아온 반증 질의문 — "찾아봤다"의 증거로 반박 기록에 함께 남는다.
+
+    코어의 `completed_challenge_queries` 와 같은 셈법이어야 한다: 결과 0건(`empty`)도
+    찾아본 것이고, 못 쏜 것(`failed`)만 뺀다. 여기서 `empty` 를 빼면 픽스처가
+    "찾았으나 없었다"를 제품이 실제로 세는 방식과 다르게 세게 된다.
+    """
     seen: list[str] = []
     for row in ledger_from(events):
         if row["claim_id"] != claim_id or row["stance"] != "challenge":
             continue
-        if row["result_status"] != "ok" or row["query"] in seen:
+        if row["result_status"] not in ("ok", "empty") or row["query"] in seen:
             continue
         seen.append(row["query"])
     return seen
@@ -438,6 +449,28 @@ EVIDENCE = [
      "TELEHEALTH FOR PROVIDERS: WHAT YOU NEED TO KNOW",
      "CMS 자료는 원격 논의로 대면 방문 필요성을 판단할 수 있다고 명시한다.",
      {"date": "2024-08-20"}, "challenge"),
+    # 시나리오 7 전용. E15 는 반증 검색이 데려왔지만 아무것도 반박하지 않는다 —
+    # 검색이 돌아온 것과 반박을 찾은 것은 다르다는 것이 이 시나리오의 요지다.
+    ("E14", "search_web", "국내 전기차 누적 등록 대수 2024년",
+     "https://www.molit.go.kr/statistics/vehicle-registration-202412",
+     "2024년 12월 자동차 등록 현황",
+     "2024년 12월 말 기준 전기차 누적 등록 대수는 60만 6천여 대로 집계됐다.",
+     {"date": "2025-01-16"}, "support"),
+    ("E15", "search_web", "전기차 등록 통계 집계 기준 논란",
+     "https://www.kama.or.kr/reports/ev-fleet-outlook-2025",
+     "전기차 보급 현황과 전망",
+     "등록 대수 증가세와 충전기 보급 속도를 같은 기준으로 정리한 산업 보고서다.",
+     {"date": "2025-02-05"}, "challenge"),
+    ("E16", "search_scholar", "electric vehicle total cost of ownership higher than gasoline",
+     "https://www.sciencedirect.com/science/article/pii/S0965856424002143",
+     "Total cost of ownership of electric vehicles: where parity fails",
+     "주행거리가 짧거나 급속충전 의존도가 높은 사용자군에서는 총 소유비용이 내연기관차보다 높았다.",
+     {"date": "2024-07-22", "citation_count": 58, "journal": "Transportation Research Part A"}, "challenge"),
+    ("E17", "search_web", "전기차 내연기관차 유지비 비교",
+     "https://www.consumer.go.kr/reports/ev-maintenance-cost-2024",
+     "전기차·내연기관차 유지비 비교 조사",
+     "연료비와 정기 점검 비용만 비교하면 전기차가 낮았으나 보험료와 배터리 교체 비용은 제외했다.",
+     {"date": "2024-09-30"}, "support"),
 ]
 
 OMISSIONS = [
@@ -585,7 +618,8 @@ def audit_payload(
     for claim in claims:
         for axis in claim["axis_results"]:
             cited.extend(axis["evidence_ids"])
-    cited.extend(o["evidence_id"] for o in omissions)
+    # 반박 없음 기록은 가리킬 자료가 없다 — 원장에 넣을 id 도 없다.
+    cited.extend(o["evidence_id"] for o in omissions if o["evidence_id"])
     seen: list[str] = []
     for eid in cited:
         if eid not in seen:
@@ -1314,6 +1348,286 @@ def build_no_start() -> list[dict]:
     ]
 
 
+# --------------------------------------------------------------------------
+# 시나리오 7 — 반박을 성실히 찾았으나 없었다
+#
+# 판정을 통과한 주장(C1)에 반증 검색을 두 번 쏴서 하나는 결과를 받고 하나는 0건을
+# 받았지만, 어느 쪽도 그 주장을 반박하지 않았다. 코어는 이것을 evidence_id=null 로
+# 기록한다 — 완주하려고 없는 반박을 지어내지 않아도 되게 하는 자리다.
+# 같은 런에 진짜 반박(C2)이 함께 있어야 화면에서 두 결과가 같은 격자에 나란히 선다.
+# --------------------------------------------------------------------------
+
+EV_SENTENCES = [
+    "국내 전기차 등록 대수는 2024년 말 기준 60만 대를 넘었습니다.",
+    "전기차는 내연기관차보다 총 유지비가 항상 저렴합니다.",
+    "충전 인프라 확충 속도는 등록 대수 증가를 따라가지 못하고 있습니다.",
+]
+
+EV_CLAIM_SPEC = [
+    ("C1", 0, "국내 전기차 등록 대수는 2024년 말 기준 60만 대를 넘었습니다", "statistical", None, 0.55),
+    ("C2", 1, "전기차는 내연기관차보다 총 유지비가 항상 저렴합니다", "causal", None, 0.50),
+]
+
+EV_AXIS_PLAN = {
+    "C1": [
+        (1, "pass", ["E14"], 0.72, "pending", "국토교통부 등록 통계에서 해당 수치를 확인했다."),
+        (2, "pass", ["E14"], 0.86, "supported", "2024년 12월 말 60만 6천여 대로, 글의 '60만 대 초과'와 일치한다."),
+        # 반증 검색 결과를 검토했다는 사실을 id 로 인용한다 — 검토한 증거 없는 통과는 성립하지 않는다.
+        (3, "pass", ["E15"], 0.86, "supported", "반증 검색이 데려온 산업 보고서는 같은 집계를 그대로 인용했고, 수치나 기준을 다투지 않았다."),
+    ],
+    "C2": [
+        (1, "pass", ["E17"], 0.62, "pending", "유지비를 비교한 조사 자료가 실재하는 것을 확인했다."),
+        (2, "fail", ["E17"], 0.38, "overstated", "그 조사는 연료비와 점검 비용만 비교했고 보험료·배터리 교체 비용은 제외했다."),
+        (3, "fail", ["E16"], 0.20, "overstated", "짧은 주행거리·급속충전 의존 사용자군에서 총 소유비용이 더 높았다는 연구를 확인했다."),
+    ],
+}
+
+# 반증 검색 다섯 중 C1 쪽 둘이 이 시나리오의 요지다. 하나는 결과를 받아 왔고
+# (반박이 아니었다), 하나는 0건이었다. 코어는 둘 다 "찾아봤다"로 센다.
+EV_SEARCHES = [
+    ("search_web", "국내 전기차 누적 등록 대수 2024년", "ko", "support", ["E14"]),
+    ("search_web", "전기차 등록 통계 집계 기준 논란", "ko", "challenge", ["E15"]),
+    ("search_web", "electric vehicle registration statistics overstated korea", "en", "challenge", []),
+    ("search_web", "전기차 내연기관차 유지비 비교", "ko", "support", ["E17"]),
+    ("search_scholar", "electric vehicle total cost of ownership higher than gasoline", "en", "challenge", ["E16"]),
+]
+
+EV_NOTHING_SUMMARY = (
+    "등록 통계의 집계 기준과 수치를 국문·영문으로 각각 찾았다. 다른 수치를 제시하거나 "
+    "집계 기준을 문제 삼은 자료는 나오지 않았고, 반증 검색이 데려온 산업 보고서도 같은 집계를 인용했다."
+)
+EV_FOUND_SUMMARY = (
+    "주행거리가 짧거나 급속충전 의존도가 높은 사용자군에서는 총 소유비용이 내연기관차보다 높게 나왔다."
+)
+
+EV_REPORT = "\n".join([
+    "## 감사 결과",
+    "",
+    "### 뒷받침 안 됨 1/2 · 출처 못 찾음 0건",
+    "",
+    "- **C1 [supported]** 2024년 말 전기차 누적 등록 60만 대 초과 — 국토교통부 등록 통계에서 "
+    "60만 6천여 대로 확인했다.",
+    "- **C2 [overstated]** 총 유지비가 항상 저렴하다는 주장 — 비교 조사는 연료비와 점검 비용만 "
+    "다뤘고, 짧은 주행거리 사용자군에서는 총 소유비용이 더 높았다는 연구가 있다.",
+    "",
+    "### 이 글에 대한 반박",
+    "",
+    "- **Total cost of ownership of electric vehicles: where parity fails** — 짧은 주행거리·급속충전 "
+    "의존 사용자군에서 총 소유비용이 내연기관차보다 높게 나왔다.",
+    f"- C1: 반박·한정 문헌을 찾지 못했다 — {EV_NOTHING_SUMMARY}",
+    "",
+    "### 추천 수정안",
+    "",
+    "- **C2** 원문: \"전기차는 내연기관차보다 총 유지비가 항상 저렴합니다.\" → 추천: \"전기차의 연료비와 "
+    "정기 점검 비용은 대체로 낮지만, 총 유지비는 주행 거리와 충전 방식에 따라 달라집니다.\"",
+    "",
+])
+
+
+def build_found_nothing() -> list[dict]:
+    raw = Raw()
+    out: list[dict] = []
+    t = 0.0
+    raw.created(t)
+    t += 0.5
+
+    _, call_id = raw.call(
+        "record_classification",
+        {"input_kind": "ai_answer", "lang": "ko", "auditable": True,
+         "sentence_count": len(EV_SENTENCES),
+         "rationale": "등록 대수와 유지비 비교라는 검증 가능한 수치 주장이 있다."},
+        t,
+    )
+    raw.output("record_classification", call_id,
+               {"ok": True, "error": None,
+                "data": {"host_sentences": [{"index": i, "kind": "prose", "text": s}
+                                            for i, s in enumerate(EV_SENTENCES)],
+                         "auditable_sentence_count": 3},
+                "budget": budget(t, 0, 0, 0)}, t + 0.7)
+    out.extend(raw.events)
+    raw.events = []
+
+    classification = {
+        "input_kind": "ai_answer", "lang": "ko", "auditable": True,
+        "sentence_count": len(EV_SENTENCES),
+        "rationale": "등록 대수와 유지비 비교라는 검증 가능한 수치 주장이 있다.",
+        "auditable_sentence_count": 3,
+    }
+
+    made: list[dict] = []
+    omissions: list[dict] = []
+
+    def ev_audit(status_value: str) -> dict:
+        return audit_payload(claims=[dict(c) for c in made], omissions=list(omissions),
+                             status_value=status_value, sentences=EV_SENTENCES,
+                             kinds=["prose"] * 3, evidence_total=19,
+                             classification=classification, searches=ledger_from(out))
+
+    out.append(ev("audit", ev_audit("running"), t + 0.8))
+    out.append(ev("status", status("분류", t + 0.85, claims=0, tool_calls=0, axis=0), t + 0.85))
+    t += 1.2
+
+    for n, (cid_, index, text, ctype, cited_src, prior) in enumerate(EV_CLAIM_SPEC):
+        _, call_id = raw.call(
+            "record_claim",
+            {"index": index, "text": text, "claim_type": ctype, "auditable": True,
+             "cited_source": cited_src},
+            t,
+        )
+        raw.output("record_claim", call_id,
+                   {"ok": True, "error": None,
+                    "data": {"claim_id": cid_, "index": index, "auditable": True,
+                             "sentence": EV_SENTENCES[index], "expected_next_axis": 1,
+                             "next_action": f"{cid_}의 다음은 1단계다."},
+                    "budget": budget(t, 0, n + 1, 0)}, t + 0.5)
+        made.append({"id": cid_, "index": index, "text": text, "claim_type": ctype,
+                     "auditable": True, "cited_source": cited_src, "base_confidence": prior,
+                     "confidence": prior, "verdict": "pending", "axis_results": []})
+        out.extend(raw.events)
+        raw.events = []
+        out.append(ev("audit", ev_audit("running"), t + 0.6))
+        t += 0.95
+    out.append(ev("status", status("클레임 등록", t, claims=2, tool_calls=0, axis=0), t))
+    t += 0.3
+
+    calls = 0
+    for name, query, lang, stance, eids in EV_SEARCHES:
+        _, call_id = raw.call(name, {"query": query, "max_results": 8, "lang": lang,
+                                     "date_range": None, "stance": stance}, t)
+        calls += 1
+        results = []
+        for eid in eids:
+            rec = by_id(eid)
+            results.append({"title": rec["title"], "url": rec["url"], "hostname": rec["url"].split("/")[2],
+                            "description": rec["snippet"], "date": rec["extra"].get("date"),
+                            "source": "scholar" if name.endswith("scholar") else "web",
+                            "citation_count": rec["extra"].get("citation_count"), "authors": None,
+                            "journal": rec["extra"].get("journal"), "evidence_id": eid})
+        # 0건도 성공한 호출이다 — 못 쏜 것과 쏴서 아무것도 없던 것을 같게 적지 않는다.
+        raw.output(name, call_id,
+                   {"ok": bool(results), "data": results,
+                    "error": None if results else "not_found: 일치하는 결과가 없습니다",
+                    "budget": budget(t, calls, 2, 1)}, t + 0.85)
+        t += 1.2
+    out.extend(raw.events)
+    raw.events = []
+    out.append(ev("status", status("논문·웹 출처 확인", t, claims=2, tool_calls=calls, axis=1), t))
+    t += 0.3
+
+    def ev_verdict(claim_id: str, step: int, when: float, axis_phase: str) -> float:
+        axis, outcome, eids, after, verd, note = EV_AXIS_PLAN[claim_id][step]
+        _, cid2 = raw.call(
+            "update_verdict",
+            {"claim_id": claim_id, "axis": axis, "outcome": outcome, "evidence": note,
+             "evidence_ids": eids, "verdict": verd if verd != "pending" else None},
+            when,
+        )
+        target = next(c for c in made if c["id"] == claim_id)
+        before = target["confidence"]
+        raw.output("update_verdict", cid2,
+                   {"ok": True, "error": None,
+                    "data": {"claim_id": claim_id, "axis": axis, "outcome": outcome, "replaced": False,
+                             "evidence_ids": eids, "source_urls": [by_id(e)["url"] for e in eids],
+                             "confidence_before": before, "confidence_after": after,
+                             "delta": round(after - before, 4),
+                             "score_means": "확보한 지지 근거의 양(진실 확률 아님)",
+                             "verdict": verd, "axis_chain": list(range(1, axis + 1)),
+                             "expected_next_axis": axis + 1 if axis < 3 else None,
+                             "claim_terminal": axis == 3},
+                    "budget": budget(when, calls, 2, axis)}, when + 0.45)
+        target["axis_results"].append({
+            "axis": axis, "outcome": outcome, "evidence": note, "evidence_ids": eids,
+            "source_urls": [by_id(e)["url"] for e in eids],
+            "delta": round(after - before, 4), "raw_delta": round(after - before, 4),
+            "suggested_verdict": verd if verd != "pending" else None,
+        })
+        target["confidence"] = after
+        target["verdict"] = verd
+        out.extend(raw.events)
+        raw.events.clear()
+        out.append(ev("audit", ev_audit("running"), when + 0.55))
+        return when + 1.0
+
+    for step, phase_name in ((0, "논문·웹 출처 확인"), (1, "내용 확인"), (2, "반박 찾기")):
+        for claim_id in ("C1", "C2"):
+            t = ev_verdict(claim_id, step, t, phase_name)
+        out.append(ev("status", status(phase_name, t, claims=2, tool_calls=calls,
+                                       axis=step + 1), t))
+        t += 0.3
+
+    # 진짜 반박 하나와, 찾았으나 없었다 하나. 같은 툴의 두 결과다.
+    for claim_id, evidence_id, summary in (("C2", "E16", EV_FOUND_SUMMARY),
+                                           ("C1", None, EV_NOTHING_SUMMARY)):
+        _, call_id = raw.call("record_omission",
+                              {"claim_id": claim_id, "evidence_id": evidence_id, "summary": summary}, t)
+        queries = challenge_queries_for(claim_id, out)
+        if evidence_id:
+            rec = by_id(evidence_id)
+            omissions.append({"claim_id": claim_id, "evidence_id": evidence_id, "found": True,
+                              "title": rec["title"], "url": rec["url"],
+                              "date": rec["extra"].get("date"),
+                              "citation_count": rec["extra"].get("citation_count"),
+                              "summary": summary, "searched_queries": queries})
+            reply = {"recorded": True, "omission": omissions[-1], "omission_count": len(omissions),
+                     "evidence_stance": rec["stance"], "stance_mismatch": False, "warning": None}
+        else:
+            omissions.append({"claim_id": claim_id, "evidence_id": None, "found": False,
+                              "title": "", "url": "", "date": None, "citation_count": None,
+                              "summary": summary, "searched_queries": queries})
+            reply = {"recorded": True, "omission": omissions[-1], "omission_count": len(omissions),
+                     "found": False, "searched_queries": queries, "evidence_stance": None,
+                     "stance_mismatch": False, "warning": None,
+                     "next_action": "반박·한정 문헌을 찾지 못했다고 기록했다. 나중에 실제로 찾으면 그 "
+                                    "evidence_id로 다시 호출하라 — 이 기록이 그것으로 교체된다."}
+        raw.output("record_omission", call_id,
+                   {"ok": True, "data": reply, "error": None, "budget": budget(t, calls, 2, 3)}, t + 0.4)
+        out.extend(raw.events)
+        raw.events = []
+        out.append(ev("audit", ev_audit("running"), t + 0.5))
+        t += 0.9
+
+    out.append(ev("status", status("반박 찾기", t, claims=2, tool_calls=calls, axis=3), t))
+    t += 0.3
+
+    raw.text(chunk(EV_REPORT), t)
+    t += 0.05 * (len(chunk(EV_REPORT)) + 2)
+    raw.completed(t)
+    out.extend(raw.events)
+    raw.events = []
+    t += 0.4
+
+    final_audit = ev_audit("complete")
+    out.append(ev("audit", final_audit, t))
+    out.append(
+        ev(
+            "status",
+            status("종결", t + 0.2, claims=2, tool_calls=calls, axis=3, done=True, reason="complete",
+                   extra={
+                       "final_report": EV_REPORT,
+                       "audit": {**final_audit, "input_text": " ".join(EV_SENTENCES)},
+                       "timing": {"total_s": round(t + 0.2, 2), "model_s": 18.4, "tool_wait_s": 9.8,
+                                  "tool_time_serial_s": 21.0, "max_concurrent_tools": 3,
+                                  "parallel_speedup": 2.14},
+                       "completion": {"complete": True, "audited_claims": 2,
+                                      "omissions": len(omissions), "missing_actions": [],
+                                      "axis3_done": 2, "axis3_expected": 2, "axis3_required": 1,
+                                      "challenge_queries": 3, "challenge_required": 1,
+                                      "omission_count": len(omissions),
+                                      "search_counts": {"support": 2, "challenge": 3}},
+                       "partial": False,
+                       "challenge_queries": 3,
+                       "challenge_required": 1,
+                       "axis3_done": 2,
+                       "axis3_expected": 2,
+                       "turn_backstop": False,
+                       "events_dropped": 0,
+                   }),
+            t + 0.2,
+        )
+    )
+    return out
+
+
 SCENARIOS = {
     "complete": build_complete,
     "timebox": build_timebox,
@@ -1322,6 +1636,7 @@ SCENARIOS = {
     "error": build_error,
     "no_start": build_no_start,
     "structured": build_structured,
+    "found_nothing": build_found_nothing,
 }
 
 

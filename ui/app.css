@@ -1519,7 +1519,8 @@ a {
   font-weight: 600;
   color: var(--rebut-label);  letter-spacing: 0.01em;
 }
-.stance-tag {
+.stance-tag,
+.rebut-tag {
   padding: 1px 7px;
   font-size: 11px;
   font-weight: 700;
@@ -1556,6 +1557,31 @@ a {
   list-style: square;
   font-size: 14px;
   line-height: 1.65;
+}
+/* 찾아본 반증 질의 — "없었다"를 주장에서 기록으로 바꾸는 부분이라 죽이지 않는다 */
+.rebut-queries {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--edge);
+}
+.rebut-card .rebut-query-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rebut-label);
+}
+.rebut-query-list {
+  margin: 0;
+  padding-left: 16px;
+  list-style: square;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.rebut-query-list li + li {
+  margin-top: 4px;
 }
 .rebut-copy code,
 .report code {

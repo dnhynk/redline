@@ -1110,10 +1110,29 @@
 
   // ---------------------------------------------------------------- 반박
 
+  // 반박 없음 기록은 가리킬 자료가 없다 — 그 자리를 "none" 이 채운다.
+  function omissionKey(om) {
+    return om.claim_id + "/" + (om.evidence_id || "none");
+  }
+
+  function rebuttalsFound(audit) {
+    var list = audit && Array.isArray(audit.omissions) ? audit.omissions : [];
+    return list.filter(function (om) {
+      return !foundNothing(om);
+    });
+  }
+
   function paintOmissions(audit) {
     var host = $("#omissions");
     var evidence = ledger(audit);
     var list = (audit && Array.isArray(audit.omissions) ? audit.omissions : []).slice();
+    // "반박 없음"을 적어 둔 자리에 나중에 진짜 반박이 오면 코어가 앞의 기록을 버린다.
+    // 붙이기만 하면 두 장이 남아 같은 클레임에 "없었다"와 "있었다"가 나란히 뜬다.
+    var live = {};
+    for (var k = 0; k < list.length; k++) live[omissionKey(list[k])] = 1;
+    for (var d = host.children.length - 1; d >= 0; d--) {
+      if (!live[host.children[d].dataset.key]) host.removeChild(host.children[d]);
+    }
     if (!list.length) {
       $("#omissions-empty").hidden = false;
       if (state.done) {
@@ -1126,7 +1145,7 @@
     var fresh = [];
     for (var i = 0; i < list.length; i++) {
       var om = list[i];
-      var key = om.claim_id + "/" + om.evidence_id;
+      var key = omissionKey(om);
       if (host.querySelector('[data-key="' + CSS.escape(key) + '"]')) continue;
       fresh.push(buildOmission(om, key, evidence));
     }
@@ -1177,10 +1196,29 @@
     return (audit.evidence || []).length;
   }
 
+  // 반박을 성실히 찾았지만 없었던 기록. 코어가 `found:false` 로 낸다 — 키가 없는 옛
+  // 기록은 호스트 보고와 같게 "찾았다"로 읽는다.
+  function foundNothing(om) {
+    return om.found === false;
+  }
+
+  function searchedQueries(om) {
+    var raw = Array.isArray(om.searched_queries) ? om.searched_queries : [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      var q = typeof raw[i] === "string" ? raw[i].trim() : "";
+      if (q && out.indexOf(q) < 0) out.push(q);
+    }
+    return out;
+  }
+
   function buildOmission(om, key, evidence) {
-    var href = safeHref(om.url);
+    // 찾았으나 없었던 결과와 찾아낸 반박은 같은 카드의 두 결과다 — 자리도 리듬도 같다.
+    var none = foundNothing(om);
+    var href = none ? null : safeHref(om.url);
     var card = el(href ? "a" : "div", "rebut-card");
     card.dataset.key = key;
+    if (none) card.dataset.result = "none";
     if (href) {
       card.href = href;
       card.target = "_blank";
@@ -1188,22 +1226,37 @@
     }
     var record = (evidence || {})[om.evidence_id] || {};
     var stance = om.stance || record.stance || "";
+    var queries = searchedQueries(om);
     var brow = el("div", "rebut-brow");
-    brow.appendChild(el("span", null, "반박 근거 · " + om.claim_id));
-    if (STANCE_SEARCH[stance]) {
+    brow.appendChild(el("span", null, (none ? "반박 찾기 · " : "반박 근거 · ") + om.claim_id));
+    if (none) {
+      // 뱃지 자리에 무엇을 찾았는지가 아니라 얼마나 찾았는지가 온다. 이 카드에서는
+      // 그것이 증거다 — 빈 자리로 두면 반박이 있는 카드보다 가벼워 보인다.
+      if (queries.length) brow.appendChild(el("span", "rebut-tag", "반증 질의 " + queries.length + "건"));
+    } else if (STANCE_SEARCH[stance]) {
       // 확증 검색에서 나온 반박 자료는 약한 증거다 — 어느 방향에서 왔는지 밝힌다
       var tag = el("span", "stance-tag", STANCE_SEARCH[stance]);
       tag.dataset.stance = stance;
       brow.appendChild(tag);
     }
-    if (om.url) brow.appendChild(el("span", "chip", domainOf(om.url)));
+    if (!none && om.url) brow.appendChild(el("span", "chip", domainOf(om.url)));
     card.appendChild(brow);
-    card.appendChild(el("h3", null, om.title || om.url || "제목 없음"));
+    card.appendChild(el("h3", null, none ? "반박을 찾았으나 없었다" : om.title || om.url || "제목 없음"));
     if (om.summary) {
       var copy = el("div", "rebut-copy");
       copy.innerHTML = renderMarkdown(om.summary);
       card.appendChild(copy);
     }
+    if (none && queries.length) {
+      // 무엇을 찾아봤는가가 이 카드의 증거다. 질의문이 없으면 "없었다"는 주장뿐이다.
+      var probe = el("div", "rebut-queries");
+      probe.appendChild(el("p", "rebut-query-label", "찾아본 반증 질의"));
+      var items = el("ul", "rebut-query-list");
+      for (var q = 0; q < queries.length; q++) items.appendChild(el("li", null, queries[q]));
+      probe.appendChild(items);
+      card.appendChild(probe);
+    }
+    if (none) return card;
     var meta = [];
     if (om.date) meta.push(om.date);
     if (typeof om.citation_count === "number") meta.push("인용 " + om.citation_count + "회");
@@ -1750,7 +1803,9 @@
     var audit = state.audit;
     var counts = [
       audit ? sentencesOf(audit).length : 0,
-      audit ? (audit.omissions || []).length : 0,
+      // 찾았으나 없었다는 기록은 반박이 아니다 — 탭 수는 실제로 찾아낸 반박만 센다.
+      // 그 카드가 왜 거기 있는지는 카드 자신이 말한다.
+      audit ? rebuttalsFound(audit).length : 0,
       state.fixCount || 0,
       state.done ? 1 : 0
     ];

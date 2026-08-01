@@ -735,6 +735,63 @@ def test_only_unclaimed_whole_lines_get_manuscript_markdown_treatment():
     assert re.search(r"var view = claims\.length \? null : manuscriptView", update)
 
 
+def test_a_rebuttal_looked_for_and_not_found_gets_the_same_card():
+    """찾았으나 없었다는 실패가 아니라 결과다 — 빈 상자도, 다른 종류의 상자도 아니다."""
+    block = JS.split("function buildOmission(")[1].split("\n  }")[0]
+    assert "var none = foundNothing(om);" in block
+    # 제목 자리가 비면 빈 카드가 뜬다. 그 자리에 결과가 들어간다.
+    assert '"반박을 찾았으나 없었다"' in block
+    assert 'el(href ? "a" : "div", "rebut-card")' in block, "다른 카드로 갈라졌다"
+    # 가리킬 자료가 없으니 링크도 도메인 칩도 붙지 않는다
+    assert "var href = none ? null : safeHref(om.url);" in block
+    assert "if (!none && om.url)" in block
+
+    flag = JS.split("function foundNothing(")[1].split("\n  }")[0]
+    assert "om.found === false" in flag, "키가 없는 옛 기록까지 '없었다'로 읽는다"
+
+    # 회색으로 죽이지 않는다 — 뱃지는 반박이 있는 카드와 같은 규칙을 쓴다
+    assert re.search(r"\.stance-tag,\s*\.rebut-tag\s*\{", CSS), "결과 뱃지가 따로 논다"
+    for body in re.findall(r'\[data-result="none"\][^{]*\{([^}]*)\}', CSS):
+        assert "opacity" not in body and "filter" not in body, "결과 카드를 흐리게 만든다"
+
+
+def test_the_found_none_card_shows_what_was_actually_searched():
+    """무엇을 찾아봤는가가 이 카드의 증거다 — 없으면 '없었다'는 주장일 뿐이다."""
+    block = JS.split("function buildOmission(")[1].split("\n  }")[0]
+    assert "searchedQueries(om)" in block
+    assert '"찾아본 반증 질의"' in block and '"rebut-query-list"' in block
+    assert '"반증 질의 " + queries.length + "건"' in block
+
+    picker = JS.split("function searchedQueries(")[1].split("\n  }")[0]
+    assert "trim()" in picker and "out.indexOf(q) < 0" in picker
+
+    for cls in (".rebut-queries", ".rebut-query-list"):
+        assert cls in CSS, cls
+    body = re.search(r"\.rebut-query-list\s*\{([^}]*)\}", CSS).group(1)
+    assert "var(--muted)" not in body, "질의문은 읽으라고 있는 것이지 흐린 메타가 아니다"
+
+
+def test_a_replaced_found_none_record_leaves_the_screen():
+    """코어는 진짜 반박을 찾으면 앞의 '없었다' 기록을 버린다.
+
+    붙이기만 하는 화면은 둘 다 남겨 같은 클레임에 '없었다'와 '있었다'를 나란히 띄운다.
+    """
+    block = JS.split("function paintOmissions(")[1].split("\n  }")[0]
+    assert "live[omissionKey(list[k])]" in block
+    assert "host.removeChild(host.children[d])" in block
+
+    key = JS.split("function omissionKey(")[1].split("\n  }")[0]
+    assert 'om.evidence_id || "none"' in key, "evidence_id 없는 기록이 undefined 키로 뭉친다"
+
+
+def test_the_rebuttal_tab_counts_rebuttals_not_searches():
+    """탭이 '반박 2' 라고 했는데 하나가 '없었다' 면 하나를 부풀린 것이다."""
+    block = JS.split("function paintTabs(")[1].split("\n  }")[0]
+    assert "rebuttalsFound(audit).length" in block
+    found = JS.split("function rebuttalsFound(")[1].split("\n  }")[0]
+    assert "!foundNothing(om)" in found
+
+
 def test_model_markdown_uses_the_escaped_report_renderer():
     omission = JS.split("function buildOmission(")[1].split("\n  }")[0]
     assert "renderMarkdown(om.summary)" in omission
@@ -1154,6 +1211,7 @@ FIXTURES = sorted((UI / "fixtures").glob("*.jsonl"))
 def test_fixtures_exist():
     assert {p.stem for p in FIXTURES} == {
         "complete", "timebox", "incomplete", "non_auditable", "error", "no_start", "structured",
+        "found_nothing",
     }
 
 
@@ -1201,6 +1259,30 @@ def test_the_complete_fixture_walks_the_whole_screen():
         assert required in types, required
     names = {e["payload"].get("name") for e in events if e["kind"] == "run_item"}
     assert {"tool_called", "tool_output"} <= names
+
+
+def test_the_found_nothing_fixture_pairs_a_rebuttal_with_a_looked_and_found_none():
+    """두 결과가 한 런에 같이 있어야 화면에서 같은 격자에 나란히 선다."""
+    final = load_jsonl(UI / "fixtures" / "found_nothing.jsonl")[-1]["payload"]
+    assert final["reason"] == "complete"
+    audit = final["audit"]
+    by_found = {o["found"]: o for o in audit["omissions"]}
+    assert set(by_found) == {True, False}
+
+    none = by_found[False]
+    assert none["evidence_id"] is None
+    assert none["title"] == "" and none["url"] == ""
+    assert none["summary"], "무엇을 어떻게 찾았는지가 비어 있다"
+
+    # "찾았다"의 증거 — 그 클레임에 실제로 나가 돌아온 반증 질의문이어야 한다
+    fired = {
+        row["query"]: row["result_status"]
+        for row in audit["searches"]
+        if row["claim_id"] == none["claim_id"] and row["stance"] == "challenge"
+    }
+    assert set(none["searched_queries"]) == set(fired)
+    # 결과 0건도 찾아본 것이다 — 쏘지 못한 것만 빠진다
+    assert set(fired.values()) == {"ok", "empty"}
 
 
 def test_structural_fixture_carries_every_sentence_kind():
