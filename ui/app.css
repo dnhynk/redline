@@ -583,28 +583,111 @@ a {
   top: -4px;
 }
 
+/* --- 상태 띠 --------------------------------------------------------------
+   탭 위에서 런 내내 자리를 지킨다. 진행 중에는 진행률, 끝나면 결과 —
+   같은 자리에서 내용만 바뀌므로 새 블록이 튀어나오지 않는다. */
+
+.status-band {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 30;
+  padding: 16px 34px 14px;
+  background: var(--sheet);
+  border: 1px solid var(--edge);
+  border-bottom: 0;
+  box-shadow: var(--shadow-sheet);
+}
+.sb-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.sb-title {
+  font-family: var(--f-sans);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.sb-note {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.sb-again {
+  margin-left: auto;
+  flex: none;
+}
+/* 게이지는 시간이 얼마나 갔는지만 말한다. 남은 시간을 셈해 보여주지 않는다 —
+   모르는 것을 아는 척하지 않는다. */
+.sb-gauge {
+  margin-top: 12px;
+  height: 6px;
+  background: var(--hair);
+  overflow: hidden;
+}
+.sb-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--rule);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-settle) linear;
+}
+.status-band[data-outcome] .sb-fill {
+  background: var(--ink);
+}
+.status-band[data-outcome="error"] .sb-fill {
+  background: var(--v-no_source-line);
+}
+.sb-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sb-time b {
+  font-weight: 700;
+  color: var(--ink);
+}
+.sb-sep {
+  padding: 0 2px;
+  color: var(--rule);
+}
+.sb-result {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--ink);
+}
+
 /* --- 결과 탭 --------------------------------------------------------------
-   알약이 아니라 밑줄이다. 이 화면은 인쇄물이고, 배경을 채운 칩은 여기 문법이
-   아니다. 라벨 옆 건수는 누르기 전에 그 안에 뭐가 있는지 말한다. */
+   알약이 아니다. 종이 묶음에서 한 장이 앞으로 나온 모양 — 활성 탭은 아래 패널과
+   같은 흰 면이 되어 이어 붙고, 쉬는 탭은 한 겹 뒤에 물러나 있다. 그래서 누르기
+   전에도 낱장으로 읽힌다. */
 
 .tabs {
   margin-bottom: -1px;
+  padding: 14px 0 0;
 }
 .tablist {
   display: flex;
   align-items: flex-end;
-  gap: 30px;
-  border-bottom: 1px solid var(--rule);
-  padding: 0 34px;
+  gap: 4px;
+  border-bottom: 1px solid var(--edge);
+  padding: 0 20px;
 }
 .tab {
   position: relative;
   display: flex;
   align-items: baseline;
   gap: 7px;
-  padding: 10px 2px 11px;
-  background: none;
-  border: 0;
+  padding: 9px 16px 10px;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-bottom-color: var(--edge);
   border-radius: 0;
   font-family: var(--f-sans);
   font-size: 15px;
@@ -613,34 +696,46 @@ a {
   color: var(--muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--dur-press) var(--ease-ink);
+  transition: background-color var(--dur-press) var(--ease-ink),
+    color var(--dur-press) var(--ease-ink),
+    border-color var(--dur-press) var(--ease-ink);
 }
-/* 활성 표시는 실선 한 줄이다. 두께가 바뀌면 라벨이 흔들리므로 의사 요소로 깐다. */
+/* 활성 탭 위의 잉크 선 — 어느 장이 펼쳐져 있는지 멀리서도 읽힌다 */
 .tab::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
+  left: -1px;
+  right: -1px;
+  top: -1px;
   height: 2px;
   background: var(--ink);
   opacity: 0;
   transition: opacity var(--dur-press) var(--ease-ink);
 }
 .tab[aria-selected="true"] {
+  background: var(--sheet);
   color: var(--ink);
+  border-bottom-color: var(--sheet);
+  margin-bottom: -1px;
+  padding-bottom: 11px;
 }
 .tab[aria-selected="true"]::after {
   opacity: 1;
 }
 .tab:focus-visible {
   outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  outline-offset: 1px;
+  z-index: 1;
 }
 @media (hover: hover) and (pointer: fine) {
   .tab:not([aria-selected="true"]):hover {
+    background: var(--sheet);
     color: var(--ink);
+    border-color: var(--rule);
   }
+}
+.tab:not([aria-selected="true"]):active {
+  background: var(--hair);
 }
 .tab-count {
   font-family: var(--f-mono);
@@ -678,14 +773,57 @@ a {
   line-height: 1.6;
   color: var(--muted);
 }
+/* 원문은 물러나고 대안이 앞에 선다. 대안은 그대로 옮겨 적을 문장이라 본문 세리프다. */
 .fix-list {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 .fix-list li {
-  padding-left: 18px;
-  border-left: 3px solid var(--fix-line);
+  padding: 16px 20px 18px;
+  background: var(--fix-tint);
+  border: 1px solid var(--edge);
+}
+.fix-tag {
+  display: inline-block;
+  min-width: 74px;
+  margin-right: 12px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  vertical-align: 1px;
+}
+.fix-tag.is-now {
+  color: var(--fix-label);
+}
+.fix-said {
+  display: inline;
+}
+.fix-was {
+  font-family: var(--f-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-indent: -86px;
+  padding-left: 86px;
+}
+.fix-was .fix-said {
+  text-decoration: line-through;
+  text-decoration-color: var(--rule);
+  text-decoration-thickness: 1px;
+}
+.fix-now {
+  margin-top: 10px;
+  padding-top: 10px;
+  padding-left: 86px;
+  text-indent: -86px;
+  border-top: 1px solid var(--edge);
+  font-family: var(--f-serif);
+  font-size: var(--t-report);
+  line-height: 1.6;
+  color: var(--ink);
 }
 .fixes-empty {
   padding: 22px 0 6px;
@@ -796,6 +934,9 @@ a {
 }
 .s-row:first-child {
   border-top: 0;
+}
+.s-row.arrive {
+  animation: card-arrive var(--dur-card) var(--ease-settle) both;
 }
 .s-num {
   font-family: var(--f-mono);
@@ -1324,49 +1465,24 @@ a {
   font-size: 18px;
 }
 
-/* --- 단계 5: 최종 보고 --------------------------------------------------- */
+/* --- 최종 보고 탭 --------------------------------------------------------- */
 
 .terminal {
-  margin-top: 34px;
-  padding: 26px 30px;
-  background: var(--sheet);
-  border: 1px solid var(--ink);
-  border-left: 6px solid var(--ink);
-  box-shadow: var(--shadow-sheet);
+  padding: 26px 34px 30px;
 }
-.terminal[data-outcome="complete"] {
-  border-left-color: var(--v-supported-line);
+.report-sub {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
 }
-.terminal[data-outcome="partial"] {
-  border-left-color: var(--v-overstated-line);
-}
-.terminal[data-outcome="error"] {
-  border-left-color: var(--v-unsupported-line);
+.report-empty {
+  padding: 22px 0 6px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--muted);
 }
 .terminal[data-outcome="non_auditable"] {
   border-left-color: var(--rule);
-}
-.terminal-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 30px;
-  align-items: start;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--hair);
-}
-#terminal-title {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.terminal-note {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 3px 9px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--paper);
-  background: var(--muted);
 }
 [data-outcome="partial"] .terminal-note {
   background: var(--v-overstated-label);
@@ -1413,33 +1529,6 @@ a {
 }
 #missing-actions li::before {
   content: "· ";
-}
-.terminal-coverage {
-  min-width: 190px;
-  padding: 16px 20px;
-  background: var(--ink);
-  color: var(--paper);
-}
-.terminal-coverage h3 {
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.75;
-}
-.terminal-coverage .metric {
-  color: var(--paper);
-  margin-bottom: 0;
-}
-.terminal-coverage .metric .sep {
-  color: rgba(251, 250, 247, 0.45);
-}
-
-.report-label {
-  /* 상자 제목(26px) 아래 한 단 낮은 제목이다 — 본문 세리프와 크기가 겹치지 않게 sans 로 세운다. */
-  margin: 26px 0 10px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--ink);
 }
 .report {
   max-width: 74ch;

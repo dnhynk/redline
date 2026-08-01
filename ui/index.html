@@ -94,12 +94,26 @@
     </section>
   </section>
 
-  <div class="intake-collapsed" id="intake-collapsed" hidden>
-    <span>입력이 접혀 있습니다 — 아래 원고가 감사 대상입니다.</span>
-    <button class="btn-quiet" id="intake-open" type="button">다시 입력</button>
-  </div>
+  <!-- 상태 띠 — 탭 위에서 런 내내 자리를 지킨다. 진행 중에는 진행률,
+       끝나면 결과. 같은 자리에서 내용만 바뀐다. -->
+  <section class="status-band" id="status-band" hidden>
+    <div class="sb-head">
+      <h2 class="sb-title" id="terminal-title">감사 준비 중</h2>
+      <span class="sb-note" id="terminal-note" hidden></span>
+      <button class="btn-quiet sb-again" id="intake-open" type="button">다시 입력</button>
+    </div>
+    <div class="sb-gauge" id="sb-gauge" role="progressbar"
+         aria-labelledby="terminal-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="sb-fill" id="sb-fill"></span>
+    </div>
+    <p class="sb-meta">
+      <span class="sb-time">경과 <b class="tnum" id="sb-elapsed">0</b>초
+        <span class="sb-sep" aria-hidden="true">·</span> 최대 <b class="tnum" id="sb-timebox">90</b>초</span>
+      <span class="sb-result" id="terminal-coverage" hidden></span>
+    </p>
+  </section>
 
-  <!-- 결과 탭 — 한 번에 하나만 보인다. 종결 수치는 탭 밖에 있다 -->
+  <!-- 결과 탭 — 한 번에 하나만 보인다. 상태 띠는 탭 밖에 있다 -->
   <div class="tabs" id="result-tabs" hidden>
     <div class="tablist" id="tablist" role="tablist" aria-label="감사 결과">
       <button class="tab" type="button" role="tab" id="tab-sentences"
@@ -113,6 +127,10 @@
       <button class="tab" type="button" role="tab" id="tab-fix"
               aria-controls="fix-panel" aria-selected="false" tabindex="-1">
         추천 수정안<b class="tab-count tnum" id="count-fix"></b>
+      </button>
+      <button class="tab" type="button" role="tab" id="tab-report"
+              aria-controls="terminal-summary" aria-selected="false" tabindex="-1">
+        최종 보고
       </button>
     </div>
   </div>
@@ -178,23 +196,16 @@
     <p class="fixes-empty" id="fix-empty">감사가 끝나면 고쳐 쓸 문장이 여기에 표시됩니다.</p>
   </section>
 
-  <!-- 단계 5 — 최종 보고 -->
-  <section class="terminal" id="terminal-summary" hidden>
-    <div class="terminal-head">
-      <div>
-        <h2 id="terminal-title">감사 완료</h2>
-        <span class="terminal-note" id="terminal-note" hidden></span>
-        <p id="terminal-reason"></p>
-        <details class="error-detail" id="error-detail" hidden></details>
-        <ul id="missing-actions" hidden></ul>
-      </div>
-      <div class="terminal-coverage" id="terminal-coverage" hidden>
-        <h3>감사 커버리지</h3>
-        <b class="metric tnum">— <span class="sep">/</span> —</b>
-      </div>
+  <!-- 최종 보고 — 길어서 탭이다. 짧은 상태는 위 띠가 맡는다 -->
+  <section class="terminal sheet tabpanel" id="terminal-summary" role="tabpanel"
+           aria-labelledby="tab-report" tabindex="0" hidden>
+    <div class="section-head">
+      <p class="report-sub" id="terminal-reason"></p>
     </div>
-    <p class="report-label">최종 보고</p>
+    <details class="error-detail" id="error-detail" hidden></details>
+    <ul class="missing" id="missing-actions" hidden></ul>
     <div class="report" id="final-report"></div>
+    <p class="report-empty" id="report-empty">감사가 끝나면 최종 보고가 여기에 표시됩니다.</p>
   </section>
 
 </main>
