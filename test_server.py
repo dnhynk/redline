@@ -1006,6 +1006,41 @@ def test_fixture_matches_the_shape_the_build_emits(path):
         assert "prior" not in mine["audit"]["claims"][0]
 
 
+@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
+def test_fixture_error_display_follows_the_reason(path):
+    """화면에 쓸 문장은 사유에서 나온다 — 오류로 끝난 런에만 있고 원문 예외와 다르다."""
+    terminal = _terminal(path)
+    display = terminal["error_display"]
+    if terminal["reason"] == "error":
+        assert display, f"{path.stem}: 오류 런인데 화면 문구가 없다"
+        assert not re.search(r"[A-Za-z]{4,}", display), f"영문 원문이 화면 문구로 샜다: {display}"
+        assert display != terminal.get("error"), "제공자 원문을 그대로 화면 문구로 썼다"
+    else:
+        assert display is None, f"{path.stem}: 오류가 아닌데 화면 문구가 있다"
+
+
+def test_fixture_error_display_matches_the_build():
+    try:
+        from core.agent import ERROR_REPORT_TEXT
+    except ImportError:  # mock 모드는 core 없이 돈다
+        return
+    for path in FIXTURES:
+        terminal = _terminal(path)
+        if terminal["reason"] == "error":
+            assert terminal["error_display"] == ERROR_REPORT_TEXT, path.stem
+
+
+def test_fixture_suppressed_count_tells_clean_runs_from_burnt_ones():
+    """상태를 바꾸지 않은 기록 호출 수다. 끝맺음 사유가 아니라 되풀이를 잰다 —
+    깨끗하게 끝난 런과 시계를 다 쓴 런이 같은 값이면 이 수치는 아무것도 말하지 않는다."""
+    counts = {p.stem: _terminal(p)["audit_events_suppressed"] for p in FIXTURES}
+    for name in ("complete", "structured", "non_auditable", "no_start"):
+        assert counts[name] == 0, f"{name}: 되풀이가 없는 런인데 0 이 아니다"
+    assert counts["timebox"] > counts["incomplete"] > 0, "시계를 다 쓴 런이 더 많이 되풀이해야 한다"
+    assert counts["error"] > 0
+    assert all(isinstance(v, int) and v >= 0 for v in counts.values())
+
+
 def test_the_mock_fallback_plays_the_current_build():
     assert server.DEFAULT_FIXTURE == LIVE_CAPTURE
 
