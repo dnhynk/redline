@@ -13,9 +13,11 @@ import os
 import sys
 from pathlib import Path
 
-# server.py 와 같은 제품 상수. 발표 상황에 따라 달라지지 않는다.
-TIMEBOX_S = 90.0
-MAX_CLAIMS = 14
+# 제품 상수. 값은 코어가 들고 있고 여기서는 이름만 빌린다 — 같은 수를
+# 두 곳에 적으면 언젠가 한 곳만 바뀐다.
+from core.agent import DEFAULT_TIMEBOX_S as TIMEBOX_S
+from core.audit import DEFAULT_MAX_CLAIMS as MAX_CLAIMS
+
 TEXT_MAX_CHARS = 80 * 25
 
 

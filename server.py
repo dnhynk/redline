@@ -33,14 +33,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 # 화면에 오르는 문장은 한국어여야 한다. 이 검사가 그 규칙의 마지막 문지기다.
 _HANGUL = re.compile(r"[가-힣]")
 
-# 감사 하나에 주는 시간. 제품 상수다 — 발표 상황에 따라 달라지지 않는다.
-# 가장 좁은 자리가 즉석 태스크 2분이고, 입력과 설명에 30초를 남기면 여기 값이 된다.
-TIMEBOX_S = 90.0
-
-# 그 시간 안에 끝낼 수 있는 주장 수. 실측: 기본 27초 + 클레임당 약 3.2초,
-# 툴 지연의 산포가 20초 가까이 된다 — 14개가 71초에 들어와 19초를 남긴다.
-# 이 수를 올리려면 타임박스를 올려야 하고, 타임박스는 2분 슬롯이 막는다.
-MAX_CLAIMS = 14
+# 감사 하나에 주는 시간과 그 안에 끝낼 수 있는 주장 수. 제품 상수이고 값은
+# 코어가 들고 있다 — 여기서는 이름만 빌린다. 같은 수를 두 곳에 적으면
+# 진입점을 거치지 않는 경로만 조용히 다른 제품이 된다.
+from core.agent import DEFAULT_TIMEBOX_S as TIMEBOX_S  # noqa: E402
+from core.audit import DEFAULT_MAX_CLAIMS as MAX_CLAIMS  # noqa: E402
 
 # 감사기가 실제로 읽을 수 있는 최대치. core 는 문장 80개까지만 모델에 보인다
 # (HOST_SENTENCES_MAX). 한 문장을 160자로 잡으면 12,800자가 되지만, 실측한 감사 가능
