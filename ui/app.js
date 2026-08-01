@@ -71,7 +71,7 @@
     { target: "#galley", peek: 0 },
     { target: "#galley", peek: 0 },
     { target: "#galley", peek: 0 },
-    { target: "#omissions-section", peek: 132 },
+    { target: "#omissions-section", peek: 0 },
     { target: "#terminal-summary", peek: 0 }
   ];
 

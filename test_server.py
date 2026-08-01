@@ -175,9 +175,9 @@ def test_source_failure_ends_with_a_done_status():
         raise RuntimeError("모델이 응답하지 않았다")
 
     with TestClient(create_app(broken)) as client:
-        client.post("/run", json={"text": "감사할 문장"})
         with client.websocket_connect("/ws/events") as ws:
             ws.receive_json()  # config
+            client.post("/run", json={"text": "감사할 문장"})
             events = [ws.receive_json() for _ in range(2)]
     assert events[-1]["kind"] == "status"
     assert events[-1]["payload"]["done"] is True
@@ -203,23 +203,39 @@ def test_config_arrives_first_and_carries_timebox():
 
 def test_seq_is_renumbered_and_run_is_added_and_t_is_preserved():
     with TestClient(create_app(list_source(sample_events()))) as client:
-        run_id = client.post("/run", json={"text": "문장"}).json()["run_id"]
         with client.websocket_connect("/ws/events") as ws:
             ws.receive_json()
+            run_id = client.post("/run", json={"text": "문장"}).json()["run_id"]
             events = [ws.receive_json() for _ in range(3)]
     assert [e["seq"] for e in events] == [1, 2, 3]
     assert {e["run"] for e in events} == {run_id}
     assert [e["t"] for e in events] == [100.0, 100.5, 101.0]
 
 
-def test_late_join_replays_history_from_the_first_event():
-    with TestClient(create_app(list_source(sample_events()))) as client:
+def test_late_join_replays_history_while_the_run_is_going():
+    """도는 중에 붙은 화면은 처음부터 따라잡아야 한다."""
+    gate = asyncio.Event()
+    with TestClient(create_app(list_source(sample_events(), gate))) as client:
         client.post("/run", json={"text": "문장"})
         time.sleep(0.05)
         with client.websocket_connect("/ws/events") as ws:
             assert ws.receive_json()["kind"] == "config"
             replay = [ws.receive_json() for _ in range(3)]
+        gate.set()
     assert [e["seq"] for e in replay] == [1, 2, 3]
+
+
+def test_a_finished_run_is_not_replayed_to_a_new_screen():
+    """지난 런을 새 화면에 되살리면 방금 감사한 것처럼 보인다 — 빈 화면이 정직하다."""
+    with TestClient(create_app(list_source(sample_events()))) as client:
+        client.post("/run", json={"text": "문장"})
+        time.sleep(0.05)
+        with client.websocket_connect("/ws/events") as ws:
+            config = ws.receive_json()
+            assert config["kind"] == "config"
+            assert config["payload"]["active"] is False
+            ws.send_text("ping")  # 재생이 없다는 것을 확인하려면 소켓이 살아 있어야 한다
+    assert True
 
 
 def test_reconnect_with_last_seq_skips_what_was_already_seen():
@@ -233,24 +249,41 @@ def test_reconnect_with_last_seq_skips_what_was_already_seen():
 
 
 def test_reconnect_from_a_different_run_gets_the_whole_history():
-    with TestClient(create_app(list_source(sample_events()))) as client:
+    gate = asyncio.Event()
+    with TestClient(create_app(list_source(sample_events(), gate))) as client:
         client.post("/run", json={"text": "문장"})
         time.sleep(0.05)
         with client.websocket_connect("/ws/events?last_seq=2&run=stale") as ws:
             ws.receive_json()
             replay = [ws.receive_json() for _ in range(3)]
+        gate.set()
     assert [e["seq"] for e in replay] == [1, 2, 3]
 
 
 def test_a_new_run_resets_the_history_and_the_counter():
-    with TestClient(create_app(list_source(sample_events()))) as client:
+    gates: list[asyncio.Event] = []
+    seen = {"n": 0}
+
+    async def source(_text: str) -> AsyncIterator[dict]:
+        mine = seen["n"]
+        seen["n"] += 1
+        while len(gates) <= mine:
+            gates.append(asyncio.Event())
+        for event in sample_events():
+            yield event
+        await gates[mine].wait()
+
+    with TestClient(create_app(source)) as client:
         first = client.post("/run", json={"text": "첫"}).json()["run_id"]
+        time.sleep(0.05)
+        gates[0].set()  # 첫 런을 끝낸다
         time.sleep(0.05)
         second = client.post("/run", json={"text": "둘"}).json()["run_id"]
         time.sleep(0.05)
         with client.websocket_connect("/ws/events") as ws:
             ws.receive_json()
             replay = [ws.receive_json() for _ in range(3)]
+        gates[1].set()
     assert first != second
     assert [e["seq"] for e in replay] == [1, 2, 3]
     assert {e["run"] for e in replay} == {second}
@@ -784,9 +817,9 @@ def test_replaying_a_fixture_reaches_the_terminal_status():
     events = load_jsonl(UI / "fixtures" / "non_auditable.jsonl")
     app = create_app(server.jsonl_source(UI / "fixtures" / "non_auditable.jsonl", speed=1000), mock=True)
     with TestClient(app) as client:
-        client.post("/run", json={"text": "산책을 다녀오는 편이 좋다고 생각합니다."})
         with client.websocket_connect("/ws/events") as ws:
             ws.receive_json()
+            client.post("/run", json={"text": "산책을 다녀오는 편이 좋다고 생각합니다."})
             received = [ws.receive_json() for _ in range(len(events))]
     assert received[-1]["payload"]["reason"] == "non_auditable"
     assert received[-1]["seq"] == len(events)

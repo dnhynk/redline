@@ -174,9 +174,15 @@ class Hub:
         async with self._lock:
             replay: Iterable[dict]
             if run and run == self.run_id and last_seq > 0:
+                # 끊겼다 돌아온 화면 — 못 본 것만 이어 준다. 끝난 런에도 해당한다.
                 replay = [e for e in self.history if e["seq"] > last_seq]
-            else:
+            elif self.active:
+                # 도는 중에 붙은 화면 — 처음부터 따라잡게 한다.
                 replay = list(self.history)
+            else:
+                # 처음 여는 화면인데 돌고 있는 런이 없다. 지난 런의 결과를 새 화면인 척
+                # 되살리면 방금 감사한 것처럼 보인다 — 빈 화면이 정직하다.
+                replay = []
             client.backlog = [self.config_event(), *replay]
             self.clients.add(client)
         return client
