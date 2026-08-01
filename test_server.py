@@ -36,9 +36,9 @@ MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
     "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
     "terminal-summary", "terminal-title", "terminal-reason", "terminal-coverage", "missing-actions",
-    "final-report", "terminal-note", "error-detail", "follow-run", "source-banner", "intake",
+    "final-report", "terminal-note", "error-detail", "source-banner", "intake",
     "intake-process",
-    "intake-collapsed",
+    "status-band", "sb-gauge", "sb-fill", "sb-elapsed", "sb-timebox",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",
 ]
 RAW_IDS = [
@@ -670,8 +670,8 @@ def test_live_lists_are_never_rebuilt_wholesale():
 # 결과 탭 — 한 번에 하나만 보이고, 종결 수치는 탭 밖에 있다
 # --------------------------------------------------------------------------
 
-TAB_IDS = ["tab-sentences", "tab-rebut", "tab-fix"]
-PANEL_IDS = ["galley", "omissions-section", "fix-panel"]
+TAB_IDS = ["tab-sentences", "tab-rebut", "tab-fix", "tab-report"]
+PANEL_IDS = ["galley", "omissions-section", "fix-panel", "terminal-summary"]
 
 
 def test_the_tabs_carry_the_roles_a_screen_reader_needs():
@@ -695,12 +695,43 @@ def test_the_tab_row_stays_down_until_there_is_something_in_it():
     assert tabs and "hidden" in tabs.group(1), "런 시작 전에도 탭 줄이 뜬다"
 
 
-def test_the_terminal_box_is_not_a_tab():
-    """종결 수치는 어느 탭을 보든 보여야 한다."""
-    term = re.search(r'<section class="terminal" id="terminal-summary"([^>]*)>', INDEX)
-    assert term, "종결 박스를 못 찾았다"
-    assert "tabpanel" not in term.group(1) and "role=" not in term.group(1)
-    assert "terminal-summary" not in str(PANEL_IDS)
+def test_the_status_band_is_not_a_tab_and_sits_above_them():
+    """런의 상태는 어느 탭을 보든 같은 자리에 있어야 한다."""
+    band = re.search(r'<section class="status-band" id="status-band"([^>]*)>', INDEX)
+    assert band, "상태 띠를 못 찾았다"
+    assert "tabpanel" not in band.group(1) and "role=" not in band.group(1)
+    assert "status-band" not in str(PANEL_IDS)
+    assert INDEX.index('id="status-band"') < INDEX.index('id="result-tabs"'), "띠가 탭 아래에 있다"
+    block = _balanced(CSS, CSS.index("{", CSS.index(".status-band {")))
+    assert "position: sticky" in block, "긴 입력에서 띠가 밀려 올라간다"
+    assert "top: var(--topbar-h)" in block, "상단 바와 겹친다"
+
+
+def test_the_reenter_button_lives_in_the_band_head():
+    head = INDEX.split('<div class="sb-head">')[1].split("</div>")[0]
+    assert 'id="intake-open"' in head, "다시 입력이 제목 줄에 없다"
+    assert 'id="terminal-title"' in head, "제목과 같은 줄이 아니다"
+    assert "intake-collapsed" not in INDEX, "접힘 안내 박스가 남아 있다"
+
+
+def test_the_band_shows_elapsed_and_cap_but_never_guesses_the_rest():
+    """남은 시간을 예측해 보여주면 모르는 것을 아는 척하는 것이다."""
+    band = INDEX.split('id="status-band"')[1].split("</section>")[0]
+    assert 'id="sb-elapsed"' in band and 'id="sb-timebox"' in band
+    assert "남은" not in band, "남은 시간을 적었다"
+    block = JS.split("function paintBand(")[1].split("\n  }")[0]
+    assert "남은" not in block
+    assert not re.search(r"timebox\s*-\s*", block), "상한에서 경과를 빼 예측한다"
+    assert "state.timebox" in block and "state.elapsed" in block
+
+
+def test_the_band_says_what_it_is_doing_in_plain_words():
+    block = JS.split("function workingOn(")[1].split("\n  }")[0]
+    for word in ("문장을 나누는 중", "확인할 문장을 고르는 중", "출처를 찾는 중",
+                 "내용을 읽는 중", "반박을 찾는 중"):
+        assert word in block, word
+    for internal in ("축1", "축 1", "클레임", "axis1", "pending"):
+        assert internal not in block, f"내부 어휘가 샜다: {internal}"
 
 
 def test_the_tabs_move_by_keyboard_alone():
@@ -717,17 +748,38 @@ def test_the_tab_answers_the_press_not_the_release():
     assert "selectTab" in block, "누른 순간에 탭을 바꾸지 않는다"
 
 
-def test_the_tabs_are_underlines_not_pills():
-    """이 화면은 인쇄물이다 — 배경을 채운 칩은 여기 문법이 아니다."""
+# 종이 색 — 이것으로 칠한 것은 칩이 아니라 낱장이다
+PAPER_TONES = {"none", "transparent", "var(--paper)", "var(--sheet)", "var(--hair)"}
+
+
+def test_the_tabs_are_sheets_not_pills():
+    """이 화면은 인쇄물이다. 옅은 종이 바탕은 되지만 둥근 색 칩은 안 된다."""
     for selector, block in _rules(CSS):
         if not re.match(r"^\s*\.tab\b", selector.strip()) or "::" in selector:
             continue
-        assert "border-radius" not in block or "border-radius: 0" in block, selector.strip()
+        radius = re.search(r"border-radius:\s*([^;]+);", block)
+        assert not radius or radius.group(1).strip() == "0", f"탭이 둥글다: {selector.strip()}"
         background = re.search(r"background(?:-color)?:\s*([^;]+);", block)
-        assert not background or background.group(1).strip() in ("none", "transparent"), (
-            f"탭에 배경을 채웠다: {selector.strip()}")
-    underline = _balanced(CSS, CSS.index("{", CSS.index(".tab::after")))
-    assert "height: 2px" in underline and "background: var(--ink)" in underline
+        assert not background or background.group(1).strip() in PAPER_TONES, (
+            f"탭에 종이색이 아닌 배경을 깔았다: {selector.strip()}")
+    accent = _balanced(CSS, CSS.index("{", CSS.index(".tab::after")))
+    assert "height: 2px" in accent and "background: var(--ink)" in accent
+
+
+def test_a_resting_tab_reads_as_something_you_can_press():
+    """처음 쓰는 사람은 누를 수 있는지 알아야 한다."""
+    rest = _balanced(CSS, CSS.index("{", CSS.index("\n.tab {")))
+    assert "cursor: pointer" in rest
+    border = re.search(r"border:\s*([^;]+);", rest)
+    assert border and border.group(1).strip() not in ("0", "none"), "쉬는 탭에 테두리가 없다"
+    bg = re.search(r"background(?:-color)?:\s*([^;]+);", rest)
+    assert bg and bg.group(1).strip() not in ("none", "transparent"), "쉬는 탭이 바탕 없이 글자만이다"
+    assert ".tab:focus-visible" in CSS
+    assert ':not([aria-selected="true"]):hover' in CSS, "hover 반응이 없다"
+    assert ':not([aria-selected="true"]):active' in CSS, "누름 반응이 없다"
+    # 활성 탭은 아래 패널과 같은 면이 되어 이어 붙는다
+    on = _balanced(CSS, CSS.index("{", CSS.index('.tab[aria-selected="true"] {')))
+    assert "background: var(--sheet)" in on and "border-bottom-color: var(--sheet)" in on
 
 
 def test_switching_a_tab_only_hides_and_shows():
@@ -762,12 +814,78 @@ def test_reduced_motion_drops_the_panel_change():
     assert re.search(r"transition-duration:\s*0ms\s*!important", forced), "force-reduced"
 
 
+def test_a_list_item_that_wraps_keeps_its_second_half():
+    """항목 다음 줄로 이어지는 추천이 목록을 닫아 별도 문단으로 떨어지면
+    그 문단은 추천 수집에서 버려진다 — 원문만 남고 추천이 사라진다."""
+    block = JS.split("function renderReport(")[1].split("\n  function ")[0]
+    parser = block.split("var html")[0]
+    assert re.search(r"items\[items\.length - 1\]\s*\+=", parser), "이어짐 줄을 안 잇는다"
+    # 목록이 열려 있을 때는 닫지 않는다
+    assert "} else if (items && items.length) {" in parser, "이어짐 줄에서 목록을 닫는다"
+    # 그래도 문단으로 온 고쳐 쓸 문장은 버리지 않는다
+    assert re.search(r'type === "p" && blocks\[n\]\.text\.indexOf\("→"\)', block), (
+        "화살표가 있는 문단을 버린다")
+
+
+def test_every_recommendation_carries_both_halves():
+    """원문과 고쳐 쓸 문장 두 쪽이 다 있어야 옮겨 적을 수 있다."""
+    block = JS.split("function fixLine(")[1].split("\n  }")[0]
+    assert 'class="fix-was"' in block and 'class="fix-now"' in block
+    # 화살표가 없으면 원문을 추천 자리에 그리게 되므로 그 경로를 분명히 둔다
+    assert 'at < 0' in block, "화살표가 없을 때의 경로가 없다"
+    # 두 이름은 공유 규칙에도 나오므로 해당 선택자를 가진 규칙을 모아서 본다
+    def rules_for(name: str) -> str:
+        return "".join(b for sel, b in _rules(CSS) if name in sel)
+
+    was, now = rules_for(".fix-was"), rules_for(".fix-now")
+    assert "var(--muted)" in was, "원문이 물러나지 않는다"
+    assert "var(--f-serif)" in now and "var(--ink)" in now, "대안이 본문 세리프·잉크가 아니다"
+    # 매달린 들여쓰기는 상속돼 이름표를 카드 밖으로 끌어낸다
+    assert "text-indent" not in was + now, "이름표가 카드 밖으로 나간다"
+    # 이 절의 색은 딥 틸이다 — 판정색을 빌리지 않는다
+    panel = CSS[CSS.index("/* --- 추천 수정안 패널"):CSS.index("/* --- 단계 1~3")]
+    for borrowed in ("--v-unsupported", "--v-overstated", "--v-supported", "--rebut-line"):
+        assert borrowed not in panel, f"추천 절이 판정색을 빌렸다: {borrowed}"
+    assert "--fix-tint" in panel and "--fix-label" in panel
+
+
 def test_the_recommendations_live_in_one_place():
     """같은 글이 최종 보고와 탭 양쪽에 있으면 안 된다."""
     block = JS.split("function renderReport(")[1].split("\n  function ")[0]
     assert "fixbox" not in JS, "최종 보고가 추천 절을 아직 그린다"
     assert "return { report: html, fixes: fixes };" in block
     assert "paintFixes" in JS and "#fix-list" in JS
+
+
+def test_the_sentence_rows_arrive_in_order_within_a_bounded_window():
+    """문장이 한꺼번에 쌓이면 툭 끊긴다. 행이 많아도 마지막이 늦지 않아야 한다."""
+    step = int(re.search(r"var ROW_STEP_MS = (\d+);", JS).group(1))
+    window = int(re.search(r"var ROW_WINDOW_MS = (\d+);", JS).group(1))
+    assert step <= 40, "행 간격이 카드만큼 느리다"
+    assert window <= 400, "창이 길면 마지막 행이 읽을 사람보다 늦는다"
+    for count in (1, 5, 23, 80):
+        gap = min(step, window / (count - 1)) if count > 1 else 0
+        assert round(gap * (count - 1)) <= window, count
+    block = JS.split("function ensureRows(")[1].split("\n  }")[0]
+    assert "ROW_STEP_MS" in block and "fireOnce" in block
+
+
+def test_the_run_never_takes_the_tab_at_the_end():
+    """종결에서 패널을 숨기면 돌던 여백 부호가 끊긴다. 결과는 위 띠가 이미 말한다."""
+    block = JS.split("function goToStage(")[1].split("\n  }")[0]
+    assert "stage >= 5" in block and "return" in block, "종결에서도 탭을 옮긴다"
+    stages = JS.split("function tabForStage(")[1].split("\n  }")[0]
+    assert "3" not in stages, "종결 탭으로 자동 전환한다"
+
+
+def test_the_follow_button_is_gone():
+    """탭이 생기면서 존재 이유가 사라졌다 — 보고 싶은 탭을 그냥 누르면 된다."""
+    for name, text in (("index", INDEX), ("css", CSS), ("js", JS)):
+        assert "follow-run" not in text, f"{name} 에 따라가기 버튼이 남아 있다"
+        assert "진행 따라가기" not in text, name
+    # 자동 전환을 멈추는 동작 자체는 남는다
+    block = JS.split("function detach(")[1].split("\n  }")[0]
+    assert "state.following = false" in block
 
 
 def test_the_stage_rail_moves_tabs_not_the_scrollbar():
