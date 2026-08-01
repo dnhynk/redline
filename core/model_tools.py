@@ -848,17 +848,23 @@ async def update_verdict(
 async def record_omission(
     wrapper: RunContextWrapper[AuditContext],
     claim_id: str,
-    evidence_id: str,
+    evidence_id: str | None,
     summary: str,
 ) -> dict:
-    """축3 산출물 — 이 글이 언급하지 않은 반대·한정 문헌 하나를 기록한다.
+    """3단계(반박 찾기) 산출물 — 이 글이 언급하지 않은 반대·한정 문헌 하나를 기록한다.
 
     제목·URL·날짜·인용 수는 호스트가 원장에서 채운다. 너는 어느 자료가 무엇을
     반박하는지만 말한다.
 
+    **성실히 찾았는데 정말 없었으면 `evidence_id=null`로 그 결과를 기록하라.** 그것도
+    완주 조건을 만족시킨다 — 없는 반박을 지어낼 필요가 없다. 단, 그 클레임에
+    `stance="challenge"` 검색이 실제로 나가 돌아온 이력이 있어야 한다.
+
     Args:
-        evidence_id: 그 반대·한정 문헌의 evidence_id — 검색·페치 결과에 실려 온 id만 유효
-        summary: 이 문헌이 무엇을 반박하거나 한정하는가 한 문장
+        evidence_id: 그 반대·한정 문헌의 evidence_id — 그 클레임의 반증(challenge) 검색
+            결과에 실려 온 id만 유효하다. 찾았으나 없었으면 null
+        summary: 이 문헌이 무엇을 반박하거나 한정하는가 한 문장.
+            evidence_id가 null이면 무엇을 어떻게 찾았고 왜 없다고 판단했는가
     """
     ctx = wrapper.context
     if not ctx.charge_record():

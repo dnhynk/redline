@@ -163,13 +163,24 @@ class Claim(TypedDict):
 
 
 class Omission(TypedDict):
+    """3단계(반박 찾기)의 산출물 한 건.
+
+    `found=False`는 "성실히 찾았으나 반박·한정 문헌이 없었다"는 **결과**다. 그것을
+    표현할 수 없으면, 완주하려고 없는 반박을 지어내야 하는 구조가 된다 — 이 제품이
+    잡으려는 바로 그 오류를 제품 자신이 강요하는 꼴이다. 대신 값은 공짜가 아니다:
+    그 클레임에 반증 검색이 실제로 나가 돌아온 이력이 있어야 하고, `searched_queries`에
+    그 질의문이 남는다.
+    """
+
     claim_id: str
-    evidence_id: str
+    evidence_id: str | None   # found=False 면 None — 가리킬 자료가 없는 것이 결과다
+    found: bool
     title: str
     url: str
     date: str | None
     citation_count: int | None
     summary: str
+    searched_queries: list[str]   # "찾았다"의 증거 — 이 클레임에 나간 반증 질의문
 
 
 class EvidenceRecord(TypedDict):
@@ -1303,7 +1314,26 @@ class Audit:
             },
         }
 
-    def record_omission(self, *, claim_id: str, evidence_id: str, summary: str) -> dict:
+    def completed_challenge_queries(self, claim_id: str) -> list[str]:
+        """그 클레임에 나가서 **끝까지 돌아온** 반증 검색의 질의문.
+
+        "찾았으나 없었다"를 기록할 자격의 근거다. 실패한 호출(네트워크 오류·차단)은 빼고
+        센다 — 못 쏜 것과 쏴서 아무것도 없던 것은 다른 사건이다. 결과 0건은 포함한다:
+        후보를 하나도 못 물어 온 것도 찾아본 것이다.
+        """
+        out: list[str] = []
+        for e in self.searches:
+            if e["stance"] != "challenge" or e["claim_id"] != claim_id:
+                continue
+            if e.get("ok") is not True:
+                continue
+            if e["query"] not in out:
+                out.append(e["query"])
+        return out
+
+    def record_omission(
+        self, *, claim_id: str, evidence_id: str | None, summary: str
+    ) -> dict:
         claim = self.get_claim(claim_id)
         if claim is None:
             return _fail(
@@ -1327,6 +1357,8 @@ class Audit:
                 "summary가 비어 있다 — 이 문헌이 무엇을 반박하거나 한정하는지 한 문장으로 적어라. "
                 "그 문장이 반박 패널에 그대로 표시된다."
             )
+        if not (evidence_id or "").strip():
+            return self._record_nothing_found(claim_id, summary)
         known, unknown = self._resolve_evidence([evidence_id])
         if unknown or not known:
             return _fail(
@@ -1366,12 +1398,16 @@ class Audit:
         omission: Omission = {
             "claim_id": claim_id,
             "evidence_id": eid,
+            "found": True,
             "title": rec["title"],
             "url": rec["url"],
             "date": extra.get("date"),
             "citation_count": extra.get("citation_count"),
             "summary": summary,
+            "searched_queries": self.completed_challenge_queries(claim_id),
         }
+        # "찾았으나 없었다"를 적어 둔 뒤 실제로 찾았으면, 뒤에 온 것이 진실이다.
+        replaced = self._drop_nothing_found(claim_id)
         self.omissions.append(omission)
         return {
             "ok": True,
@@ -1384,7 +1420,83 @@ class Audit:
                 # 확증 검색이 데려온 자료는 위에서 거부된다.
                 "evidence_stance": rec["stance"],
                 "stance_mismatch": False,
+                "warning": (
+                    f"{claim_id}에 적어 둔 '반박 없음' 기록을 이 문헌으로 교체했다."
+                    if replaced
+                    else None
+                ),
+            },
+        }
+
+    def _drop_nothing_found(self, claim_id: str) -> bool:
+        before = len(self.omissions)
+        self.omissions = [
+            o for o in self.omissions if not (o["claim_id"] == claim_id and not o["found"])
+        ]
+        return len(self.omissions) != before
+
+    def _record_nothing_found(self, claim_id: str, summary: str) -> dict:
+        """"성실히 찾았으나 반박이 없었다"를 기록한다.
+
+        완주 조건을 만족시키되 공짜는 아니다 — 그 클레임에 반증 검색이 실제로 나가
+        돌아온 이력이 조건이고, 그 질의문이 기록에 함께 남는다. 이 조건이 없으면
+        아무것도 하지 않은 런이 "찾아봤지만 없었다"로 완주한다.
+        """
+        queries = self.completed_challenge_queries(claim_id)
+        if not queries:
+            return _fail(
+                f"{claim_id}에 반증(challenge) 검색이 나가 돌아온 이력이 없다 — "
+                "'찾았으나 없었다'는 찾아본 뒤에만 성립한다. 반박·한정 자료를 겨냥한 질의로 "
+                f"stance=\"challenge\" 검색을 {claim_id}에 먼저 쏴라 "
+                "(limitations · contrary · no effect · systematic review 류).",
+                challenge_queries=[],
+                dispatched_challenge_queries=[
+                    e["query"]
+                    for e in self.searches
+                    if e["claim_id"] == claim_id and e["stance"] == "challenge"
+                ],
+            )
+        existing = [o for o in self.omissions if o["claim_id"] == claim_id]
+        if any(o["found"] for o in existing):
+            return _fail(
+                f"{claim_id}에는 이미 반박 문헌이 등록돼 있다 — 같은 클레임에 "
+                "'반박을 찾았다'와 '반박이 없었다'를 함께 적을 수 없다.",
+                existing=[o for o in existing if o["found"]],
+            )
+        if existing:
+            return _fail(
+                f"{claim_id}의 '반박 없음'은 이미 기록돼 있다 — 같은 결과를 다시 세지 않는다.",
+                existing=existing,
+                omission_count=len(self.omissions),
+            )
+        omission: Omission = {
+            "claim_id": claim_id,
+            "evidence_id": None,
+            "found": False,
+            "title": "",
+            "url": "",
+            "date": None,
+            "citation_count": None,
+            "summary": summary,
+            "searched_queries": queries,
+        }
+        self.omissions.append(omission)
+        return {
+            "ok": True,
+            "error": None,
+            "data": {
+                "recorded": True,
+                "omission": omission,
+                "omission_count": len(self.omissions),
+                "found": False,
+                "searched_queries": queries,
+                "evidence_stance": None,
+                "stance_mismatch": False,
                 "warning": None,
+                "next_action": (
+                    "반박·한정 문헌을 찾지 못했다고 기록했다. 나중에 실제로 찾으면 그 "
+                    "evidence_id로 다시 호출하라 — 이 기록이 그것으로 교체된다."
+                ),
             },
         }
 
@@ -1610,7 +1722,11 @@ class Audit:
         ids: set[str] = set()
         for r in claim["axis_results"]:
             ids.update(r["evidence_ids"])
-        ids.update(o["evidence_id"] for o in self.omissions if o["claim_id"] == claim["id"])
+        ids.update(
+            o["evidence_id"]
+            for o in self.omissions
+            if o["claim_id"] == claim["id"] and o["evidence_id"]
+        )
         return ids
 
     def fetched_evidence_count(self, claim: Claim) -> int:
@@ -1622,7 +1738,7 @@ class Audit:
         )
 
     def _cited_evidence_ids(self) -> set[str]:
-        ids = {o["evidence_id"] for o in self.omissions}
+        ids = {o["evidence_id"] for o in self.omissions if o["evidence_id"]}
         for c in self.claims:
             for r in c["axis_results"]:
                 ids.update(r["evidence_ids"])

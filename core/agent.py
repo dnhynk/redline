@@ -171,7 +171,11 @@ def fallback_report(
         lines.append("")
         lines.append("### 이 글에 대한 반박")
         for o in audit.omissions:
-            lines.append(f"- {o['title'] or o['url']} — {o['summary']}")
+            if o.get("found", True):
+                lines.append(f"- {o['title'] or o['url']} — {o['summary']}")
+            else:
+                # 찾았는데 없었던 것과 안 찾은 것은 다르다. 빈 줄로 지나가면 그 차이가 사라진다.
+                lines.append(f"- {o['claim_id']}: 반박·한정 문헌을 찾지 못했다 — {o['summary']}")
     for note in completion.get("notes") or []:
         # 상한에 걸려 못 본 문장 같은 사실은 완주 런에도 남아야 한다 — 사유가 `complete`라고
         # 해서 안 본 것이 없어지지는 않는다.

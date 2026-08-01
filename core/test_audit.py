@@ -879,6 +879,57 @@ def test_another_claims_evidence_cannot_close_this_claim():
     )["ok"] is True
 
 
+def test_searched_but_found_nothing_is_recordable_and_completes_the_run():
+    """성실히 찾았는데 정말 없었던 런이 거짓말을 하도록 강요당하면 안 된다.
+
+    반박 카드를 하나는 만들어야 완주하는 구조에서는, 없는 반박을 지어내는 것이
+    유일한 완주 경로가 된다 — 이 제품이 잡으려는 바로 그 오류를 제품이 강요한다.
+    """
+    audit = _audit_one_of_four()
+    audit.omissions.clear()
+    out = audit.record_omission(
+        claim_id="C1", evidence_id=None, summary="반증 질의 두 방향으로 찾았으나 반박 문헌이 없었다"
+    )
+    assert out["ok"] is True
+    omission = out["data"]["omission"]
+    assert omission["found"] is False and omission["evidence_id"] is None
+    assert omission["searched_queries"] == ["재택근무 생산성 한계 반박"]
+    _cover_rest(audit)
+    assert audit.completion_report()["complete"] is True
+
+
+def test_found_nothing_needs_a_challenge_search_that_actually_ran():
+    """'찾았으나 없었다'는 찾아본 뒤에만 성립한다 — 아무것도 안 한 런의 완주 경로가 되면 안 된다."""
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    out = audit.record_omission(claim_id="C1", evidence_id=None, summary="없었다")
+    assert out["ok"] is False and "돌아온 이력이 없다" in out["error"]
+
+    # 쐈지만 실패한 호출은 찾아본 것이 아니다.
+    _challenge(audit, "커피 각성 반박", claim_id="C1", ok=False, results=0)
+    assert audit.record_omission(claim_id="C1", evidence_id=None, summary="없었다")["ok"] is False
+
+    # 결과 0건은 찾아본 것이다 — 후보를 못 물어 온 것과 못 쏜 것은 다르다.
+    _challenge(audit, "커피 각성 한계 연구", claim_id="C1", ok=True, results=0)
+    assert audit.record_omission(claim_id="C1", evidence_id=None, summary="없었다")["ok"] is True
+
+
+def test_finding_a_rebuttal_later_replaces_the_nothing_found_record():
+    """뒤에 온 것이 진실이다 — 같은 클레임에 '찾았다'와 '없었다'가 함께 남으면 안 된다."""
+    audit = _audit_one_of_four()
+    audit.omissions.clear()
+    audit.record_omission(claim_id="C1", evidence_id=None, summary="없었다")
+    out = audit.record_omission(
+        claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다"
+    )
+    assert out["ok"] is True
+    assert [o["found"] for o in audit.omissions] == [True]
+    assert "교체했다" in out["data"]["warning"]
+    # 반대 방향은 막는다 — 찾아 놓고 없었다고 적을 수는 없다.
+    back = audit.record_omission(claim_id="C1", evidence_id=None, summary="역시 없었다")
+    assert back["ok"] is False and "이미 반박 문헌이 등록" in back["error"]
+
+
 def test_axis3_cannot_be_closed_with_support_direction_evidence():
     """3단계는 "반대·한정 자료를 찾아봤다"는 사건이다 — 확증 자료로는 그 사건이 성립하지 않는다."""
     audit = _audit_two_sentences()

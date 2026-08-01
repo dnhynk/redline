@@ -88,6 +88,18 @@ def ledger_from(events: list[dict]) -> list[dict]:
     return entries
 
 
+def challenge_queries_for(claim_id: str, events: list[dict]) -> list[str]:
+    """그 클레임에 나가 돌아온 반증 질의문 — "찾아봤다"의 증거로 반박 기록에 함께 남는다."""
+    seen: list[str] = []
+    for row in ledger_from(events):
+        if row["claim_id"] != claim_id or row["stance"] != "challenge":
+            continue
+        if row["result_status"] != "ok" or row["query"] in seen:
+            continue
+        seen.append(row["query"])
+    return seen
+
+
 # --------------------------------------------------------------------------
 # raw 조각 — OpenAI Responses 스트림 모양
 # --------------------------------------------------------------------------
@@ -798,9 +810,11 @@ def build_complete() -> list[dict]:
         _, call_id = raw.call("record_omission",
                               {"claim_id": claim_id, "evidence_id": evidence_id, "summary": summary}, t)
         rec = by_id(evidence_id)
-        omissions_so_far.append({"claim_id": claim_id, "evidence_id": evidence_id, "title": rec["title"],
+        omissions_so_far.append({"claim_id": claim_id, "evidence_id": evidence_id, "found": True,
+                                 "title": rec["title"],
                                  "url": rec["url"], "date": rec["extra"].get("date"),
-                                 "citation_count": rec["extra"].get("citation_count"), "summary": summary})
+                                 "citation_count": rec["extra"].get("citation_count"), "summary": summary,
+                                 "searched_queries": challenge_queries_for(claim_id, out)})
         raw.output("record_omission", call_id,
                    {"ok": True, "data": {"recorded": True, "omission_count": len(omissions_so_far)},
                     "error": None, "budget": budget(t, calls, 5, 3)}, t + 0.45)
@@ -947,9 +961,11 @@ def build_incomplete() -> list[dict]:
     applied = {"C1": 3, "C2": 1, "C3": 2, "C4": 2, "C5": 0}
     claims = build_claims(applied)
     rec = by_id(OMISSIONS[0][1])
-    omissions = [{"claim_id": OMISSIONS[0][0], "evidence_id": OMISSIONS[0][1], "title": rec["title"],
+    omissions = [{"claim_id": OMISSIONS[0][0], "evidence_id": OMISSIONS[0][1], "found": True,
+                  "title": rec["title"],
                   "url": rec["url"], "date": rec["extra"].get("date"),
-                  "citation_count": rec["extra"].get("citation_count"), "summary": OMISSIONS[0][2]}]
+                  "citation_count": rec["extra"].get("citation_count"), "summary": OMISSIONS[0][2],
+                  "searched_queries": challenge_queries_for(OMISSIONS[0][0], out)}]
     audit = audit_payload(claims=claims, omissions=omissions, status_value="partial", evidence_total=44,
                           searches=ledger_from(out))
     out.append(ev("audit", audit, t + 0.3))
