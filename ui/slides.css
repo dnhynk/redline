@@ -193,23 +193,25 @@ h2 {
 
 .slide-title {
   justify-content: space-between;
-  padding-top: calc(11 * var(--u));
-  padding-bottom: calc(7 * var(--u));
+  padding-top: calc(4.3 * var(--u));
+  padding-bottom: calc(5.5 * var(--u));
 }
+/* 워드마크 덩어리는 판 가운데에 앉고 서명이 바닥을 잡는다. 남는 자리가
+   한 곳에 몰리면 아래가 비어 보인다 — 위아래로 나눠 준다. */
 .stack {
   display: flex;
   flex-direction: column;
   gap: calc(3.4 * var(--u));
-  margin-top: auto;
+  margin: auto 0;
 }
 .wordmark {
   display: flex;
   align-items: center;
   font-family: var(--f-sans);
-  font-size: calc(11 * var(--u));
+  font-size: calc(13 * var(--u));
   font-weight: 900;
   line-height: 1;
-  letter-spacing: calc(-0.055 * var(--u) * 11);
+  letter-spacing: calc(-0.055 * var(--u) * 13);
 }
 /* 제품 상단 바의 워드마크와 같다 — 뒷말이 빨강이다 */
 .wm-b {
@@ -219,7 +221,7 @@ h2 {
    판정 부호라서, 판정이 아닌 것에 그으면 제품의 어휘와 싸운다. */
 .lede {
   font-family: var(--f-serif);
-  font-size: calc(3.15 * var(--u));
+  font-size: calc(3.55 * var(--u));
   line-height: 1.45;
   max-width: 46ch;
   color: var(--muted);
@@ -263,7 +265,7 @@ h2 {
 .ways {
   display: flex;
   flex-direction: column;
-  gap: calc(1.45 * var(--u));
+  gap: calc(2.5 * var(--u));
 }
 .ways li {
   padding-left: calc(1.7 * var(--u));
@@ -274,7 +276,7 @@ h2 {
   align-items: baseline;
   gap: calc(1.3 * var(--u));
   font-family: var(--f-serif);
-  font-size: calc(2.45 * var(--u));
+  font-size: calc(2.9 * var(--u));
   font-weight: 700;
   line-height: 1.3;
 }
@@ -286,10 +288,10 @@ h2 {
   color: var(--muted);
 }
 .way-a {
-  padding-top: calc(0.45 * var(--u));
+  padding-top: calc(0.6 * var(--u));
   padding-left: calc(3.05 * var(--u));
   font-family: var(--f-serif);
-  font-size: calc(2.05 * var(--u));
+  font-size: calc(2.3 * var(--u));
   line-height: 1.4;
   color: var(--muted);
 }
