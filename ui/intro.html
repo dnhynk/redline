@@ -1,4 +1,13 @@
 <!doctype html>
+<!--
+  ★ 서버로 열어라. 파일을 더블클릭하면(file://) 아래 app.css 링크가 절대 경로라 통째로 안 붙는다.
+    증상: 글자가 전부 검정, 밑줄이 안 그어짐, 배경만 멀쩡(폴백이 있어서 고장으로 안 보인다).
+
+        python server.py --profile demo
+        http://127.0.0.1:8486/ui/intro.html
+
+  조작: Space·→ 다음 장면 / ←·Backspace 이전 / R 현재 장면 재생 / 1·2 장면 직접 선택
+-->
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
@@ -180,7 +189,7 @@
       <div class="sheet-caption">AI가 쓴 글</div>
       <div class="line-row">
         <div class="line-text">
-          <span class="type" style="--type-at:250ms; --type-dur:1000ms; --type-steps:20">간헐적 단식이 노화를</span>
+          <span class="type" style="--type-at:250ms; --type-dur:1000ms; --type-steps:20">간헐적 단식이 노화를 되돌린다는 것은</span>
           <span class="type" style="--type-at:1300ms; --type-dur:850ms; --type-steps:16"><span class="claim-mark draw" data-mark="unsupported">임상시험으로 이미 입증됐습니다</span></span>
         </div>
         <div class="verdict-cell">
