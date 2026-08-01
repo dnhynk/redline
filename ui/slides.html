@@ -28,7 +28,7 @@
   <ol class="ways">
     <li>
       <p class="way-q"><span class="way-n">1</span>AI에게 다시 물어본다</p>
-      <p class="way-a">환각과 가짜 인용을 잡으려고, 환각과 가짜 인용을 내는 것에게 <b>맡긴다?</b></p>
+      <p class="way-a">환각과 가짜 인용을 잡으려고, <b>환각과 가짜 인용을 내는 것에게 맡긴다?</b></p>
     </li>
     <li>
       <p class="way-q"><span class="way-n">2</span>검색을 붙여 다시 물어본다</p>
@@ -84,25 +84,13 @@
   <h2>지시<span class="en">prompt</span>가 아니라 구조<span class="en">harness</span>로 강제한다</h2>
   <p class="rule-note">프롬프트는 부탁이다. 호스트는 <b>거부</b>한다.</p>
 
-  <ol class="rules">
-    <li>
-      <p class="r-do"><span class="r-n">1</span>첫 호출은 검색이 아니라 분류다</p>
-      <p class="r-else">검색부터 하면 <b>거부된다</b> — 무엇을 감사할지 정하기 전에 찾지 않는다</p>
-    </li>
-    <li>
-      <p class="r-do"><span class="r-n">2</span>검색할 때마다 무엇을 찾는 중인지 밝혀야 한다</p>
-      <p class="r-else">이 검색이 <b>뒷받침을 찾는 것</b>인지 <b>반박을 찾는 것</b>인지 함께 보낸다.
-        그래야 호스트가 셀 수 있고, 반박 쪽으로 나간 검색이 없으면 완주로 인정하지 않는다 —
-        자기 말에 유리한 자료만 모으고 끝내는 길을 막는다. 실측 뒷받침:반박 3:3 · 4:4 · 14:14</p>
-    </li>
-    <li>
-      <p class="r-do"><span class="r-n">3</span>판정에는 증거 번호를 달아야 한다</p>
-      <p class="r-else">번호는 검색이 <b>실제로 무언가를 데려왔을 때만</b> 호스트가 발급한다.
-        모델이 출처를 지어내도 달 번호가 없어서, 그 판정은 <b>기록되지 못한다</b> —
-        환각이 들어앉을 자리를 코드가 없앤 것이다</p>
-    </li>
+  <ol class="rules is-brief">
+    <li><p class="r-do"><span class="r-n">1</span>첫 호출은 검색이 아니라 분류다</p></li>
+    <li><p class="r-do"><span class="r-n">2</span>검색할 때마다 무엇을 찾는 중인지 밝혀야 한다</p></li>
+    <li><p class="r-do"><span class="r-n">3</span>판정에는 실제로 받은 증거 번호가 붙는다</p></li>
   </ol>
 
+  <p class="kicker">셋 다 어기면 <b>기록이 거부된다.</b> 환각이 들어앉을 자리를 코드가 없앤 것이다.</p>
 </section>
 
 <!-- 5 ------------------------------------------------------------------ -->
