@@ -32,6 +32,12 @@
   var STANCE_LABEL = { support: "뒷받침", challenge: "반박" };
   var STANCE_SEARCH = { support: "뒷받침 검색", challenge: "반박 검색" };
   var DEFAULT_TOOL_MAX = 30;
+  // 한꺼번에 도착한 반박 카드를 차례로 드러내는 간격과, 그 전체 창의 상한.
+  // 창을 360ms 로 묶은 것은 카드 자체가 240ms 라, 첫 장이 앉을 무렵 마지막 장이
+  // 출발해 물결 하나로 읽히는 지점이기 때문이다. 어떤 장수에서도 마지막 카드가
+  // 0.6초 안에 다 뜬다.
+  var CARD_STEP_MS = 120;
+  var CARD_WINDOW_MS = 360;
   var MARKED = { supported: 1, unsupported: 1, overstated: 1, no_source: 1, undecidable: 1 };
   var STRUCTURAL_KINDS = { heading: 1, table_header: 1, code_fence: 1, divider: 1 };
   var NETWORK_TOOLS = { search_web: 1, search_scholar: 1, fetch_source: 1 };
@@ -218,6 +224,9 @@
         var cls = node.dataset.anim;
         node.classList.remove(cls);
         delete node.dataset.anim;
+        // 차례로 드러내려고 걸어 둔 지연은 그 한 번에만 쓴다 — 다시 뜰 때
+        // 지난번 지연을 물려받으면 이유 없이 늦게 나타난다.
+        if (node.style.animationDelay) node.style.animationDelay = "";
         var queued = node.dataset.animQueue;
         if (queued) {
           delete node.dataset.animQueue;
@@ -994,12 +1003,21 @@
       return;
     }
     $("#omissions-empty").hidden = true;
+    var fresh = [];
     for (var i = 0; i < list.length; i++) {
       var om = list[i];
       var key = om.claim_id + "/" + om.evidence_id;
       if (host.querySelector('[data-key="' + CSS.escape(key) + '"]')) continue;
-      var card = buildOmission(om, key, evidence);
+      fresh.push(buildOmission(om, key, evidence));
+    }
+    // 한꺼번에 온 카드만 차례로 드러낸다. 하나씩 도착하는 런에서는 지연이 0 이라
+    // 아무것도 늦어지지 않는다. 장수가 많으면 간격을 좁혀 창을 넘기지 않는다 —
+    // 아홉 장에 120ms 씩이면 마지막이 1초 뒤고, 그때는 이미 볼 사람이 읽고 있다.
+    var step = fresh.length > 1 ? Math.min(CARD_STEP_MS, CARD_WINDOW_MS / (fresh.length - 1)) : 0;
+    for (var n = 0; n < fresh.length; n++) {
+      var card = fresh[n];
       host.appendChild(card); // 붙인 뒤에 정착 — 문서 밖에서는 애니메이션이 시작되지 않는다
+      if (step) card.style.animationDelay = Math.round(n * step) + "ms";
       fireOnce(card, "arrive");
     }
   }

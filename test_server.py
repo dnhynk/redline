@@ -630,6 +630,33 @@ def test_live_lists_are_never_rebuilt_wholesale():
 def test_one_shot_animation_classes_are_removed_when_they_finish():
     assert 'node.classList.remove(cls)' in JS
     assert '"animationend"' in JS
+    # 차례로 드러내려고 건 지연은 그 한 번에만 쓴다
+    assert 'node.style.animationDelay = ""' in JS, "지연이 다음 등장까지 남는다"
+
+
+def test_the_card_stagger_is_batch_local_and_capped():
+    """한꺼번에 온 카드만 차례로 드러낸다. 창은 묶여 있고 상호작용은 막지 않는다."""
+    step = int(re.search(r"var CARD_STEP_MS = (\d+);", JS).group(1))
+    window = int(re.search(r"var CARD_WINDOW_MS = (\d+);", JS).group(1))
+    assert step == 120
+    assert window <= 400, "창이 길면 마지막 카드가 읽을 사람보다 늦는다"
+
+    block = JS.split("function paintOmissions(")[1].split("\n  }")[0]
+    # 이번에 새로 온 것만 센다 — 하나씩 오는 런에서는 지연이 0 이다
+    assert "fresh.length > 1" in block, "한 장뿐인데도 지연을 건다"
+    assert "Math.min(CARD_STEP_MS, CARD_WINDOW_MS" in block, "장수가 많을 때 창 상한이 없다"
+    # 어떤 장수에서도 마지막 카드는 창 안에서 출발한다
+    for count in (1, 2, 3, 5, 9, 24):
+        gap = min(step, window / (count - 1)) if count > 1 else 0
+        assert round(gap * (count - 1)) <= window, count
+    assert "pointer-events: none" not in CSS.split(".rebut-card")[1][:400], "지연 중 클릭을 막는다"
+
+
+def test_reduced_motion_zeroes_the_stagger():
+    """지연은 인라인 스타일로 걸린다 — 규칙이 !important 로 이겨야 0 이 된다."""
+    media, forced = _reduced_blocks()
+    for path, block in (("media", media), ("force-reduced", forced)):
+        assert re.search(r"animation-delay:\s*0ms\s*!important", block), f"{path}: 지연을 0 으로 안 만든다"
 
 
 def test_structural_kinds_match_the_contract():
