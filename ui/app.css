@@ -646,6 +646,32 @@ a {
 .status-band[data-outcome="error"] .sb-fill {
   background: var(--v-no_source-line);
 }
+/* 왜 여기서 끝났는가. 잘 끝난 런에서는 회색 한 줄이라 경고로 읽히지 않고,
+   중단·부분 감사에서는 색과 굵기가 서서 지나칠 수 없다. 탭 뒤에 숨기지 않는다. */
+.sb-why {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hair);
+}
+.sb-reason {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.status-band[data-outcome="partial"] .sb-why,
+.status-band[data-outcome="error"] .sb-why {
+  border-top-color: var(--rule);
+}
+.status-band[data-outcome="partial"] .sb-reason,
+.status-band[data-outcome="error"] .sb-reason {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.status-band[data-outcome="error"] .sb-reason {
+  color: var(--v-unsupported-label);
+}
 .sb-meta {
   display: flex;
   align-items: baseline;
@@ -851,19 +877,21 @@ a {
   font-weight: 700;
   letter-spacing: -0.02em;
 }
+/* 여는 물건이라는 것이 마우스를 올리기 전에 보여야 한다. 줄 전체가 눌리는 면이고,
+   접힘·펼침은 부호가 아니라 동사로 적힌다 — 부호만 두었더니 아무도 못 봤다. */
 .panel-summary {
   margin: 18px 0 24px;
-  border-bottom: 1px solid var(--rule);
 }
 .panel-summary > summary {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  min-height: 42px;
-  padding: 10px 34px 10px 0;
-  position: relative;
+  min-height: 44px;
+  padding: 11px 16px;
   cursor: pointer;
   list-style: none;
+  background: var(--paper);
+  border: 1px solid var(--edge);
   font-size: 14px;
   font-weight: 700;
 }
@@ -872,28 +900,35 @@ a {
 }
 .panel-summary > summary::after {
   content: "+";
-  position: absolute;
-  right: 2px;
-  top: 8px;
   font-family: var(--f-mono);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
-  color: var(--rule);
+  color: var(--v-unsupported-line);
 }
 .panel-summary[open] > summary::after {
   content: "−";
-  color: var(--v-unsupported-line);
 }
-.panel-summary-hint {
-  font-family: var(--f-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--muted);
+.panel-summary > summary:focus-visible {
+  outline: 2px solid var(--v-unsupported-line);
+  outline-offset: 2px;
+}
+.ps-action {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--v-unsupported-label);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.panel-summary:not([open]) .ps-action[data-state="open"],
+.panel-summary[open] .ps-action[data-state="closed"] {
+  display: none;
 }
 .panel-summary-body {
-  padding: 18px 0 22px;
-  border-top: 1px solid var(--hair);
+  padding: 18px 16px 20px;
+  border: 1px solid var(--edge);
+  border-top: 0;
 }
 .panel-summary .report-facts {
   margin: 0 0 16px;
@@ -902,8 +937,8 @@ a {
   max-width: 78ch;
 }
 @media (hover: hover) and (pointer: fine) {
-  .panel-summary > summary:hover::after {
-    color: var(--v-unsupported-line);
+  .panel-summary > summary:hover {
+    background: var(--hair);
   }
 }
 .legend {
@@ -1626,16 +1661,8 @@ a {
   font-size: 18px;
 }
 
-/* --- 최종 보고 탭 --------------------------------------------------------- */
+/* --- 보고문 서식 ---------------------------------------------------------- */
 
-.terminal {
-  padding: 26px 34px 30px;
-}
-.report-sub {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
 /* 모델이 쓴 보고문 위에 호스트가 센 값을 둔다 — 어긋나면 이쪽이 정본이다 */
 .report-facts {
   display: flex;
@@ -1661,26 +1688,8 @@ a {
   font-size: 12px;
   color: var(--muted);
 }
-.report-empty {
-  padding: 22px 0 6px;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.terminal[data-outcome="non_auditable"] {
-  border-left-color: var(--rule);
-}
-[data-outcome="partial"] .terminal-note {
-  background: var(--v-overstated-label);
-}
-#terminal-reason {
-  margin-top: 8px;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--muted);
-}
 .error-detail {
-  margin-top: 14px;
+  margin-top: 12px;
   font-size: 13px;
   color: var(--muted);
 }
@@ -1704,8 +1713,8 @@ a {
 }
 
 #missing-actions {
-  margin-top: 14px;
-  font-size: 14px;
+  margin-top: 10px;
+  font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
 }

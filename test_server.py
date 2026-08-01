@@ -34,10 +34,10 @@ CONTRACT_STRUCTURAL_KINDS = {"heading", "table_header", "code_fence", "divider"}
 MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
     "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
-    "terminal-summary", "terminal-title", "terminal-reason", "missing-actions",
-    "final-report", "terminal-note", "error-detail", "source-banner", "intake",
+    "terminal-title", "terminal-reason", "missing-actions",
+    "terminal-note", "error-detail", "source-banner", "intake",
     "intake-process",
-    "status-band", "sb-gauge", "sb-fill",
+    "status-band", "sb-gauge", "sb-fill", "sb-why",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",
 ]
 RAW_IDS = ["raw-events", "pause-scroll", "connection-label", "source-banner"]
@@ -797,8 +797,8 @@ def test_model_markdown_uses_the_escaped_report_renderer():
 # 결과 탭 — 한 번에 하나만 보이고, 종결 수치는 탭 밖에 있다
 # --------------------------------------------------------------------------
 
-TAB_IDS = ["tab-sentences", "tab-rebut", "tab-fix", "tab-report"]
-PANEL_IDS = ["galley", "omissions-section", "fix-panel", "terminal-summary"]
+TAB_IDS = ["tab-sentences", "tab-rebut", "tab-fix"]
+PANEL_IDS = ["galley", "omissions-section", "fix-panel"]
 
 
 def test_the_tabs_carry_the_roles_a_screen_reader_needs():
@@ -826,7 +826,75 @@ def test_each_reading_panel_has_an_inline_report_summary_not_a_new_tab():
         'id="sentence-summary-report"')
     assert rebut_panel.index('id="rebut-summary-facts"') < rebut_panel.index(
         'id="rebut-summary-report"')
-    assert TAB_IDS == ["tab-sentences", "tab-rebut", "tab-fix", "tab-report"]
+    assert TAB_IDS == ["tab-sentences", "tab-rebut", "tab-fix"]
+
+
+def test_the_final_report_tab_is_gone_and_leaves_nothing_behind():
+    """탭은 셋이다. 죽은 id 를 가리키는 코드가 남으면 다음 사람이 그것을 믿는다."""
+    for dead in ("tab-report", "terminal-summary", "final-report", "report-empty",
+                 "report-facts"):
+        assert f'id="{dead}"' not in INDEX, dead
+        assert f'#{dead}"' not in JS and f"#{dead}'" not in JS, dead
+    assert INDEX.count('role="tab"') == 3
+    assert "STAGES" not in JS and "scrollToStage" not in JS, "죽은 스크롤 목적지가 남아 있다"
+    spec = JS.split("var TAB_SPEC = [")[1].split("];")[0]
+    assert spec.count("tab:") == 3
+    # 좌우 화살표가 도는 범위는 탭 수에서 나온다 — 넷 기준 상수가 남으면 안 된다
+    keys = JS.split('tablist.addEventListener("keydown"')[1].split("\n        });")[0]
+    assert "TAB_SPEC.length - 1" in keys
+
+
+def test_the_status_band_says_why_the_run_ended_there():
+    """왜 여기서 끝났는가는 탭 뒤에 숨을 수 없다 — 이 화면의 정직성이 걸린 자리다."""
+    band = INDEX.split('id="status-band"')[1].split("</section>")[0]
+    for node in ("terminal-reason", "error-detail", "missing-actions"):
+        assert f'id="{node}"' in band, node
+    assert band.index('id="sb-gauge"') < band.index('id="sb-why"'), "사유가 게이지 위에 있다"
+
+    # 잘 끝난 런에서는 회색 한 줄, 중단·부분 감사에서만 색과 굵기가 선다
+    quiet = re.search(r"\.sb-reason\s*\{([^}]*)\}", CSS).group(1)
+    assert "var(--muted)" in quiet, "정상 완주에서 사유가 경고처럼 보인다"
+    loud = CSS.split('.status-band[data-outcome="error"] .sb-reason')[-1].split("}")[0]
+    assert "var(--v-unsupported-label)" in loud, "중단 런에서 사유가 눈에 안 띈다"
+    shared = CSS.split('.status-band[data-outcome="partial"] .sb-reason')[1].split("}")[0]
+    assert "font-weight: 700" in shared, "부분 감사에서 사유가 평범한 글줄로 남는다"
+
+    block = JS.split("function paintTerminal(")[1].split("\n  }")[0]
+    assert 'why.hidden = !(reason || !$("#error-detail").hidden || missing.length)' in block
+
+
+def test_the_summary_toggle_says_in_words_whether_it_is_open():
+    """부호만 두었더니 아무도 못 봤다. 접힘·펼침이 서로 다른 낱말로 읽혀야 한다."""
+    for summary_id in ("sentence-summary", "rebut-summary"):
+        block = INDEX.split(f'id="{summary_id}"')[1].split("</summary>")[0]
+        closed = re.search(r'data-state="closed">([^<]+)<', block)
+        opened = re.search(r'data-state="open">([^<]+)<', block)
+        assert closed and opened, summary_id
+        assert closed.group(1).strip() != opened.group(1).strip(), (
+            f"{summary_id}: 두 상태의 이름표가 같은 말이다")
+        # 부호가 아니라 낱말이어야 한다
+        for label in (closed.group(1), opened.group(1)):
+            assert re.search(r"[가-힣]{2,}", label), f"{summary_id}: {label!r} 은 글자가 아니다"
+    assert "최종 보고 발췌" not in INDEX, "이제 발췌가 아니라 전문이다"
+    assert "panel-summary-hint" not in INDEX and "panel-summary-hint" not in CSS
+
+    # 한 상태의 이름표만 보인다
+    assert '.panel-summary:not([open]) .ps-action[data-state="open"]' in CSS
+    assert '.panel-summary[open] .ps-action[data-state="closed"]' in CSS
+
+
+def test_the_summary_toggle_looks_pressable_before_the_pointer_arrives():
+    """마우스를 올리기 전에 누를 수 있는 것으로 보여야 하고, 줄 전체가 눌려야 한다."""
+    rule = CSS.split(".panel-summary > summary {")[1].split("}")[0]
+    assert "cursor: pointer" in rule
+    assert "border: 1px solid" in rule, "테두리가 없어 그냥 글줄로 보인다"
+    assert "background:" in rule, "면이 없어 눌리는 것으로 안 보인다"
+    height = int(re.search(r"min-height:\s*(\d+)px", rule).group(1))
+    assert height >= 44, f"누르는 면이 글자 한 줄 수준이다: {height}px"
+    assert re.search(r"padding:\s*\d+px\s+\d+px", rule), "안쪽 여백이 없다"
+    # 키보드로 온 사람도 어디에 있는지 보여야 한다
+    focus = CSS.split(".panel-summary > summary:focus-visible {")[1].split("}")[0]
+    assert "outline:" in focus and "outline-offset:" in focus
 
 
 def test_a_summary_toggle_never_opens_an_empty_box():
@@ -839,14 +907,32 @@ def test_a_summary_toggle_never_opens_an_empty_box():
     assert 'host.textContent = ""' in block
 
 
-def test_report_sections_come_from_the_existing_renderer():
+def test_the_report_is_split_by_position_so_no_paragraph_falls_out():
+    """두 토글이 보고문의 유일한 자리다. 절 제목을 골라 담으면 제목 없는 글
+    (호스트 폴백 보고)에서 문단이 통째로 사라진다 — 문서 순서대로 남김없이 가른다."""
     report = JS.split("function renderReport(")[1].split("\n  function ")[0]
-    assert 'reportSection(blocks, "감사 결과"' in report
-    assert 'reportSection(blocks, "이 글에 대한 반박"' in report
+    assert "reportSection(" not in report, "절 제목으로 골라 담는 방식이 남아 있다"
+    assert 'blocks[r].text.trim() === "이 글에 대한 반박"' in report, "가르는 지점이 없다"
+    assert "rebutAt >= 0 && n > rebutAt" in report
+    assert "sentenceBlocks.push(blocks[n])" in report
+    assert "rebutBlocks.push(blocks[n])" in report
     assert "sentenceSummary: renderBlocks(sentenceBlocks)" in report
     assert "rebutSummary: renderBlocks(rebutBlocks)" in report
-    section = JS.split("function reportSection(")[1].split("\n  }")[0]
-    assert 'blocks[i].type === "h"' in section and "return []" in section
+
+    # 빼는 것은 패널이 이미 이름으로 달고 있는 절 제목 셋뿐이다
+    labels = JS.split("var SECTION_LABELS = {")[1].split("}")[0]
+    assert set(re.findall(r'"([^"]+)"', labels)) == {"감사 결과", "이 글에 대한 반박", "추천 수정안"}
+
+
+def test_every_report_block_lands_in_a_panel():
+    """어느 문단도 조용히 사라지지 않는다 — 안 한 것을 한 것처럼 보이지 않는 제품이
+    한 것을 안 한 것처럼 보이면 같은 실패다."""
+    report = JS.split("function renderReport(")[1].split("\n  function ")[0]
+    body = report.split("var html = \"\";")[1]
+    # 추천 절은 자기 탭으로 가고(continue), 그 밖의 블록은 예외 없이 둘 중 하나에 담긴다
+    assert body.count("continue;") == 1, "버리는 갈래가 하나뿐이 아니다"
+    assert re.search(r"if \(!isSectionLabel\(blocks\[n\]\)\) \{", body), body[:400]
+    assert "else sentenceBlocks.push(blocks[n]);" in body, "반박 앞 블록이 갈 곳이 없다"
 
 
 def test_panel_summaries_repeat_the_host_canonical_figures():
@@ -1150,10 +1236,11 @@ def test_an_unjudged_sentence_is_not_called_a_non_claim_on_a_thin_run():
 
 def test_the_host_count_stands_above_the_model_prose():
     """모델이 쓴 보고문은 수치를 잘못 적을 수 있다. 나란히 놓는 자리에서는
-    호스트가 센 값이 정본이다."""
-    assert 'id="report-facts"' in INDEX
-    assert INDEX.index('id="report-facts"') < INDEX.index('id="final-report"'), (
-        "호스트 수치가 보고문 아래에 있다")
+    호스트가 센 값이 정본이다 — 보고문이 실리는 곳마다 그 줄이 위에 있어야 한다."""
+    for panel, prefix in (("galley", "sentence"), ("omissions-section", "rebut")):
+        body = INDEX.split(f'id="{panel}"')[1].split("</section>")[0]
+        assert body.index(f'id="{prefix}-summary-facts"') < body.index(
+            f'id="{prefix}-summary-report"'), f"{prefix}: 호스트 수치가 보고문 아래에 있다"
     block = JS.split("function paintReportFactsAt(")[1].split("\n  }")[0]
     for field in ("unsupported_rate", "no_source_count", "coverage"):
         assert field in block, field
@@ -1170,7 +1257,7 @@ def test_the_scroll_destination_clears_the_sticky_layers():
     # 재고서 안 쓰면 재는 의미가 없다 — 돌려주는 값이 잰 높이여야 한다
     assert re.search(r"return\s+Math\.round\(height\)", block), "잰 높이를 안 돌려준다"
     assert "- 78" not in JS, "옛 고정 오프셋이 남아 있다"
-    assert JS.count("- stickyTop()") >= 2, "스크롤 목적지가 sticky 높이를 안 쓴다"
+    assert JS.count("- stickyTop()") >= 1, "스크롤 목적지가 sticky 높이를 안 쓴다"
     assert "--scroll-pad-run" in CSS and "html.is-running" in CSS
 
 

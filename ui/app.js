@@ -66,15 +66,6 @@
     [/반박 찾기은/g, "반박 찾기는"],
     [/반박 찾기이/g, "반박 찾기가"]
   ];
-  var STAGES = [
-    null,
-    { target: "#galley", peek: 0 },
-    { target: "#galley", peek: 0 },
-    { target: "#galley", peek: 0 },
-    { target: "#omissions-section", peek: 0 },
-    { target: "#terminal-summary", peek: 0 }
-  ];
-
   // ---------------------------------------------------------------- 잡동사니
 
   function $(sel) {
@@ -267,6 +258,7 @@
     tab: 0,
     fixCount: 0,
     reportParts: null,
+    reportSig: "",
     following: false,
     burstUntil: 0,
     rowSig: "",
@@ -431,6 +423,7 @@
     state.tab = 0;
     state.fixCount = 0;
     state.reportParts = null;
+    state.reportSig = "";
     state.rowSig = "";
     state.rows = [];
     state.pctSeen = {};
@@ -447,9 +440,10 @@
     if (isMain) {
       $("#sentences").textContent = "";
       $("#omissions").textContent = "";
-      $("#final-report").textContent = "";
-      delete $("#final-report").dataset.sig;
       $("#missing-actions").textContent = "";
+      delete $("#missing-actions").dataset.sig;
+      var why = $("#sb-why");
+      if (why) why.hidden = true;
       for (var s = 0; s < 2; s++) {
         var summary = $(s ? "#rebut-summary" : "#sentence-summary");
         if (!summary) continue;
@@ -1315,9 +1309,6 @@
   }
 
   function paintTerminal(status, map) {
-    var section = $("#terminal-summary");
-    // 보이고 숨기는 것은 탭이 맡는다 — 여기서는 내용만 채운다
-    section.setAttribute("data-outcome", map.outcome);
     var band = $("#status-band");
     if (band) band.setAttribute("data-outcome", map.outcome);
     setText($("#terminal-title"), map.title);
@@ -1341,29 +1332,20 @@
       list.textContent = "";
       for (var i = 0; i < missing.length; i++) list.appendChild(el("li", null, missing[i]));
     }
+    // 띠에 적을 것이 하나도 없으면 빈 칸을 열지 않는다
+    var why = $("#sb-why");
+    if (why) why.hidden = !(reason || !$("#error-detail").hidden || missing.length);
 
-
-    var report = $("#final-report");
     // 중단된 런의 최종 보고는 시작도 못 한 감사의 수치다 — 싣지 않는다.
     var md = status.reason === "error" ? "" : status.final_report || "";
-    if (report.dataset.sig !== md) {
-      report.dataset.sig = md;
+    if (state.reportSig !== md) {
+      state.reportSig = md;
       state.reportParts = md
         ? renderReport(md)
         : { report: "", fixes: [], sentenceSummary: "", rebutSummary: "" };
-      report.innerHTML = state.reportParts.report;
-      $("#report-empty").hidden = !!md;
       paintFixes(state.reportParts.fixes);
     }
-    paintReportFacts(status, !!md);
     paintPanelSummaries(status, state.reportParts);
-  }
-
-  // 아래 보고문은 모델이 쓴 글이라 수치를 잘못 적을 수 있다. 호스트가 센 값을
-  // 그 위에 나란히 두고, 어긋나면 이쪽이 정본이라고 화면이 말하게 한다.
-  function paintReportFacts(status, hasReport) {
-    var line = $("#report-facts");
-    paintReportFactsAt(line, status, hasReport);
   }
 
   function paintReportFactsAt(line, status, hasReport) {
@@ -1631,11 +1613,6 @@
     flushPara();
     flushItems();
 
-    // 패널 안 요약은 보고문을 다시 해석하지 않고, 이 파서가 만든 같은 블록에서
-    // 해당 절만 고른다. 절 제목을 못 찾으면 빈 문자열이라 토글 자체가 숨는다.
-    var sentenceBlocks = reportSection(blocks, "감사 결과", ["이 글에 대한 반박", "추천 수정안"]);
-    var rebutBlocks = reportSection(blocks, "이 글에 대한 반박", ["추천 수정안"]);
-
     // 추천 절은 최종 보고에서 떼어 자기 탭으로 보낸다 — 같은 글이 두 곳에 있으면 안 된다
     var fix = -1;
     for (var b = 0; b < blocks.length; b++) {
@@ -1654,8 +1631,23 @@
       }
     }
 
+    // 보고문에는 이제 이 두 토글 말고 실릴 자리가 없다. 그래서 절 제목을 찾아
+    // 고르지 않고 **문서 순서대로 남김없이 가른다** — 반박 제목 앞은 문장 쪽,
+    // 뒤는 반박 쪽. 호스트 폴백 보고처럼 "감사 결과" 제목이 아예 없는 글에서도
+    // 한 문단도 떨어져 나가지 않는다. 떨어져 나가면 안 한 것을 한 것처럼 보이는
+    // 것의 정반대 — 한 것을 안 한 것처럼 보이게 된다.
+    var rebutAt = -1;
+    for (var r = 0; r < blocks.length; r++) {
+      if (blocks[r].type === "h" && blocks[r].text.trim() === "이 글에 대한 반박") {
+        rebutAt = r;
+        break;
+      }
+    }
+
     var html = "";
     var fixes = [];
+    var sentenceBlocks = [];
+    var rebutBlocks = [];
     for (var n = 0; n < blocks.length; n++) {
       if (fix >= 0 && n >= fix && n < fixEnd) {
         if (blocks[n].type === "ul") fixes = fixes.concat(blocks[n].items);
@@ -1666,6 +1658,12 @@
         continue; // 제목과 안내문은 탭 라벨과 패널 설명이 대신한다
       }
       html += renderBlock(blocks[n], false);
+      // 절 제목 셋만 뺀다. 각각 그 글이 놓이는 패널이 이미 이름으로 달고 있어
+      // 두 번 읽히기 때문이고, 빼는 것은 이 셋뿐이다.
+      if (!isSectionLabel(blocks[n])) {
+        if (rebutAt >= 0 && n > rebutAt) rebutBlocks.push(blocks[n]);
+        else sentenceBlocks.push(blocks[n]);
+      }
     }
     return {
       report: html,
@@ -1675,27 +1673,10 @@
     };
   }
 
-  function reportSection(blocks, title, stopTitles) {
-    var start = -1;
-    var level = 4;
-    for (var i = 0; i < blocks.length; i++) {
-      if (blocks[i].type === "h" && blocks[i].text.trim() === title) {
-        start = i;
-        level = blocks[i].level;
-        break;
-      }
-    }
-    if (start < 0) return [];
-    var end = blocks.length;
-    for (var n = start + 1; n < blocks.length; n++) {
-      if (blocks[n].type !== "h") continue;
-      var namedStop = stopTitles.indexOf(blocks[n].text.trim()) >= 0;
-      if (namedStop || blocks[n].level < level) {
-        end = n;
-        break;
-      }
-    }
-    return blocks.slice(start + 1, end);
+  var SECTION_LABELS = { "감사 결과": 1, "이 글에 대한 반박": 1, "추천 수정안": 1 };
+
+  function isSectionLabel(block) {
+    return block.type === "h" && SECTION_LABELS[block.text.trim()] === 1;
   }
 
   function renderBlocks(blocks) {
@@ -1774,9 +1755,7 @@
   var TAB_SPEC = [
     { tab: "tab-sentences", panel: "galley", count: "count-sentences" },
     { tab: "tab-rebut", panel: "omissions-section", count: "count-rebut" },
-    { tab: "tab-fix", panel: "fix-panel", count: "count-fix" },
-    // 최종 보고는 셀 것이 없다 — 하나뿐인 글이라 건수를 붙이지 않는다
-    { tab: "tab-report", panel: "terminal-summary", count: null }
+    { tab: "tab-fix", panel: "fix-panel", count: "count-fix" }
   ];
 
   function tabIndexOf(node) {
@@ -1791,8 +1770,7 @@
       // 찾았으나 없었다는 기록은 반박이 아니다 — 탭 수는 실제로 찾아낸 반박만 센다.
       // 그 카드가 왜 거기 있는지는 카드 자신이 말한다.
       audit ? rebuttalsFound(audit).length : 0,
-      state.fixCount || 0,
-      state.done ? 1 : 0
+      state.fixCount || 0
     ];
     for (var i = 0; i < TAB_SPEC.length; i++) {
       var tab = $("#" + TAB_SPEC[i].tab);
@@ -1884,8 +1862,13 @@
   // 자동 따라가기가 탭을 옮긴다. 이탈한 사용자의 탭은 뺏지 않는다 —
   // 여기 오는 것은 state.following 이 참일 때뿐이다.
   function goToStage(stage) {
+    if (stage < 1) return;
     // 종결은 탭을 건드리지 않는다. 여기서 패널을 숨기면 돌던 여백 부호가 끊긴다.
-    if (stage < 1 || stage >= 5) return;
+    // 갈 곳은 상태 띠다 — 왜 여기서 끝났는가가 거기 적혀 있다.
+    if (stage >= 5) {
+      scrollToTabs(stage);
+      return;
+    }
     selectTab(tabForStage(stage));
     scrollToTabs(stage);
   }
@@ -1928,15 +1911,6 @@
 
   var scrollTimer = null;
   var scrollFrame = null;
-
-  function scrollToStage(stage) {
-    var spec = STAGES[stage];
-    if (!spec) return;
-    var target = $(spec.target);
-    if (!target || target.hidden) return;
-    var top = target.getBoundingClientRect().top + window.scrollY - stickyTop() - spec.peek;
-    smoothTo(Math.max(0, top), stage);
-  }
 
   function smoothTo(top, stage) {
     cancelScroll();

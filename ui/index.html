@@ -18,7 +18,7 @@
     <li data-stage="2" data-target="#galley">확인</li>
     <li data-stage="3" data-target="#galley">판정</li>
     <li data-stage="4" data-target="#omissions-section">반박</li>
-    <li data-stage="5" data-target="#terminal-summary">보고</li>
+    <li data-stage="5" data-target="#status-band">보고</li>
   </ul>
   <span class="conn" id="connection-label">연결 중</span>
   <a class="projector-link" href="/raw" target="_blank" rel="noopener">프로젝터 화면 ↗</a>
@@ -106,6 +106,13 @@
          aria-labelledby="terminal-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <span class="sb-fill" id="sb-fill"></span>
     </div>
+    <!-- 왜 여기서 끝났는가. 잘 끝난 런에서는 한 줄로 조용히, 중단·부분 감사에서는
+         놓칠 수 없게. 이 화면의 정직성이 걸린 자리라 탭 뒤에 숨기지 않는다. -->
+    <div class="sb-why" id="sb-why" hidden>
+      <p class="sb-reason" id="terminal-reason"></p>
+      <details class="error-detail" id="error-detail" hidden></details>
+      <ul class="missing" id="missing-actions" hidden></ul>
+    </div>
   </section>
 
   <!-- 결과 탭 — 한 번에 하나만 보인다. 상태 띠는 탭 밖에 있다 -->
@@ -122,10 +129,6 @@
       <button class="tab" type="button" role="tab" id="tab-fix"
               aria-controls="fix-panel" aria-selected="false" tabindex="-1">
         추천 수정안<b class="tab-count tnum" id="count-fix"></b>
-      </button>
-      <button class="tab" type="button" role="tab" id="tab-report"
-              aria-controls="terminal-summary" aria-selected="false" tabindex="-1">
-        최종 보고
       </button>
     </div>
   </div>
@@ -144,9 +147,11 @@
     </div>
 
     <details class="panel-summary" id="sentence-summary" hidden>
+      <!-- 접힘·펼침을 부호로만 말하면 처음 보는 사람이 못 읽는다. 동사를 적어 둔다. -->
       <summary>
-        <span>한 눈 요약</span>
-        <span class="panel-summary-hint">최종 보고 발췌</span>
+        <span class="ps-label">한 눈 요약</span>
+        <span class="ps-action" data-state="closed">펼치기</span>
+        <span class="ps-action" data-state="open">접기</span>
       </summary>
       <div class="panel-summary-body">
         <p class="report-facts" id="sentence-summary-facts" hidden></p>
@@ -191,8 +196,9 @@
     </div>
     <details class="panel-summary" id="rebut-summary" hidden>
       <summary>
-        <span>한 눈 요약</span>
-        <span class="panel-summary-hint">최종 보고 발췌</span>
+        <span class="ps-label">한 눈 요약</span>
+        <span class="ps-action" data-state="closed">펼치기</span>
+        <span class="ps-action" data-state="open">접기</span>
       </summary>
       <div class="panel-summary-body">
         <p class="report-facts" id="rebut-summary-facts" hidden></p>
@@ -211,20 +217,6 @@
            aria-labelledby="tab-fix" tabindex="0" hidden>
     <ul class="fix-list" id="fix-list"></ul>
     <p class="fixes-empty" id="fix-empty">감사가 끝나면 고쳐 쓸 문장이 여기에 표시됩니다.</p>
-  </section>
-
-  <!-- 최종 보고 — 길어서 탭이다. 짧은 상태는 위 띠가 맡는다 -->
-  <section class="terminal sheet tabpanel" id="terminal-summary" role="tabpanel"
-           aria-labelledby="tab-report" tabindex="0" hidden>
-    <div class="section-head">
-      <p class="report-sub" id="terminal-reason"></p>
-    </div>
-    <!-- 아래 보고문은 모델이 쓴 것이다. 수치가 어긋나면 이 줄이 정본이다. -->
-    <p class="report-facts" id="report-facts" hidden></p>
-    <details class="error-detail" id="error-detail" hidden></details>
-    <ul class="missing" id="missing-actions" hidden></ul>
-    <div class="report" id="final-report"></div>
-    <p class="report-empty" id="report-empty">감사가 끝나면 최종 보고가 여기에 표시됩니다.</p>
   </section>
 
 </main>
