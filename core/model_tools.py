@@ -116,19 +116,20 @@ def resolve_source_mode() -> str:
     if TOOLS_STUBBED:
         # 로컬 스텁은 정의상 실데이터가 아니다. mock을 실데이터로 위장하지 않는다.
         return "mock"
-    for name in ("tools.liner", "tools"):
+    for name in ("tools.source_mode", "tools.liner", "tools"):
         try:
             mod = importlib.import_module(name)
         except Exception:
             continue
-        fn = getattr(mod, "get_source_mode", None)
-        if callable(fn):
-            try:
-                value = fn()
-            except Exception:
-                continue
-            if value in ("live", "mock"):
-                return value
+        for attr in ("get_source_mode", "current_mode"):
+            fn = getattr(mod, attr, None)
+            if callable(fn):
+                try:
+                    value = fn()
+                except Exception:
+                    continue
+                if value in ("live", "mock"):
+                    return value
     return "unknown"
 
 
