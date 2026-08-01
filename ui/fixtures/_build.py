@@ -18,6 +18,10 @@ from pathlib import Path
 OUT = Path(__file__).resolve().parent
 BASE_T = 1_754_000_000.0
 
+# 오류 런에서 화면이 쓰는 문장. 제공자 원문 예외는 `error` 에만 남고 화면에는 이것이 뜬다.
+# 코어의 ERROR_REPORT_TEXT 와 같은 값이어야 하고, 어긋나면 test_server.py 가 운다.
+ERROR_DISPLAY = "감사를 시작하지 못했습니다 — 내부 오류로 런이 중단됐습니다."
+
 TOOL_SCHEMA_BLURB = (
     "당신은 문장 단위 근거 감사자다. 입력 글을 문장으로 나누고, 검증할 값어치가 있는 "
     "사실 주장만 골라 등록한 뒤 세 축으로 판정한다. 축1 존재: 글이 지목한 출처가 실재하는지 "
@@ -30,6 +34,58 @@ TOOL_SCHEMA_BLURB = (
 
 def ev(kind: str, payload: dict, t: float) -> dict:
     return {"kind": kind, "t": round(BASE_T + t, 3), "payload": payload}
+
+
+# 어느 클레임을 위해 쏜 검색인가. 클레임에 매이지 않은 탐색은 "explore" 로 남는다.
+SEARCH_CLAIM = {
+    "AI health chatbot diagnostic accuracy versus physicians": "C1",
+    "AI health chatbot diagnostic accuracy limitations contrary evidence": "C1",
+    "한 연구 진단 오류 80% 감소 AI 건강 상담": "C2",
+    "conversational agent outcomes by age group": "C3",
+    "conversational agent adverse events no effect systematic review": "C3",
+    "telemedicine versus in person visit outcome equivalence": "C4",
+    "medicare telehealth still need in person visit": "C5",
+    "physical examination limits of telehealth": "C4",
+    "systematic review diagnostic performance AI versus clinicians": "C1",
+    "generative AI wellness apps amplify vulnerabilities": "C3",
+    "missed physical findings remote only consultation": "C4",
+    "when telehealth requires in person medical visit guidance": "C5",
+}
+
+
+def ledger_from(events: list[dict]) -> list[dict]:
+    """지금까지 흐름에 실제로 실린 검색만으로 발사 원장을 만든다.
+
+    선언한 숫자를 옮겨 적지 않고 이벤트에서 되짚는다 — 잘린 시나리오에서도
+    원장이 그 시나리오가 실제로 쏜 것과 어긋나지 않는다.
+    """
+    replies: dict[str, dict] = {}
+    for event in events:
+        payload = event["payload"]
+        if event["kind"] == "run_item" and payload.get("name") == "tool_output":
+            replies[payload["item"]["raw_item"]["call_id"]] = payload["item"]["output"]
+    entries = []
+    for event in events:
+        payload = event["payload"]
+        if event["kind"] != "run_item" or payload.get("name") != "tool_called":
+            continue
+        raw_item = payload["item"]["raw_item"]
+        if not raw_item["name"].startswith("search_"):
+            continue
+        args = json.loads(raw_item["arguments"])
+        data = (replies.get(raw_item["call_id"]) or {}).get("data") or []
+        entries.append(
+            {
+                "claim_id": SEARCH_CLAIM.get(args["query"], "explore"),
+                "endpoint": "scholar" if raw_item["name"].endswith("scholar") else "web",
+                "stance": args.get("stance") or "support",
+                "query": args["query"],
+                "dispatched_at": round(event["t"] - BASE_T, 3),
+                # 결과 0건은 실패가 아니라 빈 결과다 — 둘을 같게 적지 않는다.
+                "result_status": "ok" if data else "empty",
+            }
+        )
+    return entries
 
 
 # --------------------------------------------------------------------------
@@ -268,7 +324,15 @@ def status(
         "reason": reason,
     }
     if done:
-        payload.update({"error": None, "axis3_done": 0, "axis3_expected": 0})
+        payload.update({
+            "error": None,
+            "axis3_done": 0,
+            "axis3_expected": 0,
+            # 화면에 쓸 문장은 사유에서 나온다 — 오류로 끝난 런에만 있다.
+            "error_display": ERROR_DISPLAY if reason == "error" else None,
+            # 상태를 바꾸지 않아 눌러 삼킨 기록 이벤트 수. 시나리오별로 아래에서 덮는다.
+            "audit_events_suppressed": 0,
+        })
     if extra:
         payload.update(extra)
     return payload
@@ -501,6 +565,7 @@ def audit_payload(
     kinds: list[str] | None = None,
     evidence_total: int = 48,
     classification: dict | None = None,
+    searches: list[dict] | None = None,
 ) -> dict:
     sentences = SENTENCES if sentences is None else sentences
     kinds = KINDS if kinds is None else kinds
@@ -522,6 +587,7 @@ def audit_payload(
     return {
         "sentences": sentences,
         "sentence_kinds": kinds,
+        "searches": list(searches or []),
         "claims": claims,
         "omissions": omissions,
         "evidence": ledger,
@@ -575,7 +641,7 @@ def build_complete() -> list[dict]:
                 "budget": budget(t, 0, 0, 0)}, t)
     out.extend(raw.events)
     raw.events = []
-    out.append(ev("audit", audit_payload(claims=[], omissions=[], status_value="running"), t + 0.1))
+    out.append(ev("audit", audit_payload(claims=[], omissions=[], status_value="running", searches=ledger_from(out)), t + 0.1))
     out.append(ev("status", status("분류", t + 0.15, claims=0, tool_calls=0, axis=0), t + 0.15))
     t += 1.1
 
@@ -595,7 +661,8 @@ def build_complete() -> list[dict]:
         out.extend(raw.events)
         raw.events = []
         out.append(ev("audit", audit_payload(claims=build_claims({c: 0 for c, *_ in CLAIM_SPEC[: n + 1]}),
-                                             omissions=[], status_value="running"), t + 0.7))
+                                             omissions=[], status_value="running",
+                                             searches=ledger_from(out)), t + 0.7))
         t += 1.0
     out.append(ev("status", status("클레임 등록", t, claims=5, tool_calls=0, axis=0), t))
     t += 0.4
@@ -662,7 +729,7 @@ def build_complete() -> list[dict]:
         out.extend(raw.events)
         raw.events.clear()
         out.append(ev("audit", audit_payload(claims=build_claims(applied), omissions=list(omissions_so_far),
-                                             status_value="running"), when + 0.6))
+                                             status_value="running", searches=ledger_from(out)), when + 0.6))
         return when + 1.05
 
     for claim_id in ("C1", "C2", "C3", "C4", "C5"):
@@ -739,7 +806,7 @@ def build_complete() -> list[dict]:
         out.extend(raw.events)
         raw.events = []
         out.append(ev("audit", audit_payload(claims=build_claims(applied), omissions=list(omissions_so_far),
-                                             status_value="running"), t + 0.55))
+                                             status_value="running", searches=ledger_from(out)), t + 0.55))
         t += 0.95
 
     out.append(ev("status", status("반박 찾기", t, claims=5, tool_calls=calls, axis=3), t))
@@ -753,7 +820,8 @@ def build_complete() -> list[dict]:
     t += 0.4
 
     final_claims = build_claims(applied)
-    final_audit = audit_payload(claims=final_claims, omissions=list(omissions_so_far), status_value="complete")
+    final_audit = audit_payload(claims=final_claims, omissions=list(omissions_so_far),
+                                status_value="complete", searches=ledger_from(out))
     out.append(ev("audit", final_audit, t))
     out.append(
         ev(
@@ -804,7 +872,8 @@ def build_timebox() -> list[dict]:
         out.append(event)
     t = full[max(stop - 1, 0)]["t"] - BASE_T
     claims = build_claims(applied)
-    audit = audit_payload(claims=claims, omissions=[], status_value="partial", evidence_total=41)
+    audit = audit_payload(claims=claims, omissions=[], status_value="partial", evidence_total=41,
+                          searches=ledger_from(out))
     out.append(ev("audit", audit, t + 0.3))
     out.append(
         ev(
@@ -832,6 +901,9 @@ def build_timebox() -> list[dict]:
                        "axis3_expected": 4,
                        "turn_backstop": False,
                        "events_dropped": 0,
+                       # 시계를 끝까지 쓴 런이다. 이미 쓴 판정을 다시 적은 호출이
+                       # 그 시간을 먹었다 — 완주 런(0)과 같은 값일 수 없다.
+                       "audit_events_suppressed": 6,
                    }),
             t + 0.5,
         )
@@ -877,7 +949,8 @@ def build_incomplete() -> list[dict]:
     omissions = [{"claim_id": OMISSIONS[0][0], "evidence_id": OMISSIONS[0][1], "title": rec["title"],
                   "url": rec["url"], "date": rec["extra"].get("date"),
                   "citation_count": rec["extra"].get("citation_count"), "summary": OMISSIONS[0][2]}]
-    audit = audit_payload(claims=claims, omissions=omissions, status_value="partial", evidence_total=44)
+    audit = audit_payload(claims=claims, omissions=omissions, status_value="partial", evidence_total=44,
+                          searches=ledger_from(out))
     out.append(ev("audit", audit, t + 0.3))
     out.append(
         ev(
@@ -903,6 +976,9 @@ def build_incomplete() -> list[dict]:
                        "axis3_expected": 4,
                        "turn_backstop": False,
                        "events_dropped": 0,
+                       # 시간은 남았고 모델이 스스로 멈췄다 — 헛돈 기록이 시계를
+                       # 다 쓴 런보다 적다.
+                       "audit_events_suppressed": 2,
                    }),
             t + 0.5,
         )
@@ -944,7 +1020,7 @@ def build_non_auditable() -> list[dict]:
                       "auditable_sentence_count": 3}
     audit = audit_payload(claims=[], omissions=[], status_value="non_auditable",
                           sentences=OPINION_SENTENCES, kinds=["prose"] * 3, evidence_total=0,
-                          classification=classification)
+                          classification=classification, searches=ledger_from(out))
     out.append(ev("audit", audit, 1.6))
     out.append(
         ev(
@@ -986,7 +1062,8 @@ def build_error() -> list[dict]:
         out.append(event)
     t = out[-1]["t"] - BASE_T
     claims = build_claims({"C1": 1, "C2": 1, "C3": 0, "C4": 0, "C5": 0})
-    audit = audit_payload(claims=claims, omissions=[], status_value="partial", evidence_total=11)
+    audit = audit_payload(claims=claims, omissions=[], status_value="partial", evidence_total=11,
+                          searches=ledger_from(out))
     out.append(ev("audit", audit, t + 0.3))
     out.append(
         ev(
@@ -1011,6 +1088,8 @@ def build_error() -> list[dict]:
                        "axis3_expected": 4,
                        "turn_backstop": False,
                        "events_dropped": 0,
+                       # 상류가 끊기기 직전 같은 판정을 한 번 되풀이했다.
+                       "audit_events_suppressed": 1,
                    }),
             t + 0.5,
         )
@@ -1074,7 +1153,8 @@ def build_structured() -> list[dict]:
 
     def struct_audit(claims: list[dict], status_value: str) -> dict:
         return audit_payload(claims=claims, omissions=[], status_value=status_value,
-                             sentences=STRUCT_SENTENCES, kinds=STRUCT_KINDS, evidence_total=18)
+                             sentences=STRUCT_SENTENCES, kinds=STRUCT_KINDS, evidence_total=18,
+                             searches=ledger_from(out))
 
     out.append(ev("audit", struct_audit([], "running"), 1.4))
     t = 1.8
@@ -1171,6 +1251,7 @@ def build_no_start() -> list[dict]:
     empty = {
         "sentences": [],
         "sentence_kinds": [],
+        "searches": [],
         "claims": [],
         "omissions": [],
         "evidence": [],

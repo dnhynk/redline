@@ -630,6 +630,33 @@ def test_live_lists_are_never_rebuilt_wholesale():
 def test_one_shot_animation_classes_are_removed_when_they_finish():
     assert 'node.classList.remove(cls)' in JS
     assert '"animationend"' in JS
+    # 차례로 드러내려고 건 지연은 그 한 번에만 쓴다
+    assert 'node.style.animationDelay = ""' in JS, "지연이 다음 등장까지 남는다"
+
+
+def test_the_card_stagger_is_batch_local_and_capped():
+    """한꺼번에 온 카드만 차례로 드러낸다. 창은 묶여 있고 상호작용은 막지 않는다."""
+    step = int(re.search(r"var CARD_STEP_MS = (\d+);", JS).group(1))
+    window = int(re.search(r"var CARD_WINDOW_MS = (\d+);", JS).group(1))
+    assert step == 120
+    assert window <= 400, "창이 길면 마지막 카드가 읽을 사람보다 늦는다"
+
+    block = JS.split("function paintOmissions(")[1].split("\n  }")[0]
+    # 이번에 새로 온 것만 센다 — 하나씩 오는 런에서는 지연이 0 이다
+    assert "fresh.length > 1" in block, "한 장뿐인데도 지연을 건다"
+    assert "Math.min(CARD_STEP_MS, CARD_WINDOW_MS" in block, "장수가 많을 때 창 상한이 없다"
+    # 어떤 장수에서도 마지막 카드는 창 안에서 출발한다
+    for count in (1, 2, 3, 5, 9, 24):
+        gap = min(step, window / (count - 1)) if count > 1 else 0
+        assert round(gap * (count - 1)) <= window, count
+    assert "pointer-events: none" not in CSS.split(".rebut-card")[1][:400], "지연 중 클릭을 막는다"
+
+
+def test_reduced_motion_zeroes_the_stagger():
+    """지연은 인라인 스타일로 걸린다 — 규칙이 !important 로 이겨야 0 이 된다."""
+    media, forced = _reduced_blocks()
+    for path, block in (("media", media), ("force-reduced", forced)):
+        assert re.search(r"animation-delay:\s*0ms\s*!important", block), f"{path}: 지연을 0 으로 안 만든다"
 
 
 def test_structural_kinds_match_the_contract():
@@ -662,6 +689,18 @@ def test_the_banner_is_driven_by_source_mode_not_by_the_server_flag_alone():
     assert 'state.replay = !!cfg.mock' in JS
     assert JS.count('source_mode === "mock"') == 2, "봉투와 종결 상태 양쪽을 봐야 한다"
     assert "state.fixtureSearch = false" in JS, "런 경계에서 픽스처 사실이 안 지워진다"
+
+
+def test_the_deck_and_the_intro_close_on_the_same_sentence():
+    """두 산출물이 같은 결론을 다른 말로 하면 보는 사람이 알아본다."""
+    intro = (UI / "intro.html").read_text(encoding="utf-8")
+    deck = (UI / "slides.html").read_text(encoding="utf-8")
+    scene = intro.split('data-scene="2"')[1].split("</section>")[0]
+    closing = [re.sub(r"\s+", " ", strip_tags(m)).strip()
+               for m in re.findall(r'<div class="big">(.*?)</div>', scene, re.S)]
+    assert closing, "인트로 마무리 카드에서 문장을 못 찾았다"
+    foot = re.search(r'<p class="proof-foot">(.*?)</p>', deck, re.S).group(1)
+    assert re.sub(r"\s+", " ", strip_tags(foot)).strip() == " ".join(closing)
 
 
 def test_the_screen_does_not_explain_its_own_design_decisions():
@@ -1004,6 +1043,41 @@ def test_fixture_matches_the_shape_the_build_emits(path):
         assert set(mine["audit"]["claims"][0]) == set(build["audit"]["claims"][0])
         assert "base_confidence" in mine["audit"]["claims"][0]
         assert "prior" not in mine["audit"]["claims"][0]
+
+
+@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
+def test_fixture_error_display_follows_the_reason(path):
+    """화면에 쓸 문장은 사유에서 나온다 — 오류로 끝난 런에만 있고 원문 예외와 다르다."""
+    terminal = _terminal(path)
+    display = terminal["error_display"]
+    if terminal["reason"] == "error":
+        assert display, f"{path.stem}: 오류 런인데 화면 문구가 없다"
+        assert not re.search(r"[A-Za-z]{4,}", display), f"영문 원문이 화면 문구로 샜다: {display}"
+        assert display != terminal.get("error"), "제공자 원문을 그대로 화면 문구로 썼다"
+    else:
+        assert display is None, f"{path.stem}: 오류가 아닌데 화면 문구가 있다"
+
+
+def test_fixture_error_display_matches_the_build():
+    try:
+        from core.agent import ERROR_REPORT_TEXT
+    except ImportError:  # mock 모드는 core 없이 돈다
+        return
+    for path in FIXTURES:
+        terminal = _terminal(path)
+        if terminal["reason"] == "error":
+            assert terminal["error_display"] == ERROR_REPORT_TEXT, path.stem
+
+
+def test_fixture_suppressed_count_tells_clean_runs_from_burnt_ones():
+    """상태를 바꾸지 않은 기록 호출 수다. 끝맺음 사유가 아니라 되풀이를 잰다 —
+    깨끗하게 끝난 런과 시계를 다 쓴 런이 같은 값이면 이 수치는 아무것도 말하지 않는다."""
+    counts = {p.stem: _terminal(p)["audit_events_suppressed"] for p in FIXTURES}
+    for name in ("complete", "structured", "non_auditable", "no_start"):
+        assert counts[name] == 0, f"{name}: 되풀이가 없는 런인데 0 이 아니다"
+    assert counts["timebox"] > counts["incomplete"] > 0, "시계를 다 쓴 런이 더 많이 되풀이해야 한다"
+    assert counts["error"] > 0
+    assert all(isinstance(v, int) and v >= 0 for v in counts.values())
 
 
 def test_the_mock_fallback_plays_the_current_build():
