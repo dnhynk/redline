@@ -156,7 +156,9 @@ def fallback_report(
         return f"감사하지 않았다 — {rationale}"
     lines.append(
         f"뒷받침 안 됨 {unsupported}/{audited} · 출처 못 찾음 {audit.no_source_count()}건 "
-        f"· 커버리지 {covered}/{coverable}"
+        f"· 커버리지 {covered}/{coverable} "
+        # 넘긴 문장 수는 감사한 수만큼이나 정직성의 일부다 — 세지 않으면 회피가 공짜가 된다.
+        f"· 감사 대상 아님 {completion.get('non_auditable_claims', 0)}건"
     )
     for c in audit.claims:
         if not c["auditable"]:

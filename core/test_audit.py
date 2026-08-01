@@ -879,6 +879,40 @@ def test_another_claims_evidence_cannot_close_this_claim():
     )["ok"] is True
 
 
+def test_pass_overs_are_counted_and_an_abnormal_share_is_written_down():
+    """넘기는 결정은 모델의 것이고 호스트는 뒤집지 않는다 — 다만 세어서 드러낸다.
+
+    견제가 없으면 `auditable=false`가 일을 회피하는 공짜 경로가 된다. 화면과 기록이
+    정직하게 남더라도, 아무도 세지 않으면 아무도 모른다.
+    """
+    audit = Audit(" ".join(f"진술 {i}번이 여기 있다." for i in range(6)))
+    _claim(audit, 0, "진술 0번이 여기 있다")
+    for i in range(1, 6):
+        audit.record_claim(
+            index=i, text=f"진술 {i}번이 여기 있다", claim_type="normative", auditable=False
+        )
+    report = audit.completion_report()
+    assert (report["non_auditable_claims"], report["auditable_claims"]) == (5, 1)
+    assert report["non_auditable_ratio"] == round(5 / 6, 3)
+    assert report["non_auditable_flagged"] is True
+    assert any("감사 대상 아님으로 넘겼다" in note for note in report["notes"])
+
+
+def test_a_normal_share_of_pass_overs_is_counted_but_not_flagged():
+    """문장마다 감사할지 넘길지를 등록하는 것이 정상 경로다 — 절반쯤 넘기는 것은 이상이 아니다."""
+    audit = Audit(" ".join(f"진술 {i}번이 여기 있다." for i in range(4)))
+    for i in range(2):
+        _claim(audit, i, f"진술 {i}번이 여기 있다")
+    for i in range(2, 4):
+        audit.record_claim(
+            index=i, text=f"진술 {i}번이 여기 있다", claim_type="normative", auditable=False
+        )
+    report = audit.completion_report()
+    assert report["non_auditable_claims"] == 2
+    assert report["non_auditable_flagged"] is False
+    assert report["notes"] == []
+
+
 def test_searched_but_found_nothing_is_recordable_and_completes_the_run():
     """성실히 찾았는데 정말 없었던 런이 거짓말을 하도록 강요당하면 안 된다.
 

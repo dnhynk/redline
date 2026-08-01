@@ -54,6 +54,14 @@ MAX_RECORD_CALLS = 150
 # 시그니처 산출물이라, 통째로 생략된 런을 완주라고 부르면 안 한 것을 한 것처럼 보이게 된다.
 AXIS3_MIN_FRACTION = 0.5
 
+# 등록된 클레임 중 "감사 대상 아님"으로 넘긴 비율이 이 값을 넘으면 종결 회계에 그대로 적는다.
+# 넘기는 결정은 모델의 것이고 호스트는 그것을 뒤집지 않는다 — 다만 **세어서 드러낸다.**
+# 견제 없는 회피 경로가 되지 않게 하는 최소한이 이것이다. 문장마다 감사할지 넘길지를
+# 등록하는 것이 정상 경로이므로 2/3까지는 흔한 값이다 — 그 위부터가 이상 신호다.
+NON_AUDITABLE_FLAG_RATIO = 2 / 3
+# 그 아래에서는 비율이 요동친다(2건 중 2건 = 100%). 셋부터 센다.
+NON_AUDITABLE_FLAG_MIN_CLAIMS = 3
+
 # 감사 대상 클레임 중 반증 검색이 나가야 하는 최소 비율.
 # stance 파라미터만으로는 채택이 들쭉날쭉했다(어떤 런은 확증 7 : 반증 3). 반증은 축3의
 # 원재료라, 안 쏘고 끝난 런을 완주라고 부르면 시그니처 산출물이 없는 채로 감사 완료가 뜬다.
@@ -1648,6 +1656,20 @@ class Audit:
         notes: list[str] = []
         if cap_reached:
             limits_hit.append("claim_cap")
+        # 감사 대상 아님으로 넘긴 문장은 언제나 세고, 비율이 이상하면 회계에 문장으로 적는다.
+        # 모델의 판단을 뒤집는 것이 아니라 호스트가 세어서 드러내는 것이다.
+        passed_over = len(self.claims) - len(targets)
+        pass_over_ratio = round(passed_over / len(self.claims), 3) if self.claims else 0.0
+        pass_over_flagged = (
+            len(self.claims) >= NON_AUDITABLE_FLAG_MIN_CLAIMS
+            and pass_over_ratio > NON_AUDITABLE_FLAG_RATIO
+        )
+        if pass_over_flagged:
+            notes.append(
+                f"등록한 클레임 {len(self.claims)}건 중 {passed_over}건"
+                f"({round(pass_over_ratio * 100)}%)을 감사 대상 아님으로 넘겼다 — "
+                "최종 보고에 무엇을 왜 넘겼는지 밝혀라."
+            )
         missing: list[str] = []
         if self.status != "non_auditable":
             if unclassified and not cap_reached:
@@ -1696,6 +1718,9 @@ class Audit:
             "limits_hit": limits_hit,
             "claims_total": len(self.claims),
             "auditable_claims": len(targets),
+            "non_auditable_claims": passed_over,
+            "non_auditable_ratio": pass_over_ratio,
+            "non_auditable_flagged": pass_over_flagged,
             "classified_sentences": len(self.classified_indices()),
             "claimable_sentences": coverable,
             "unclassified_sentences": unclassified,
