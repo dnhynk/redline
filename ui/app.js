@@ -103,11 +103,13 @@
   function safeHref(url) {
     return /^https?:\/\//i.test(String(url || "")) ? url : null;
   }
-  function markColor(verdict) {
-    return MARKED[verdict] ? "var(--v-" + verdict + "-line)" : "var(--rule)";
-  }
+  // 프로젝터 STATE 레인이 아직 쓴다 — 그 레인은 raw-lane 쪽에서 걷어낸다.
   function pct(x) {
     return Math.round(Math.max(0, Math.min(1, Number(x) || 0)) * 100);
+  }
+
+  function markColor(verdict) {
+    return MARKED[verdict] ? "var(--v-" + verdict + "-line)" : "var(--rule)";
   }
 
   // ---------------------------------------------------------------- 계측 훅
@@ -263,7 +265,7 @@
     burstUntil: 0,
     rowSig: "",
     rows: [],
-    pctSeen: {},
+    verdictSeen: {},
     foldOpen: false,
     historyGap: 0,
     historyFrom: 1,
@@ -426,7 +428,7 @@
     state.reportSig = "";
     state.rowSig = "";
     state.rows = [];
-    state.pctSeen = {};
+    state.verdictSeen = {};
     state.foldOpen = false;
     state.t0 = null;
     state.elapsed = 0;
@@ -929,18 +931,6 @@
     head.appendChild(el("span", "mark-label", VERDICT_LABEL.pending));
     head.appendChild(el("span", "mark-id", claim.id));
     node.appendChild(head);
-    if (claim.auditable !== false) {
-      var conf = el("div", "mark-conf");
-      var track = el("span", "bar-track");
-      track.appendChild(el("i", "bar-fill"));
-      track.title =
-        "확보한 지지 근거의 양(진실 확률 아님) — 접근 실패·반증 미발견은 점수를 움직이지 않습니다";
-      conf.appendChild(track);
-      var read = el("span", "mark-pct");
-      read.title = track.title;
-      conf.appendChild(read);
-      node.appendChild(conf);
-    }
     node.appendChild(el("div", "mark-chips"));
     var quote = el("p", "mark-quote");
     quote.hidden = true;
@@ -958,32 +948,6 @@
       fireOnce(node, "settle");
     }
     setText(label, markLabel(verdict));
-
-    var conf = node.querySelector(".mark-conf");
-    if (conf) {
-      var now = pct(claim.confidence);
-      var seen = state.pctSeen[claim.id];
-      if (!seen) state.pctSeen[claim.id] = seen = { prev: null, now: now };
-      else if (seen.now !== now) {
-        seen.prev = seen.now;
-        seen.now = now;
-      }
-      var fill = conf.querySelector(".bar-fill");
-      fill.style.background = markColor(verdict);
-      var target = "scaleX(" + now / 100 + ")";
-      if (fill.dataset.born !== "1") {
-        fill.dataset.born = "1";
-        requestAnimationFrame(function () {
-          fill.style.transform = target;
-        });
-      } else if (fill.style.transform !== target) {
-        fill.style.transform = target;
-      }
-      var read = conf.querySelector(".mark-pct");
-      var html = seen.prev == null ? '<span class="now">' + now + "%</span>"
-        : seen.prev + "% → " + '<span class="now">' + now + "%</span>";
-      if (read.innerHTML !== html) read.innerHTML = html;
-    }
 
     var chips = chipsFor(claim, evidence);
     var host = node.querySelector(".mark-chips");
@@ -1145,22 +1109,17 @@
           claimable
         ];
 
-    var total = typeof audit.evidence_total === "number" ? audit.evidence_total : (audit.evidence || []).length;
-    var cited = typeof audit.evidence_cited === "number" ? audit.evidence_cited : (audit.evidence || []).length;
-
     if (crashed()) {
       // 중단된 런의 0/0 은 정보가 아니라 오해다 — 집계 자체를 내지 않는다.
       setDash($("#unsupported-rate"));
       setDash($("#coverage"));
       setText($("#no-source-count"), "집계 없음");
       setText($("#claim-count"), "등록 클레임 " + claims.length + "건");
-      setText($("#evidence-summary"), "감사가 중단돼 집계를 내지 않았습니다");
     } else {
       setMetric($("#unsupported-rate"), rate[0], rate[1]);
       setMetric($("#coverage"), cov[0], cov[1]);
       setText($("#no-source-count"), "출처 못 찾음 " + noSource + "건");
       setText($("#claim-count"), "등록 클레임 " + claims.length + "건");
-      setText($("#evidence-summary"), "실제 받은 검색 결과 " + total + "건 · 판정에 인용 " + cited + "건");
     }
 
     var axis = (state.status && state.status.axis) || 0;

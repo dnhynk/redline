@@ -1276,45 +1276,6 @@ a {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
-.mark-conf {
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 7px;
-  height: 16px;
-}
-.bar-track {
-  flex: 1;
-  height: 5px;
-  background: var(--hair);
-  overflow: hidden;
-}
-.bar-fill {
-  display: block;
-  height: 100%;
-  width: 100%;
-  transform: scaleX(0);
-  transform-origin: left center;
-  background: var(--rule);
-  transition: transform var(--dur-stage) var(--ease-ink);
-}
-.mark-pct {
-  flex: none;
-  min-width: 82px;
-  text-align: right;
-  font-family: var(--f-mono);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.mark-pct .now {
-  font-weight: 700;
-  color: var(--ink);
-}
 /* 두 행 자리를 등록 시점에 확보한다 — 칩이 나중에 와도 행 높이가 안 변한다 */
 .mark-chips {
   grid-column: 2;
@@ -1494,15 +1455,6 @@ a {
 }
 .axis-cell.on::before {
   transform: scaleX(1);
-}
-.tally-note {
-  grid-column: 1 / -1;
-  margin-top: 22px;
-  padding: 14px 0 26px;
-  border-top: 1px solid var(--hair);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--muted);
 }
 
 /* --- 단계 4: 이 글에 대한 반박 ------------------------------------------ */

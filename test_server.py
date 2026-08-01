@@ -36,7 +36,7 @@ CONTRACT_STRUCTURAL_KINDS = {"heading", "table_header", "code_fence", "divider"}
 
 MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
-    "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
+    "coverage", "claim-count", "axis", "omissions-section", "omissions",
     "terminal-title", "terminal-reason", "missing-actions",
     "terminal-note", "error-detail", "source-banner", "intake",
     "intake-process",
@@ -1587,7 +1587,7 @@ def test_a_crashed_run_publishes_no_audit_numbers():
     block = JS.split("if (crashed()) {")[1].split("} else {")[0]
     assert 'setDash($("#unsupported-rate"))' in block
     assert 'setDash($("#coverage"))' in block
-    assert "감사가 중단돼 집계를 내지 않았습니다" in block
+    assert '"집계 없음"' in block
     # 중단 런의 최종 보고(수치 줄)는 싣지 않는다
     assert 'status.reason === "error" ? "" : status.final_report' in JS
 
