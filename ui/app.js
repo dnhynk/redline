@@ -1191,7 +1191,7 @@
   function paintFixes(fixes) {
     var host = $("#fix-list");
     if (!host) return;
-    var sig = fixes.join(" ");
+    var sig = fixes.join("\u0000");
     if (host.dataset.sig === sig) return;
     host.dataset.sig = sig;
     while (host.children.length > fixes.length) host.removeChild(host.lastChild);
