@@ -1698,10 +1698,12 @@
       });
   }
 
+  // 서버는 거부 사유를 한국어 한 문장으로 준다. 그 밖의 모양이면 원문을 화면에
+  // 올리지 않고 갈음한다 — 화면에 영문 오류 원문이 오르는 일은 없어야 한다.
   function detailOf(res) {
     var detail = res.body && res.body.detail;
-    if (Array.isArray(detail)) detail = detail.map(function (d) { return d.msg; }).join(" · ");
-    return (detail || "요청이 거부됐습니다.") + " (HTTP " + res.status + ")";
+    if (typeof detail !== "string" || !detail) detail = "요청이 거부됐습니다.";
+    return detail + " (HTTP " + res.status + ")";
   }
 
   // 런이 끝나면 버튼을 되살리고, 완주 뒤에만 감사하지 않은 문장을 접는다
