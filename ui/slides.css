@@ -1,0 +1,752 @@
+@charset "utf-8";
+
+/* ==========================================================================
+   REDLINE 발표 슬라이드. 제품 화면과 같은 종이·같은 잉크·같은 글꼴을 쓴다.
+   발표 중 탭만 바꾸면 되도록 색과 글꼴 값을 제품에서 그대로 옮겨 왔다.
+   ========================================================================== */
+
+/* --- 글꼴: 제품과 같은 파일을 같은 경로에서 --------------------------- */
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/ui/fonts/PretendardVariable.subset.woff2") format("woff2-variations");
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/ui/fonts/SourceSerif4Variable-latin.woff2") format("woff2-variations");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif KR";
+  src: url("/ui/fonts/NotoSerifKR-Regular.subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif KR";
+  src: url("/ui/fonts/NotoSerifKR-Bold.subset.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/ui/fonts/JetBrainsMonoVariable-latin.woff2") format("woff2-variations");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- 토큰: 제품 값을 그대로 옮겼다 ------------------------------------ */
+
+:root {
+  --paper: #fbfaf7;
+  --sheet: #ffffff;
+  --ink: #14161a;
+  --rule: #c9c6bd;
+  --hair: #efede6;
+  --edge: #e3e0d6;
+  --muted: #55514a;
+
+  --v-supported-label: #1f5545;
+  --v-supported-line: #2f6f5e;
+  --v-unsupported-label: #a3000f;
+  --v-unsupported-line: #d0021b;
+  --v-overstated-label: #6e4600;
+  --v-overstated-line: #9a6300;
+  --v-no_source-line: #8a8378;
+  --v-non_auditable-label: var(--muted);
+
+  --rebut-line: #1e3a5f;
+  --rebut-label: #1b3557;
+  --rebut-tint: #f4f6fa;
+
+  --f-serif: "Source Serif 4", "Noto Serif KR", Georgia, "Batang", 바탕, serif;
+  --f-sans: "Pretendard", "Inter", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", "D2Coding", "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --ease-ink: ease-out;
+  --ease-stage: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-tint: 180ms;
+  --dur-stage: 280ms;
+  --dur-reduced: 120ms;
+  --enter-rise: calc(0.5 * var(--u));
+
+  --wave: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 4.5 Q2.5 0.9 5 4.5 T10 4.5' fill='none' stroke='%239A6300' stroke-width='1.8'/></svg>");
+
+  /* 16:9 에 맞춘 한 칸. 1920×1080 과 1280×720 에서 구도가 같아진다 —
+     두 해상도 모두 16:9 라 1vw 와 1.7778vh 가 같은 값이 된다. */
+  --u: min(1vw, 1.7778vh);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden; /* 발표 화면은 스크롤하지 않는다 */
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-sans);
+  font-size: calc(2.1 * var(--u));
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+ul,
+ol {
+  padding-left: 0;
+  list-style: none;
+}
+b {
+  font-weight: 700;
+}
+
+/* --- 무대 --------------------------------------------------------------- */
+
+#deck {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(2.05 * var(--u));
+  padding: calc(6 * var(--u)) calc(9 * var(--u)) calc(7 * var(--u));
+}
+.slide.is-on {
+  display: flex;
+}
+/* 들어오는 장은 불투명도로만 뜬다. 이동은 반 칸을 넘지 않는다. */
+.slide.is-enter {
+  animation: slide-in var(--dur-stage) var(--ease-stage) both;
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--enter-rise));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+h2 {
+  font-family: var(--f-serif);
+  font-size: calc(4.1 * var(--u));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  padding-bottom: calc(1.4 * var(--u));
+  border-bottom: 1px solid var(--rule);
+}
+
+.rule-note {
+  font-size: calc(1.85 * var(--u));
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+/* --- 1장 ---------------------------------------------------------------- */
+
+.slide-title {
+  justify-content: space-between;
+  padding-top: calc(11 * var(--u));
+  padding-bottom: calc(7 * var(--u));
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3.4 * var(--u));
+  margin-top: auto;
+}
+.wordmark {
+  display: flex;
+  align-items: center;
+  font-family: var(--f-sans);
+  font-size: calc(11 * var(--u));
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: calc(-0.055 * var(--u) * 11);
+}
+/* 제품 화면의 빨간 밑줄 색을 글자 사이에 한 칸 세워 둔다 */
+.wm-block {
+  display: inline-block;
+  width: calc(2.6 * var(--u));
+  height: calc(7.6 * var(--u));
+  margin: 0 calc(0.5 * var(--u));
+  background: var(--v-unsupported-line);
+}
+.lede {
+  font-family: var(--f-serif);
+  font-size: calc(3.15 * var(--u));
+  line-height: 1.45;
+  max-width: 46ch;
+}
+.lede em {
+  font-style: normal;
+  font-weight: 700;
+  box-shadow: inset 0 calc(-0.34 * var(--u)) 0 var(--v-unsupported-line);
+}
+.byline {
+  margin-top: auto;
+  padding-top: calc(2.2 * var(--u));
+  border-top: 1px solid var(--rule);
+  font-family: var(--f-mono);
+  font-size: calc(1.9 * var(--u));
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.byline b {
+  padding: 0 calc(0.7 * var(--u));
+  font-weight: 400;
+}
+
+/* --- 2장 ---------------------------------------------------------------- */
+
+.binary {
+  display: flex;
+  align-items: center;
+  font-family: var(--f-serif);
+  font-size: calc(2.6 * var(--u));
+  color: var(--muted);
+}
+.binary b {
+  color: var(--ink);
+}
+.binary-gap {
+  flex: 1;
+  height: 1px;
+  margin: 0 calc(2.4 * var(--u));
+  background: var(--rule);
+  position: relative;
+}
+.binary-gap::before,
+.binary-gap::after {
+  content: "";
+  position: absolute;
+  top: calc(-0.35 * var(--u));
+  width: calc(0.8 * var(--u));
+  height: calc(0.8 * var(--u));
+  border-top: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+}
+.binary-gap::before {
+  left: 0;
+  transform: rotate(-135deg);
+}
+.binary-gap::after {
+  right: 0;
+  transform: rotate(45deg);
+}
+
+.specimen {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.15 * var(--u));
+}
+.specimen li {
+  display: flex;
+  align-items: baseline;
+  gap: calc(2 * var(--u));
+}
+.s-text {
+  font-family: var(--f-serif);
+  font-size: calc(2.35 * var(--u));
+  line-height: 1.4;
+  padding-bottom: calc(0.2 * var(--u));
+}
+.s-verdict {
+  margin-left: auto;
+  flex: none;
+  font-size: calc(1.9 * var(--u));
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 제품이 원고에 긋는 것과 같은 부호 */
+.mark-supported {
+  background-image: linear-gradient(var(--v-supported-line), var(--v-supported-line));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% calc(0.16 * var(--u) * 2);
+}
+.mark-unsupported {
+  background-image: linear-gradient(var(--v-unsupported-line), var(--v-unsupported-line));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% calc(0.16 * var(--u) * 4);
+}
+.mark-overstated {
+  background-image: var(--wave);
+  background-repeat: repeat-x;
+  background-position: left bottom;
+  background-size: calc(1.6 * var(--u)) calc(0.96 * var(--u));
+  padding-bottom: calc(0.6 * var(--u));
+}
+
+.v-supported {
+  color: var(--v-supported-label);
+}
+.v-unsupported {
+  color: var(--v-unsupported-label);
+}
+.v-overstated {
+  color: var(--v-overstated-label);
+}
+.v-non_auditable {
+  color: var(--v-non_auditable-label);
+  font-weight: 600;
+}
+
+.kicker {
+  font-family: var(--f-serif);
+  font-size: calc(2.5 * var(--u));
+  line-height: 1.4;
+  padding-top: calc(1.5 * var(--u));
+  border-top: 1px solid var(--rule);
+}
+.who {
+  font-size: calc(1.85 * var(--u));
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+/* --- 3장 ---------------------------------------------------------------- */
+
+.axes {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.2 * var(--u));
+}
+.axes li {
+  display: flex;
+  align-items: baseline;
+  gap: calc(2.2 * var(--u));
+  font-size: calc(2.45 * var(--u));
+}
+.ax-n {
+  flex: none;
+  width: calc(7.5 * var(--u));
+  font-family: var(--f-mono);
+  font-size: calc(1.75 * var(--u));
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.ax-k {
+  flex: none;
+  width: calc(7.5 * var(--u));
+  font-family: var(--f-serif);
+  font-weight: 700;
+}
+.ax-q {
+  font-family: var(--f-serif);
+  color: var(--muted);
+}
+.axes .is-key .ax-q {
+  color: var(--ink);
+}
+.axes .is-key .ax-k {
+  color: var(--rebut-label);
+}
+.axes .is-key .ax-q b {
+  box-shadow: inset 0 calc(-0.3 * var(--u)) 0 var(--rebut-line);
+}
+
+.proof {
+  margin-top: auto;
+  padding: calc(2.1 * var(--u)) calc(2.6 * var(--u));
+  background: var(--sheet);
+  border: 1px solid var(--edge);
+  border-left: calc(0.55 * var(--u)) solid var(--rebut-line);
+}
+.proof-head {
+  font-size: calc(1.85 * var(--u));
+  font-weight: 700;
+  color: var(--muted);
+}
+.proof-meta {
+  font-family: var(--f-mono);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  padding-left: calc(0.8 * var(--u));
+}
+.proof-nums {
+  display: flex;
+  gap: calc(3 * var(--u));
+  padding: calc(1.1 * var(--u)) 0 calc(1.3 * var(--u));
+}
+/* 숫자 위에 이름을 얹는다 — 이름이 두 줄이 돼도 두 수가 어긋나지 않는다 */
+.num {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(0.5 * var(--u));
+  flex: 1;
+}
+.n {
+  font-family: var(--f-serif);
+  font-size: calc(6 * var(--u));
+  font-weight: 700;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+.n-zero {
+  color: var(--v-unsupported-label);
+}
+.n-rebut {
+  color: var(--rebut-label);
+}
+.n-label {
+  font-size: calc(1.95 * var(--u));
+  font-weight: 600;
+  line-height: 1.3;
+  max-width: 18ch;
+}
+.proof-foot {
+  font-family: var(--f-serif);
+  font-size: calc(2.2 * var(--u));
+  padding-top: calc(1.25 * var(--u));
+  border-top: 1px solid var(--hair);
+}
+
+/* --- 4장 ---------------------------------------------------------------- */
+
+.slide-order {
+  gap: calc(1.6 * var(--u));
+}
+.pipe {
+  display: flex;
+  align-items: stretch;
+  gap: calc(0.5 * var(--u));
+}
+.pipe li {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.5 * var(--u));
+  padding: calc(0.9 * var(--u)) calc(0.9 * var(--u));
+  background: var(--sheet);
+  border: 1px solid var(--edge);
+  border-top: calc(0.3 * var(--u)) solid var(--rule);
+  font-size: calc(1.7 * var(--u));
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.pipe i {
+  font-family: var(--f-mono);
+  font-style: normal;
+  font-size: calc(1.6 * var(--u));
+  font-weight: 500;
+  color: var(--muted);
+}
+.pipe .is-key {
+  border-top-color: var(--v-unsupported-line);
+}
+.pipe .is-key i {
+  color: var(--v-unsupported-label);
+}
+
+.whys {
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.95 * var(--u));
+}
+.whys li {
+  display: flex;
+  align-items: baseline;
+  gap: calc(1.8 * var(--u));
+  font-size: calc(2.05 * var(--u));
+}
+.w-n {
+  flex: none;
+  color: var(--muted);
+}
+.w-k {
+  flex: none;
+  width: calc(7 * var(--u));
+  font-family: var(--f-serif);
+  font-weight: 700;
+}
+.w-t {
+  font-family: var(--f-serif);
+  color: var(--muted);
+}
+
+.evidence {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.75 * var(--u));
+  padding-top: calc(1.5 * var(--u));
+  border-top: 1px solid var(--rule);
+}
+.ev-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: calc(1.2 * var(--u));
+  font-size: calc(2 * var(--u));
+  color: var(--muted);
+}
+.ev-line b {
+  color: var(--ink);
+}
+.ratio {
+  display: flex;
+  gap: calc(0.7 * var(--u));
+}
+.ratio span {
+  padding: calc(0.15 * var(--u)) calc(0.9 * var(--u));
+  background: var(--rebut-tint);
+  border: 1px solid var(--edge);
+  font-family: var(--f-mono);
+  font-size: calc(1.8 * var(--u));
+  font-weight: 600;
+  color: var(--rebut-label);
+  font-variant-numeric: tabular-nums;
+}
+.ev-key {
+  font-size: calc(1.65 * var(--u));
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* --- 5장 ---------------------------------------------------------------- */
+
+.limits {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.2 * var(--u));
+}
+.limits > div {
+  display: flex;
+  align-items: baseline;
+  gap: calc(2.4 * var(--u));
+  padding-bottom: calc(1.2 * var(--u));
+  border-bottom: 1px solid var(--hair);
+}
+.limits dt {
+  flex: none;
+  width: calc(24 * var(--u));
+  font-size: calc(2.3 * var(--u));
+  font-weight: 700;
+  color: var(--muted);
+}
+.limits dd {
+  font-family: var(--f-serif);
+  font-size: calc(2.4 * var(--u));
+}
+
+.live {
+  margin-top: auto;
+  padding: calc(2.6 * var(--u)) calc(3 * var(--u));
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--f-serif);
+  font-size: calc(2.85 * var(--u));
+  line-height: 1.35;
+}
+.live b {
+  box-shadow: inset 0 calc(-0.34 * var(--u)) 0 var(--v-unsupported-line);
+}
+.live-sub {
+  display: inline-block;
+  padding-top: calc(0.9 * var(--u));
+  font-family: var(--f-mono);
+  font-size: calc(1.8 * var(--u));
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--rule);
+}
+
+/* --- 조종 --------------------------------------------------------------- */
+
+.hud {
+  position: fixed;
+  right: calc(3 * var(--u));
+  bottom: calc(2.2 * var(--u));
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: calc(1.2 * var(--u));
+}
+.hud button {
+  width: calc(4.2 * var(--u));
+  height: calc(4.2 * var(--u));
+  display: grid;
+  place-items: center;
+  font-family: var(--f-sans);
+  font-size: calc(2 * var(--u));
+  line-height: 1;
+  color: var(--muted);
+  background: var(--sheet);
+  border: 1px solid var(--edge);
+  border-radius: 0;
+  cursor: pointer;
+  transition: color var(--dur-tint) var(--ease-ink),
+    border-color var(--dur-tint) var(--ease-ink);
+}
+.hud button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hud button:hover:not(:disabled) {
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+}
+.hud button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.count {
+  font-family: var(--f-mono);
+  font-size: calc(1.75 * var(--u));
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: calc(5.5 * var(--u));
+  text-align: center;
+}
+.count b {
+  font-weight: 700;
+  color: var(--ink);
+}
+.count span {
+  padding: 0 calc(0.4 * var(--u));
+}
+
+.progress {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  height: calc(0.42 * var(--u));
+  background: var(--hair);
+}
+.progress span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--v-unsupported-line);
+  transform: scaleX(0.2);
+  transform-origin: left center;
+  transition: transform var(--dur-stage) var(--ease-stage);
+}
+
+/* --- 움직임을 줄인다 — 없애지 않는다 ---------------------------------
+   장이 바뀌었다는 것은 알아야 하므로 불투명도 교차는 남기고, 이동만 끈다.
+   두 블록은 같은 규칙이어야 한다. */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --enter-rise: 0px;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--dur-reduced) !important;
+    animation-delay: 0ms !important;
+    transition-property: opacity, background-color, border-color, color !important;
+    transition-duration: var(--dur-reduced) !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html.force-reduced {
+  --enter-rise: 0px;
+}
+html.force-reduced *,
+html.force-reduced *::before,
+html.force-reduced *::after {
+  animation-duration: var(--dur-reduced) !important;
+  animation-delay: 0ms !important;
+  transition-property: opacity, background-color, border-color, color !important;
+  transition-duration: var(--dur-reduced) !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* --- 인쇄 / PDF --------------------------------------------------------
+   한 장이 한 쪽이 된다. 조종 장치는 종이에 남기지 않는다. */
+
+@page {
+  size: 297mm 167mm; /* 16:9 */
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+  :root {
+    --u: 2.97mm; /* 297mm / 100 — 화면과 같은 구도 */
+    --paper: #fff;
+  }
+  #deck {
+    height: auto;
+  }
+  .slide {
+    position: relative;
+    inset: auto;
+    display: flex !important;
+    width: 297mm;
+    height: 167mm;
+    break-after: page;
+    animation: none !important;
+  }
+  .slide:last-child {
+    break-after: auto;
+  }
+  .hud,
+  .progress {
+    display: none;
+  }
+}
