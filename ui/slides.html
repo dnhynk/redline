@@ -23,35 +23,27 @@
 
 <!-- 2 ------------------------------------------------------------------ -->
 <section class="slide" data-slide="2" aria-label="2장 문제">
-  <h2>AI가 쓴 글을, AI에게 다시 물어 검증한다</h2>
+  <h2>AI가 쓴 글, 지금은 이렇게 검증합니다</h2>
 
-  <p class="loop">
-    <span class="loop-node">AI가 쓴 글</span>
-    <span class="loop-arrow" aria-hidden="true">→</span>
-    <span class="loop-node">같은 종류의 모델</span>
-    <span class="loop-arrow" aria-hidden="true">→</span>
-    <span class="loop-node is-out">“확인했습니다”</span>
-  </p>
-
-  <ol class="probs">
+  <ol class="ways">
     <li>
-      <span class="p-n">①</span>
-      <span class="p-k">새 정보가 들어오지 않는다</span>
-      <span class="p-t">답을 만든 가중치가 그 답을 채점한다</span>
+      <p class="way-q"><span class="way-n">1</span>AI에게 다시 물어본다</p>
+      <p class="way-a">환각과 가짜 인용을 잡으려고, 환각과 가짜 인용을 내는 것에게 맡긴다 —
+        다른 모델이어도 <b>같은 종류의 실패를 하는 도구다</b></p>
     </li>
     <li>
-      <span class="p-n">②</span>
-      <span class="p-k">검색을 붙여도 방향이 한쪽이다</span>
-      <span class="p-t">모델은 자기 말을 뒷받침할 자료를 찾는다</span>
+      <p class="way-q"><span class="way-n">2</span>검색을 붙여 다시 물어본다</p>
+      <p class="way-a">모델은 자기 말을 뒷받침할 자료를 찾는다. 반대를 찾으라고 시키는 사람은 없고,
+        <b>안 찾아도 티가 나지 않는다</b></p>
     </li>
     <li>
-      <span class="p-n">③</span>
-      <span class="p-k">“확인했습니다”도 모델이 쓴 문장이다</span>
-      <span class="p-t">판정과 근거가 같은 글 안에 있다</span>
+      <p class="way-q"><span class="way-n">3</span>직접 하나하나 찾아본다</p>
+      <p class="way-a">문장마다 검색하고 원문을 열어야 한다. 맞는 방법이지만
+        <b>끝까지 하는 사람이 없다</b></p>
     </li>
   </ol>
 
-  <p class="kicker">검증기가 피검증자와 같은 종류면, 그 검증은 증거가 아니라 <b>또 하나의 주장이다.</b></p>
+  <p class="kicker">셋 다 <b>무엇을 실제로 확인했는지가 남지 않는다.</b> “확인했습니다”는 판정이지 증거가 아니다.</p>
 </section>
 
 <!-- 3 ------------------------------------------------------------------ -->
@@ -59,15 +51,22 @@
   <h2>그래서 문장마다, 세 번 묻는다</h2>
 
   <ol class="axes">
-    <li><span class="ax-n">1</span><span class="ax-k">출처 확인</span><span class="ax-q">그 출처가 실재하는가</span></li>
-    <li><span class="ax-n">2</span><span class="ax-k">내용 확인</span><span class="ax-q">원문이 정말 그렇게 말하는가</span></li>
-    <li class="is-key"><span class="ax-n">3</span><span class="ax-k">반박 찾기</span><span class="ax-q">이 글이 <b>숨긴</b> 반대 논지는 무엇인가</span></li>
+    <li>
+      <p class="ax-line"><span class="ax-n">1</span><span class="ax-k">출처 확인</span><span class="ax-q">그 출처가 실재하는가</span></p>
+      <p class="ax-mark">못 찾으면 <span class="chip c-no_source">출처 못 찾음</span></p>
+    </li>
+    <li>
+      <p class="ax-line"><span class="ax-n">2</span><span class="ax-k">내용 확인</span><span class="ax-q">원문이 정말 그렇게 말하는가</span></p>
+      <p class="ax-mark">어긋나면 <span class="chip c-unsupported">뒷받침 안 됨</span> <span class="chip c-overstated">지나친 단정</span></p>
+    </li>
+    <li class="is-key">
+      <p class="ax-line"><span class="ax-n">3</span><span class="ax-k">반박 찾기</span><span class="ax-q">이 글이 <b>숨긴</b> 반대 논지는 무엇인가</span></p>
+      <p class="ax-mark">찾으면 <span class="chip c-rebut">반대 논지</span> — 판정을 통과한 문장에도 묻는다</p>
+    </li>
   </ol>
 
-  <p class="rule-note">묻는 상대는 모델이 아니라 <b>검색이 실제로 데려온 문서</b>다</p>
-
   <div class="proof">
-    <p class="proof-head">잘 쓴 글 3문장 <span class="proof-meta">41.2초 · 완주</span></p>
+    <p class="proof-head">잘 쓴 글 3문장</p>
     <div class="proof-nums">
       <div class="num">
         <b class="n n-zero">0</b>
@@ -78,13 +77,13 @@
         <span class="n-label">글이 숨긴 반대 논지</span>
       </div>
     </div>
-    <p class="proof-foot"><em>빨간 줄</em>은 시작입니다. 이 글이 숨긴 것까지 찾습니다.</p>
+    <p class="proof-foot">빨간 줄이 없는 글에도, <em>숨기고 싶은 반대 논지</em>가 있습니다.</p>
   </div>
 </section>
 
 <!-- 4 ------------------------------------------------------------------ -->
 <section class="slide slide-order" data-slide="4" aria-label="4장 구조로 강제">
-  <h2>지시가 아니라 구조로 강제한다</h2>
+  <h2>지시<span class="en">prompt</span>가 아니라 구조<span class="en">harness</span>로 강제한다</h2>
   <p class="rule-note">프롬프트는 부탁이다. 호스트는 <b>거부</b>한다.</p>
 
   <ol class="rules">
@@ -97,40 +96,32 @@
       <p class="r-else">반박 검색이 없으면 <b>완주가 아니다</b> — 실측 뒷받침:반박 3:3 · 4:4 · 14:14</p>
     </li>
     <li>
-      <p class="r-do"><span class="r-n">3</span>판정에는 실제로 받은 증거 번호가 붙는다</p>
-      <p class="r-else">받지 않은 근거로는 <b>기록이 안 된다</b> — 출처를 지어낼 자리가 없다</p>
+      <p class="r-do"><span class="r-n">3</span>판정에는 증거 번호를 달아야 한다</p>
+      <p class="r-else">번호는 검색이 <b>실제로 무언가를 데려왔을 때만</b> 호스트가 발급한다.
+        모델이 출처를 지어내도 달 번호가 없어서, 그 판정은 <b>기록되지 못한다</b> —
+        환각이 들어앉을 자리를 코드가 없앤 것이다</p>
     </li>
   </ol>
 
   <div class="evidence">
-    <p class="ev-line"><b>19문장도 90초 예산 안에서 완주</b> — 71.5초 · 주장 14개</p>
+    <p class="ev-line"><b>19문장 · 주장 14개를 71.5초에 완주</b> — 실측</p>
   </div>
 </section>
 
 <!-- 5 ------------------------------------------------------------------ -->
-<section class="slide" data-slide="5" aria-label="5장 누가 쓰는가">
-  <h2>누가 이걸 씁니다</h2>
+<section class="slide" data-slide="5" aria-label="5장 누구를 위한 에이전트인가">
+  <h2>누구를 위한 에이전트인가</h2>
 
   <ul class="who-list">
     <li>리서치 · 과제 · 기사 초안을 <b>AI로 쓰는 사람</b></li>
     <li>그 글을 받아 <b>검토해야 하는 사람</b></li>
   </ul>
 
-  <dl class="limits">
-    <div>
-      <dt>왜 지금</dt>
-      <dd>AI가 쓴 글의 양은 늘고, 그것을 확인하는 방법은 <b>그대로다</b></dd>
-    </div>
-    <div>
-      <dt>다음</dt>
-      <dd>지금은 한국어와 영어를 감사한다. 좌표계와 증거 원장은 그대로 두고 <b>언어를 넓힌다</b></dd>
-    </div>
-  </dl>
+  <blockquote class="why-now">
+    “AI가 작성한 글은 늘어나지만,<br>그것을 올바르게 검증하는 방법은 그대로.”
+  </blockquote>
 
-  <p class="live">
-    지금부터 <b>라이브</b>입니다.<br>
-    <span class="live-sub">오른쪽 화면은 가공하지 않은 tool_call · tool_result</span>
-  </p>
+  <p class="live">지금부터 <b>라이브</b>입니다.</p>
 </section>
 
 </main>
