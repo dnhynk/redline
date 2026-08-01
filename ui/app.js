@@ -885,10 +885,12 @@
       $("#omissions-empty").hidden = false;
       if (state.done) {
         var reason = state.status && state.status.reason;
-        var cut = reason !== "complete" && reason !== "non_auditable";
-        $("#omissions-empty").lastElementChild.textContent = cut
-          ? "반박 찾기를 끝내지 못했습니다 — 확인한 범위에서 나온 반박은 0건입니다."
-          : "탐색 완료 · 이 글에 대한 반박 0건. 반박까지 찾아봤지만 나오지 않았습니다 — 0건도 결과입니다.";
+        $("#omissions-empty").lastElementChild.textContent =
+          reason === "complete"
+            ? "탐색 완료 · 이 글에 대한 반박 0건. 반박까지 찾아봤지만 나오지 않았습니다 — 0건도 결과입니다."
+            : reason === "non_auditable"
+            ? "감사 대상이 아니어서 반박을 찾지 않았습니다."
+            : "반박 찾기를 끝내지 못했습니다 — 확인한 범위에서 나온 반박은 0건입니다.";
         $("#omissions-empty").firstElementChild.textContent = "0";
       }
       return;

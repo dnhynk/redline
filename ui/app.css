@@ -97,7 +97,7 @@
   --shadow-lift: 0 2px 6px rgba(20, 22, 26, 0.08), 0 10px 24px -10px rgba(20, 22, 26, 0.16),
     0 36px 84px -30px rgba(20, 22, 26, 0.45);
 
-  --wave: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5'><path d='M0 3.9 Q2 0.7 4 3.9 T8 3.9' fill='none' stroke='%239A6300' stroke-width='1.8'/></svg>");
+  --wave: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 4.5 Q2.5 0.9 5 4.5 T10 4.5' fill='none' stroke='%239A6300' stroke-width='1.8'/></svg>");
 }
 
 *,
@@ -550,7 +550,7 @@ a {
 }
 .swatch[data-mark="overstated"] {
   background: var(--wave) repeat-x left bottom;
-  background-size: 8px 5px;
+  background-size: 10px 6px;
 }
 .swatch[data-mark="no_source"] {
   border-bottom: 3px dotted var(--v-no_source-line);
@@ -651,11 +651,11 @@ a {
 /* 판정 표시선 — 클레임 구절에만 */
 .claim-mark {
   background-repeat: no-repeat;
-  background-position: left bottom -1px;
+  background-position: left bottom;
   background-size: 100% 4px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
-  padding-bottom: 1px;
+  padding-bottom: 5px;
 }
 .claim-mark[data-mark="pending"],
 .claim-mark[data-mark="non_auditable"] {
@@ -689,8 +689,8 @@ a {
 .claim-mark[data-mark="overstated"] {
   background-image: linear-gradient(var(--sheet), var(--sheet)), var(--wave);
   background-repeat: no-repeat, repeat-x;
-  background-position: right bottom -2px, left bottom -2px;
-  background-size: 0% 5px, 8px 5px;
+  background-position: right bottom, left bottom;
+  background-size: 0% 6px, 10px 6px;
 }
 
 .claim-mark.draw[data-mark="unsupported"] {
@@ -723,10 +723,10 @@ a {
 }
 @keyframes wavy-in {
   from {
-    background-size: 100% 5px, 8px 5px;
+    background-size: 100% 6px, 10px 6px;
   }
   to {
-    background-size: 0% 5px, 8px 5px;
+    background-size: 0% 6px, 10px 6px;
   }
 }
 
