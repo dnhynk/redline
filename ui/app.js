@@ -2126,7 +2126,7 @@
   function detailOf(res) {
     var detail = res.body && res.body.detail;
     if (typeof detail !== "string" || !detail) detail = "요청이 거부됐습니다.";
-    return detail + " (HTTP " + res.status + ")";
+    return detail;
   }
 
   // 런이 끝나면 버튼을 되살리고, 완주 뒤에만 감사하지 않은 문장을 접는다

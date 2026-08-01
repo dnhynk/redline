@@ -154,6 +154,32 @@ def test_shape_errors_answer_in_korean(body):
     assert re.search(r"[가-힣]", detail)
 
 
+def test_unreadable_bodies_answer_in_korean():
+    """본문을 아예 읽지 못하면 프레임워크가 자기 영문 문장을 detail 로 던진다.
+
+    브라우저는 UTF-8 만 보내므로 실사용에서 나오기 어렵지만, 화면이 detail 을
+    그대로 읽는 한 이 경로도 한국어여야 한다.
+    """
+    client = TestClient(create_app(list_source(sample_events())))
+    response = client.post("/run", content="{텍스트".encode("cp949"),
+                           headers={"Content-Type": "application/json"})
+    assert response.status_code in (400, 422)
+    detail = response.json()["detail"]
+    assert isinstance(detail, str)
+    assert not re.search(r"[A-Za-z]{4,}", detail), f"영문 원문이 샜다: {detail}"
+    assert re.search(r"[가-힣]", detail)
+
+
+def test_our_own_korean_details_survive_the_guard():
+    """갈아 끼우는 집이 우리가 쓴 문장까지 덮어쓰면 안 된다."""
+    gate = asyncio.Event()
+    with TestClient(create_app(list_source(sample_events(), gate))) as client:
+        client.post("/run", json={"text": "첫 번째"})
+        second = client.post("/run", json={"text": "두 번째"})
+    assert second.status_code == 409
+    assert "진행 중" in second.json()["detail"]
+
+
 def test_the_screen_never_prints_a_non_korean_reason():
     block = JS.split("function detailOf(")[1].split("\n  }")[0]
     assert 'typeof detail !== "string"' in block, "문자열이 아닌 detail 을 그대로 그린다"

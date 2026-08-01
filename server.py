@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -27,6 +28,10 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+# 화면에 오르는 문장은 한국어여야 한다. 이 검사가 그 규칙의 마지막 문지기다.
+_HANGUL = re.compile(r"[가-힣]")
 
 # 감사 하나에 주는 시간. 제품 상수다 — 발표 상황에 따라 달라지지 않는다.
 # 가장 좁은 자리가 즉석 태스크 2분이고, 입력과 설명에 30초를 남기면 여기 값이 된다.
@@ -289,6 +294,21 @@ def create_app(
         무엇을 보내야 하는지를 말한다.
         """
         return JSONResponse(status_code=422, content={"detail": "감사할 텍스트를 글자로 보내 주세요."})
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _rejected_request(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        """본문을 아예 읽지 못하면 프레임워크가 영문 한 줄을 detail 에 담아 던진다.
+
+        화면은 detail 을 그대로 읽으니 우리가 쓰지 않은 문구가 끼어들 수 있다.
+        이 집은 detail 이 한국어인지만 보고, 아니면 우리 문장으로 갈아 끼운다 —
+        새 실패 경로가 생겨도 영문이 화면에 오르지 않는다.
+        """
+        detail = exc.detail if isinstance(exc.detail, str) else ""
+        if not _HANGUL.search(detail):
+            detail = ("감사할 텍스트를 글자로 보내 주세요." if exc.status_code < 500
+                      else "요청을 처리하지 못했습니다.")
+        return JSONResponse(status_code=exc.status_code, content={"detail": detail},
+                            headers=getattr(exc, "headers", None))
 
     @app.middleware("http")
     async def _cap_body(request: Request, call_next):

@@ -4,6 +4,8 @@
 이 테스트를 함께 고쳐야 하고, 그 변경은 소비자(프롬프트·화면) 전체에 공지돼야 한다.
 """
 
+import pytest
+
 from core.agent import RUN_REASONS, PARTIAL_REASONS
 from core.model_tools import ALL_TOOLS
 
@@ -130,3 +132,25 @@ def test_the_timebox_and_claim_cap_are_one_product_constant():
         return
     assert server.TIMEBOX_S == cli.TIMEBOX_S
     assert server.MAX_CLAIMS == cli.MAX_CLAIMS
+
+
+def test_both_entry_points_cap_the_input_at_the_same_length():
+    """입구에 따라 다르게 행동하면 하나의 제품이 아니다.
+
+    호스트는 문장 80개까지만 좌표를 보여 준다. CLI 만 상한이 없으면 그 범위 밖의
+    문장이 들어와 좌표계와 등록 범위가 어긋난다.
+    """
+    import argparse
+
+    try:
+        import server
+    except ImportError:
+        return
+    assert cli.TEXT_MAX_CHARS == server.TEXT_MAX_CHARS
+
+    args = argparse.Namespace(text="가" * cli.TEXT_MAX_CHARS, file=None)
+    assert len(cli._read_text(args)) == cli.TEXT_MAX_CHARS
+
+    args = argparse.Namespace(text="가" * (cli.TEXT_MAX_CHARS + 1), file=None)
+    with pytest.raises(SystemExit):
+        cli._read_text(args)

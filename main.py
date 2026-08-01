@@ -16,16 +16,24 @@ from pathlib import Path
 # server.py 와 같은 제품 상수. 발표 상황에 따라 달라지지 않는다.
 TIMEBOX_S = 90.0
 MAX_CLAIMS = 14
+TEXT_MAX_CHARS = 80 * 25
 
 
 def _read_text(args: argparse.Namespace) -> str:
     if args.text:
-        return args.text
-    if args.file:
-        return Path(args.file).read_text(encoding="utf-8")
-    data = sys.stdin.read()
-    if not data.strip():
-        raise SystemExit("입력이 비어 있다: 인자, --file, 또는 stdin 으로 텍스트를 줘야 한다")
+        data = args.text
+    elif args.file:
+        data = Path(args.file).read_text(encoding="utf-8")
+    else:
+        data = sys.stdin.read()
+        if not data.strip():
+            raise SystemExit("입력이 비어 있다: 인자, --file, 또는 stdin 으로 텍스트를 줘야 한다")
+    # 웹과 같은 상한을 건다. 여기만 열어 두면 호스트가 좌표를 보여줄 수 있는 범위
+    # 밖의 문장이 들어와, 같은 제품이 입구에 따라 다르게 행동한다.
+    if len(data) > TEXT_MAX_CHARS:
+        raise SystemExit(
+            f"입력이 너무 길다: {len(data):,}자. 상한은 {TEXT_MAX_CHARS:,}자다"
+        )
     return data
 
 

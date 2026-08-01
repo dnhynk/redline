@@ -771,11 +771,6 @@ a {
   padding: 26px 34px 30px;
   border-top: 4px solid var(--fix-line);
 }
-.fixes-sub {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
 /* 원문은 물러나고 대안이 앞에 선다. 대안은 그대로 옮겨 적을 문장이라 본문 세리프다. */
 .fix-list {
   display: flex;
