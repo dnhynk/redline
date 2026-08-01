@@ -116,12 +116,14 @@
     font-family: var(--f-sans);
     font-weight: 900;
     font-size: 2.8vw;
-    letter-spacing: -0.14vw;
+    letter-spacing: -0.147vw; /* 상단 바의 -1.2px/23px 과 같은 비율 */
+    white-space: nowrap;
     margin-top: 1.2vw;
     text-align: center;
     opacity: 0;
   }
-  .wordmark b { color: var(--v-unsupported-line); font-weight: 900; }
+  /* 상단 바의 워드마크와 같은 조판 — 인트로만 다른 로고를 쓰면 같은 제품으로 안 읽힌다. */
+  .wordmark .wm-b { color: var(--v-unsupported-line); }
   .scene.live .wordmark { animation: rise 420ms var(--ease-out, ease-out) 3750ms both; }
 
   @keyframes rise {
@@ -204,7 +206,7 @@
       </div>
     </div>
     <div class="ask">그 글은 누가 검증하나?</div>
-    <div class="wordmark">RED<b>█</b>LINE</div>
+    <div class="wordmark">RED<span class="wm-b">LINE</span></div>
   </div>
 </section>
 

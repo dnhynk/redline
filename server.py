@@ -131,6 +131,8 @@ class Hub:
                 "mock": self.mock,
                 "run": self.run_id,
                 "active": self.active,
+                # 입력 상한의 진실은 여기 한 곳이다 — 화면이 따로 적어 두면 조용히 어긋난다.
+                "text_max_chars": TEXT_MAX_CHARS,
                 # 보관 상한을 넘겨 버린 앞부분. 늦게 붙은 화면이 자기가 덜 봤다는 것을 알아야 한다.
                 "history_dropped": self.history_dropped,
                 "history_from": self.history[0]["seq"] if self.history else self.seq + 1,

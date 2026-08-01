@@ -32,6 +32,8 @@
   var STANCE_LABEL = { support: "뒷받침", challenge: "반박" };
   var STANCE_SEARCH = { support: "뒷받침 검색", challenge: "반박 검색" };
   var DEFAULT_TOOL_MAX = 30;
+  // 서버가 config 로 알려 주기 전까지 쓰는 값. 진실은 서버에 있다.
+  var textMaxChars = 12800;
   // 한꺼번에 도착한 반박 카드를 차례로 드러내는 간격과, 그 전체 창의 상한.
   // 창을 360ms 로 묶은 것은 카드 자체가 240ms 라, 첫 장이 앉을 무렵 마지막 장이
   // 출발해 물결 하나로 읽히는 지점이기 때문이다. 어떤 장수에서도 마지막 카드가
@@ -329,6 +331,10 @@
     if (event.kind === "config") {
       var cfg = event.payload || {};
       if (cfg.timebox_s) state.timebox = cfg.timebox_s;
+      if (cfg.text_max_chars) {
+        textMaxChars = cfg.text_max_chars;
+        paintInputCount();
+      }
       state.replay = !!cfg.mock;
       paintSource();
       noteHistoryGap(cfg);
@@ -1403,6 +1409,15 @@
     if (state.following && Date.now() > state.burstUntil) scrollToStage(next);
   }
 
+  function paintInputCount() {
+    var area = $("#input-text");
+    var count = $("#input-count");
+    if (!area || !count) return;
+    var n = area.value.length;
+    count.textContent = n.toLocaleString("en-US") + " / " + textMaxChars.toLocaleString("en-US");
+    count.dataset.over = n > textMaxChars ? "1" : "0";
+  }
+
   function paintStageRail() {
     var rail = $("#stage-rail");
     if (!rail) return;
@@ -1709,9 +1724,17 @@
   function boot() {
     if (isMain) {
       $("#run-form").addEventListener("submit", submitRun);
+      var area = $("#input-text");
+      if (area) {
+        area.addEventListener("input", paintInputCount);
+        paintInputCount();
+      }
       $("#intake-open").addEventListener("click", function () {
         $("#intake").hidden = false;
         $("#intake-collapsed").hidden = true;
+        // 다시 입력하러 왔다는 것은 이 런이 끝났다는 뜻이다 — 단계 표시는 지난 런의 것이므로 비운다.
+        state.stage = 0;
+        paintStageRail();
       });
       $("#follow-run").addEventListener("click", function () {
         state.following = true;

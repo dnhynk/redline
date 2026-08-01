@@ -17,7 +17,7 @@
     <li data-stage="1" data-target="#galley">원고</li>
     <li data-stage="2" data-target="#galley">확인</li>
     <li data-stage="3" data-target="#galley">판정</li>
-    <li data-stage="4" data-target="#omissions-section">반박 근거</li>
+    <li data-stage="4" data-target="#omissions-section">반박</li>
     <li data-stage="5" data-target="#terminal-summary">보고</li>
   </ul>
   <span class="conn" id="connection-label">연결 중</span>
@@ -54,7 +54,10 @@
 
       <form class="form-card sheet" id="run-form">
         <label class="form-label" for="input-text">감사할 텍스트 — AI가 생성한 글을 붙여넣어 보세요</label>
-        <textarea id="input-text" name="text" rows="9" spellcheck="false">AI 기반 건강 상담은 의사 진료보다 항상 정확합니다. 한 연구에 따르면 진단 오류를 80% 줄였습니다. 모든 연령대에서 부작용 없이 효과가 입증되었습니다. 원격 상담은 대면 진료를 완전히 대체할 수 있습니다. 따라서 병원 방문은 더 이상 필요하지 않습니다.</textarea>
+        <div class="input-wrap">
+          <textarea id="input-text" name="text" rows="9" spellcheck="false"></textarea>
+          <span class="input-count" id="input-count" aria-hidden="true">0 / 12,800</span>
+        </div>
         <div class="form-foot">
           <p class="form-hint">예시가 들어 있습니다 — 지우고 직접 넣어보세요 · 12,800자까지</p>
           <button class="btn-ink" id="run-button" type="submit">감사 시작 →</button>
