@@ -138,6 +138,8 @@
     "animationcancel",
     function (e) {
       motion.cancel++;
+      settleAnim(e.target);
+      requestAnimationFrame(flushDeferred);
     },
     true
   );
@@ -215,28 +217,33 @@
     node.dataset.anim = cls;
   }
 
+  // 끝났든 도중에 끊겼든 뒷정리는 같다. 패널을 숨기면 그 안에서 돌던
+  // 애니메이션은 취소되는데, 그때 일회성 클래스를 안 떼면 그 요소는 영원히
+  // "도는 중"으로 남아 다음 갱신이 밀린다.
+  function settleAnim(node) {
+    if (!node || node.nodeType !== 1 || !node.dataset || !node.dataset.anim) return;
+    var cls = node.dataset.anim;
+    node.classList.remove(cls);
+    delete node.dataset.anim;
+    // 차례로 드러내려고 걸어 둔 지연은 그 한 번에만 쓴다 — 다시 뜰 때
+    // 지난번 지연을 물려받으면 이유 없이 늦게 나타난다.
+    if (node.style.animationDelay) node.style.animationDelay = "";
+    var queued = node.dataset.animQueue;
+    if (queued) {
+      delete node.dataset.animQueue;
+      requestAnimationFrame(function () {
+        fireOnce(node, queued);
+      });
+    }
+  }
+
   document.addEventListener(
     "animationend",
     function (e) {
       motion.end++;
       var rec = motion.names[e.animationName];
       if (rec) rec.end++;
-      var node = e.target;
-      if (node && node.nodeType === 1 && node.dataset && node.dataset.anim) {
-        var cls = node.dataset.anim;
-        node.classList.remove(cls);
-        delete node.dataset.anim;
-        // 차례로 드러내려고 걸어 둔 지연은 그 한 번에만 쓴다 — 다시 뜰 때
-        // 지난번 지연을 물려받으면 이유 없이 늦게 나타난다.
-        if (node.style.animationDelay) node.style.animationDelay = "";
-        var queued = node.dataset.animQueue;
-        if (queued) {
-          delete node.dataset.animQueue;
-          requestAnimationFrame(function () {
-            fireOnce(node, queued);
-          });
-        }
-      }
+      settleAnim(e.target);
       requestAnimationFrame(flushDeferred);
     },
     true
@@ -257,6 +264,8 @@
     fixtureSearch: false,
     sourceMode: undefined,
     stage: 0,
+    tab: 0,
+    fixCount: 0,
     following: false,
     burstUntil: 0,
     rowSig: "",
@@ -423,6 +432,8 @@
     state.audit = null;
     state.status = null;
     state.stage = 0;
+    state.tab = 0;
+    state.fixCount = 0;
     state.rowSig = "";
     state.rows = [];
     state.pctSeen = {};
@@ -493,6 +504,7 @@
     }
     paintTally(audit);
     paintOmissions(audit);
+    paintTabs();
     if (state.status) paintStatus(state.status);
     driveStage(event);
   }
@@ -1168,9 +1180,36 @@
     var md = status.reason === "error" ? "" : status.final_report || "";
     if (report.dataset.sig !== md) {
       report.dataset.sig = md;
-      report.innerHTML = md ? renderReport(md) : "";
+      var parts = md ? renderReport(md) : { report: "", fixes: [] };
+      report.innerHTML = parts.report;
       $(".report-label").hidden = !md;
+      paintFixes(parts.fixes);
     }
+  }
+
+  // 추천 수정안 — 목록 전체를 다시 짓지 않고 있는 줄만 갈아 끼운다
+  function paintFixes(fixes) {
+    var host = $("#fix-list");
+    if (!host) return;
+    var sig = fixes.join(" ");
+    if (host.dataset.sig === sig) return;
+    host.dataset.sig = sig;
+    while (host.children.length > fixes.length) host.removeChild(host.lastChild);
+    for (var i = 0; i < fixes.length; i++) {
+      var li = host.children[i];
+      if (!li) {
+        li = el("li");
+        host.appendChild(li);
+      }
+      var next = fixLine(fixes[i]);
+      if (li.dataset.sig !== next) {
+        li.dataset.sig = next;
+        li.innerHTML = next;
+      }
+    }
+    $("#fix-empty").hidden = fixes.length > 0;
+    state.fixCount = fixes.length;
+    paintTabs();
   }
 
   function humanizeAction(text) {
@@ -1329,7 +1368,7 @@
     flushPara();
     flushItems();
 
-    var html = "";
+    // 추천 절은 최종 보고에서 떼어 자기 탭으로 보낸다 — 같은 글이 두 곳에 있으면 안 된다
     var fix = -1;
     for (var b = 0; b < blocks.length; b++) {
       if (blocks[b].type === "h" && blocks[b].text.trim() === "추천 수정안") {
@@ -1346,12 +1385,17 @@
         }
       }
     }
+
+    var html = "";
+    var fixes = [];
     for (var n = 0; n < blocks.length; n++) {
-      if (n === fix) html += '<section class="fixbox">';
-      html += renderBlock(blocks[n], fix >= 0 && n >= fix && n < fixEnd);
-      if (fix >= 0 && n === fixEnd - 1) html += "</section>";
+      if (fix >= 0 && n >= fix && n < fixEnd) {
+        if (blocks[n].type === "ul") fixes = fixes.concat(blocks[n].items);
+        continue; // 제목과 본문은 탭 라벨과 안내문이 대신한다
+      }
+      html += renderBlock(blocks[n], false);
     }
-    return html;
+    return { report: html, fixes: fixes };
   }
 
   function renderBlock(block, inFix) {
@@ -1401,10 +1445,95 @@
     return stage;
   }
 
+  // ---------------------------------------------------------------- 탭
+  //
+  // 세 패널은 서로 대등한 형제라 방향이 없다. 그래서 옆으로 밀지 않고 불투명도만
+  // 쓴다. 종결 수치는 탭에 들어가지 않는다 — 어느 탭을 보든 보여야 하는 값이다.
+
+  var TAB_SPEC = [
+    { tab: "tab-sentences", panel: "galley", count: "count-sentences" },
+    { tab: "tab-rebut", panel: "omissions-section", count: "count-rebut" },
+    { tab: "tab-fix", panel: "fix-panel", count: "count-fix" }
+  ];
+
+  function tabIndexOf(node) {
+    for (var i = 0; i < TAB_SPEC.length; i++) if (TAB_SPEC[i].tab === node.id) return i;
+    return 0;
+  }
+
+  function paintTabs() {
+    var audit = state.audit;
+    var counts = [
+      audit ? sentencesOf(audit).length : 0,
+      audit ? (audit.omissions || []).length : 0,
+      state.fixCount || 0
+    ];
+    for (var i = 0; i < TAB_SPEC.length; i++) {
+      var tab = $("#" + TAB_SPEC[i].tab);
+      var slot = $("#" + TAB_SPEC[i].count);
+      if (!tab || !slot) continue;
+      var text = String(counts[i]);
+      if (slot.textContent !== text) slot.textContent = text;
+      // 0 이어도 누를 수 있게 둔다. 왜 비었는지는 그 패널만 말할 수 있고,
+      // 찾아봤지만 없었다와 아예 안 찾았다를 가르는 문장이 거기 있다.
+      tab.dataset.empty = counts[i] ? "0" : "1";
+    }
+  }
+
+  function selectTab(index, opts) {
+    opts = opts || {};
+    index = Math.max(0, Math.min(TAB_SPEC.length - 1, index));
+    var moved = state.tab !== index;
+    state.tab = index;
+    for (var i = 0; i < TAB_SPEC.length; i++) {
+      var tab = $("#" + TAB_SPEC[i].tab);
+      var panel = $("#" + TAB_SPEC[i].panel);
+      var on = i === index;
+      if (tab) {
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+        tab.tabIndex = on ? 0 : -1;
+      }
+      if (!panel) continue;
+      if (!on) hidePanel(panel);
+      else if (moved || opts.force || panel.hidden) showPanel(panel);
+    }
+    if (opts.focus) {
+      var active = $("#" + TAB_SPEC[index].tab);
+      if (active) active.focus();
+    }
+  }
+
+  // 숨기면 그 안에서 돌던 애니메이션이 사라진다. 브라우저가 취소를 알려 주기를
+  // 기다리지 않고 여기서 직접 매듭짓는다 — 안 그러면 그 여백 부호는 영원히
+  // "도는 중"으로 남아 다음 갱신이 밀린다.
+  function hidePanel(panel) {
+    if (panel.hidden) return;
+    var pending = panel.querySelectorAll("[data-anim]");
+    for (var i = 0; i < pending.length; i++) settleAnim(pending[i]);
+    panel.hidden = true;
+  }
+
+  // 들어오는 패널만 뜬다. 나가는 패널을 겹쳐 두면 두 패널의 높이가 달라 화면이
+  // 튄다 — 읽는 중에 글이 움직이지 않는 것이 먼저다.
+  function showPanel(panel) {
+    panel.hidden = false;
+    panel.classList.add("is-entering");
+    void panel.offsetWidth; // 여기서 레이아웃을 확정시켜야 전환이 실제로 돈다
+    panel.classList.remove("is-entering");
+  }
+
+  // 단계 1~3 은 문장, 4 는 반박. 5(종결)는 탭 밖이라 탭을 건드리지 않는다.
+  function tabForStage(stage) {
+    return stage >= 4 ? 1 : 0;
+  }
+
   // 대기 화면은 검사 과정 밴드로 마감된다 — 무대는 런이 시작될 때 올라온다
   function revealStage() {
-    $("#galley").hidden = false;
-    $("#omissions-section").hidden = false;
+    var tabs = $("#result-tabs");
+    if (tabs && tabs.hidden) {
+      tabs.hidden = false;
+      selectTab(state.tab, { force: true });
+    }
     // 무대가 올라오는 그 프레임에 배지 폭을 확정한다 — 검사 이름이 바뀌어도 안 흔들린다
     $("#phase-badge").dataset.live = "1";
   }
@@ -1413,13 +1542,28 @@
     var next = stageFor(event);
     if (next >= 1) revealStage();
     if (next <= state.stage) {
-      paintFocus();
       return;
     }
     state.stage = next;
     paintStageRail();
-    paintFocus();
-    if (state.following && Date.now() > state.burstUntil) scrollToStage(next);
+    if (state.following && Date.now() > state.burstUntil) goToStage(next);
+  }
+
+  // 자동 따라가기가 탭을 옮긴다. 이탈한 사용자의 탭은 뺏지 않는다 —
+  // 여기 오는 것은 state.following 이 참일 때뿐이다.
+  function goToStage(stage) {
+    if (stage >= 1 && stage <= 4) {
+      selectTab(tabForStage(stage));
+      scrollToTabs(stage);
+    } else if (stage >= 5) {
+      scrollToStage(stage);
+    }
+  }
+
+  function scrollToTabs(stage) {
+    var tabs = $("#result-tabs");
+    if (!tabs || tabs.hidden) return;
+    smoothTo(Math.max(0, tabs.getBoundingClientRect().top + window.scrollY - 78), stage);
   }
 
   function paintInputCount() {
@@ -1440,16 +1584,6 @@
       items[i].classList.toggle("reached", n <= state.stage);
       items[i].classList.toggle("now", n === state.stage);
     }
-  }
-
-  function paintFocus() {
-    var galley = $("#galley");
-    var rebut = $("#omissions-section");
-    if (!galley || !rebut) return;
-    var live = state.following && state.stage >= 1 && state.stage <= 4;
-    galley.classList.toggle("is-focus", live && state.stage < 4);
-    galley.classList.toggle("is-receded", live && state.stage === 4);
-    rebut.classList.toggle("is-focus", live && state.stage === 4);
   }
 
   var scrollTimer = null;
@@ -1500,7 +1634,6 @@
     if (!state.following) return;
     state.following = false;
     cancelScroll();
-    paintFocus();
     var button = $("#follow-run");
     if (button) button.hidden = false;
   }
@@ -1759,15 +1892,47 @@
       $("#follow-run").addEventListener("click", function () {
         state.following = true;
         $("#follow-run").hidden = true;
-        paintFocus();
-        scrollToStage(state.stage);
+          goToStage(state.stage);
       });
+      // 레일은 스크롤이 아니라 탭을 옮긴다 — 숨은 패널로는 스크롤할 수 없다
       $("#stage-rail").addEventListener("click", function (e) {
         var item = e.target.closest("li");
         if (!item) return;
-        var target = $(item.dataset.target);
-        if (target && !target.hidden) smoothTo(Math.max(0, target.getBoundingClientRect().top + window.scrollY - 78), Number(item.dataset.stage));
+        var tabs = $("#result-tabs");
+        if (!tabs || tabs.hidden) return;
+        goToStage(Number(item.dataset.stage));
       });
+
+      var tablist = $("#tablist");
+      if (tablist) {
+        // 누르는 순간 반응한다 — 떼는 순간에 표시가 오면 죽은 느낌이 난다
+        tablist.addEventListener("pointerdown", function (e) {
+          var tab = e.target.closest('[role="tab"]');
+          if (!tab || e.button) return;
+          e.preventDefault(); // 기본 포커스 이동을 막고 우리가 옮긴다
+          selectTab(tabIndexOf(tab), { focus: true });
+        });
+        // 포인터가 없는 길(Enter·Space)도 같은 자리로 온다
+        tablist.addEventListener("click", function (e) {
+          var tab = e.target.closest('[role="tab"]');
+          if (tab) selectTab(tabIndexOf(tab), { focus: true });
+        });
+        tablist.addEventListener("keydown", function (e) {
+          var tab = e.target.closest('[role="tab"]');
+          if (!tab || e.ctrlKey || e.altKey || e.metaKey) return;
+          var at = tabIndexOf(tab);
+          var last = TAB_SPEC.length - 1;
+          var to = -1;
+          if (e.key === "ArrowRight" || e.key === "ArrowDown") to = at === last ? 0 : at + 1;
+          else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = at === 0 ? last : at - 1;
+          else if (e.key === "Home") to = 0;
+          else if (e.key === "End") to = last;
+          if (to < 0) return;
+          e.preventDefault();
+          selectTab(to, { focus: true });
+        });
+      }
+
       ["wheel", "touchstart", "pointerdown", "keydown"].forEach(function (name) {
         window.addEventListener(name, detach, { capture: true, passive: true });
       });
@@ -1846,8 +2011,7 @@
       setTimeout(function () {
         state.following = false;
         $("#follow-run").hidden = true;
-        paintFocus();
-        applyFold();
+          applyFold();
       }, 360);
     }
     if (!state.done) lastDone = false;
