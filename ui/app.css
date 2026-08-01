@@ -90,6 +90,8 @@
   --shell: 1156px;
   --topbar-h: 64px;
   --scroll-pad: 78px;
+  /* 상단 바(64) + 상태 띠(약 104) + 여백. 스크롤 목적지가 이 아래로 와야 탭이 안 가린다. */
+  --scroll-pad-run: 186px;
   --margin-col: 280px;
 
   --shadow-sheet: 0 1px 0 rgba(20, 22, 26, 0.03), 0 1px 3px rgba(20, 22, 26, 0.05),
@@ -1022,7 +1024,8 @@ a {
 }
 .claim-mark[data-mark="unsupported"] {
   background-image: linear-gradient(var(--v-unsupported-line), var(--v-unsupported-line));
-  background-size: 100% 4px;
+  /* 굵은 실선이 이 판정의 부호다. 다만 4px 은 혼자 도드라져 다른 부호와 급이 안 맞았다. */
+  background-size: 100% 3px;
 }
 .claim-mark[data-mark="supported"] {
   background-image: linear-gradient(var(--v-supported-line), var(--v-supported-line));

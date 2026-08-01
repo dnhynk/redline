@@ -35,10 +35,10 @@ CONTRACT_NETWORK_TOOLS = {"search_web", "search_scholar", "fetch_source"}
 MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
     "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
-    "terminal-summary", "terminal-title", "terminal-reason", "terminal-coverage", "missing-actions",
+    "terminal-summary", "terminal-title", "terminal-reason", "missing-actions",
     "final-report", "terminal-note", "error-detail", "source-banner", "intake",
     "intake-process",
-    "status-band", "sb-gauge", "sb-fill", "sb-elapsed", "sb-timebox",
+    "status-band", "sb-gauge", "sb-fill",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",
 ]
 RAW_IDS = [
@@ -717,7 +717,7 @@ def test_the_reenter_button_lives_in_the_band_head():
 def test_the_band_shows_elapsed_and_cap_but_never_guesses_the_rest():
     """남은 시간을 예측해 보여주면 모르는 것을 아는 척하는 것이다."""
     band = INDEX.split('id="status-band"')[1].split("</section>")[0]
-    assert 'id="sb-elapsed"' in band and 'id="sb-timebox"' in band
+    assert 'id="sb-gauge"' in band and 'id="sb-fill"' in band
     assert "남은" not in band, "남은 시간을 적었다"
     block = JS.split("function paintBand(")[1].split("\n  }")[0]
     assert "남은" not in block

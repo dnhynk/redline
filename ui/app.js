@@ -1193,24 +1193,6 @@
       var gauge = $("#sb-gauge");
       if (gauge) gauge.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
     }
-    setText($("#sb-elapsed"), String(Math.round(shown)));
-    setText($("#sb-timebox"), String(Math.round(state.timebox)));
-
-    // 끝나면 같은 자리가 결과 한 줄이 된다
-    var result = $("#terminal-coverage");
-    if (!result) return;
-    var audit = (status && status.audit) || state.audit;
-    if (!state.done || !audit) {
-      result.hidden = true;
-      return;
-    }
-    var bits = [];
-    var rate = audit.unsupported_rate;
-    if (Array.isArray(rate) && rate[1]) bits.push("뒷받침 안 됨 " + rate[0] + " / " + rate[1]);
-    if (Array.isArray(audit.coverage) && audit.coverage[1])
-      bits.push("커버리지 " + audit.coverage[0] + " / " + audit.coverage[1]);
-    result.hidden = !bits.length;
-    setText(result, bits.join("  ·  "));
   }
 
   function paintTerminal(status, map) {
