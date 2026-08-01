@@ -661,9 +661,121 @@ def test_stage_classes_only_touch_paint_properties():
 
 
 def test_live_lists_are_never_rebuilt_wholesale():
-    for host in ("#sentences", "#state-claims", "#omissions"):
+    for host in ("#sentences", "#state-claims", "#omissions", "#fix-list"):
         assert not re.search(rf'\$\("{host}"\)\.innerHTML\s*=', JS), f"{host} 전체 재생성"
     assert "ensureRows" in JS and "whenIdle" in JS
+
+
+# --------------------------------------------------------------------------
+# 결과 탭 — 한 번에 하나만 보이고, 종결 수치는 탭 밖에 있다
+# --------------------------------------------------------------------------
+
+TAB_IDS = ["tab-sentences", "tab-rebut", "tab-fix"]
+PANEL_IDS = ["galley", "omissions-section", "fix-panel"]
+
+
+def test_the_tabs_carry_the_roles_a_screen_reader_needs():
+    for tab, panel in zip(TAB_IDS, PANEL_IDS):
+        block = re.search(rf'<button[^>]*id="{tab}"[^>]*>', INDEX, re.S)
+        assert block, tab
+        markup = block.group(0)
+        assert 'role="tab"' in markup, tab
+        assert f'aria-controls="{panel}"' in markup, tab
+        assert "aria-selected=" in markup, tab
+        assert "tabindex=" in markup, f"{tab}: roving tabindex 없음"
+        panel_tag = re.search(rf'<section[^>]*id="{panel}"[^>]*>', INDEX, re.S)
+        assert panel_tag, panel
+        assert 'role="tabpanel"' in panel_tag.group(0), panel
+        assert f'aria-labelledby="{tab}"' in panel_tag.group(0), panel
+    assert 'role="tablist"' in INDEX
+
+
+def test_the_tab_row_stays_down_until_there_is_something_in_it():
+    tabs = re.search(r'<div class="tabs" id="result-tabs"([^>]*)>', INDEX)
+    assert tabs and "hidden" in tabs.group(1), "런 시작 전에도 탭 줄이 뜬다"
+
+
+def test_the_terminal_box_is_not_a_tab():
+    """종결 수치는 어느 탭을 보든 보여야 한다."""
+    term = re.search(r'<section class="terminal" id="terminal-summary"([^>]*)>', INDEX)
+    assert term, "종결 박스를 못 찾았다"
+    assert "tabpanel" not in term.group(1) and "role=" not in term.group(1)
+    assert "terminal-summary" not in str(PANEL_IDS)
+
+
+def test_the_tabs_move_by_keyboard_alone():
+    block = JS.split('tablist.addEventListener("keydown"')[1].split("\n        });")[0]
+    for key in ("ArrowRight", "ArrowLeft", "Home", "End"):
+        assert key in block, key
+    assert "preventDefault" in block
+
+
+def test_the_tab_answers_the_press_not_the_release():
+    """활성 표시가 클릭 뗄 때 오면 죽은 느낌이 난다."""
+    assert 'tablist.addEventListener("pointerdown"' in JS
+    block = JS.split('tablist.addEventListener("pointerdown"')[1].split("\n        });")[0]
+    assert "selectTab" in block, "누른 순간에 탭을 바꾸지 않는다"
+
+
+def test_the_tabs_are_underlines_not_pills():
+    """이 화면은 인쇄물이다 — 배경을 채운 칩은 여기 문법이 아니다."""
+    for selector, block in _rules(CSS):
+        if not re.match(r"^\s*\.tab\b", selector.strip()) or "::" in selector:
+            continue
+        assert "border-radius" not in block or "border-radius: 0" in block, selector.strip()
+        background = re.search(r"background(?:-color)?:\s*([^;]+);", block)
+        assert not background or background.group(1).strip() in ("none", "transparent"), (
+            f"탭에 배경을 채웠다: {selector.strip()}")
+    underline = _balanced(CSS, CSS.index("{", CSS.index(".tab::after")))
+    assert "height: 2px" in underline and "background: var(--ink)" in underline
+
+
+def test_switching_a_tab_only_hides_and_shows():
+    """탭 전환이 패널을 다시 짓게 하면 애니메이션 중인 부호가 죽는다."""
+    block = JS.split("function selectTab(")[1].split("\n  }")[0]
+    assert "innerHTML" not in block and "textContent" not in block
+    assert "hidePanel" in block and "showPanel" in block
+    # 숨기기 전에 돌던 일회성 애니메이션을 매듭짓는다
+    hide = JS.split("function hidePanel(")[1].split("\n  }")[0]
+    assert "settleAnim" in hide, "숨길 때 돌던 애니메이션을 안 매듭짓는다"
+
+
+def test_the_panel_change_is_a_transition_not_a_keyframe():
+    """kill 0 계측은 animationstart/end 를 센다 — 전환은 거기 안 걸려야 한다."""
+    block = _balanced(CSS, CSS.index("{", CSS.index(".tabpanel {")))
+    assert "transition" in block and "animation" not in block
+    assert "var(--dur-tab)" in block
+    dur = int(re.search(r"--dur-tab:\s*(\d+)ms", _root_block()).group(1))
+    assert 120 <= dur <= 160, f"패널 전환 {dur}ms"
+    # 위치는 움직이지 않는다 — 탭은 대등한 형제라 방향이 없다
+    entering = _balanced(CSS, CSS.index("{", CSS.index(".tabpanel.is-entering")))
+    assert "opacity" in entering
+    for moving in ("transform", "translate", "margin", "left", "top"):
+        assert moving not in entering, f"패널이 {moving} 로 움직인다"
+
+
+def test_reduced_motion_drops_the_panel_change():
+    # 기기 설정 경로는 미디어 블록 안에 중첩되고, 강제 스위치 경로는 형제 규칙이다
+    media, _ = _reduced_blocks()
+    assert re.search(r"\.tabpanel\s*\{[^}]*transition-duration:\s*0ms\s*!important", media, re.S), "media"
+    forced = _balanced(CSS, CSS.index("{", CSS.index("html.force-reduced .tabpanel")))
+    assert re.search(r"transition-duration:\s*0ms\s*!important", forced), "force-reduced"
+
+
+def test_the_recommendations_live_in_one_place():
+    """같은 글이 최종 보고와 탭 양쪽에 있으면 안 된다."""
+    block = JS.split("function renderReport(")[1].split("\n  function ")[0]
+    assert "fixbox" not in JS, "최종 보고가 추천 절을 아직 그린다"
+    assert "return { report: html, fixes: fixes };" in block
+    assert "paintFixes" in JS and "#fix-list" in JS
+
+
+def test_the_stage_rail_moves_tabs_not_the_scrollbar():
+    """숨은 패널로는 스크롤할 수 없다."""
+    block = JS.split('$("#stage-rail").addEventListener("click"')[1].split("\n      });")[0]
+    assert "goToStage" in block and "smoothTo" not in block
+    stages = JS.split("function tabForStage(")[1].split("\n  }")[0]
+    assert "stage >= 4" in stages
 
 
 def test_one_shot_animation_classes_are_removed_when_they_finish():
