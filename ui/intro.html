@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>REDLINE — 영상 카드</title>
+<link rel="stylesheet" href="/ui/app.css" />
+<style>
+  /* 화면 전체를 쓰는 촬영용 카드. 크기는 전부 vw 라 1920 과 2560 에서 같은 그림이 나온다. */
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper, #f7f5ef);
+    color: var(--ink);
+    cursor: none;
+    overflow: hidden;
+  }
+  .scene { display: none; }
+  .scene.live {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* --- 장면 1: 콜드 오픈 ------------------------------------------------ */
+
+  .sheet {
+    width: 58vw;
+    background: var(--sheet);
+    border: 1px solid var(--edge);
+    box-shadow: var(--shadow-sheet);
+    padding: 1.9vw 2.2vw 1.7vw;
+  }
+  .sheet-caption {
+    font-family: var(--f-sans);
+    font-weight: 700;
+    font-size: 1vw;
+    color: var(--muted);
+    margin-bottom: 1.4vw;
+    letter-spacing: 0.02em;
+  }
+  .line-row {
+    display: grid;
+    grid-template-columns: 1fr 13vw;
+    column-gap: 2.2vw;
+    align-items: center;
+    border-top: 1px solid var(--hair);
+    padding: 0.5vw 0;
+  }
+  .line-text {
+    font-family: var(--f-serif);
+    font-size: 1.9vw;
+    line-height: 1.62;
+    color: var(--ink);
+    text-align: left;
+  }
+  /* 줄마다 span 하나, 줄마다 제 지연 — 한 span 에 두 줄을 담으면 동시에 걷힌다. */
+  .type {
+    display: block;
+    clip-path: inset(0 100% 0 0);
+  }
+  .scene.live .type {
+    animation: type-in var(--type-dur) steps(var(--type-steps), end) var(--type-at) both;
+  }
+  @keyframes type-in {
+    from { clip-path: inset(0 100% 0 0); }
+    to   { clip-path: inset(0 0 0 0); }
+  }
+
+  .verdict-cell {
+    border-left: 1px solid var(--rule);
+    padding-left: 1.2vw;
+    opacity: 0;
+  }
+  .scene.live .verdict-cell {
+    animation: rise 340ms var(--ease-out, ease-out) 2550ms both;
+  }
+  .verdict-rule {
+    width: 2.4vw;
+    height: 0.22vw;
+    background: var(--v-unsupported-line);
+    margin-bottom: 0.5vw;
+  }
+  .verdict-label {
+    font-family: var(--f-sans);
+    font-weight: 700;
+    font-size: 1.05vw;
+    color: var(--v-unsupported-label);
+  }
+
+  .ask {
+    font-family: var(--f-sans);
+    font-weight: 600;
+    font-size: 1.7vw;
+    color: var(--ink);
+    margin-top: 2.6vw;
+    opacity: 0;
+  }
+  .scene.live .ask { animation: rise 400ms var(--ease-out, ease-out) 2950ms both; }
+
+  .wordmark {
+    font-family: var(--f-sans);
+    font-weight: 900;
+    font-size: 2.8vw;
+    letter-spacing: -0.14vw;
+    margin-top: 1.2vw;
+    opacity: 0;
+  }
+  .wordmark b { color: var(--v-unsupported-line); font-weight: 900; }
+  .scene.live .wordmark { animation: rise 420ms var(--ease-out, ease-out) 3750ms both; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(0.6vw); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 밑줄은 제품의 mark-draw 를 그대로 쓴다. 글자는 타이핑으로 드러나고 밑줄만 나중에 그어진다. */
+  .scene.live .claim-mark.draw[data-mark="unsupported"] {
+    animation: mark-draw-4 280ms var(--ease-mark, ease-out) 2200ms both;
+  }
+
+  /* --- 장면 2: 마무리 카드 ---------------------------------------------- */
+
+  .card { width: 58vw; text-align: center; }
+  .card > * { opacity: 0; }
+  .card .big {
+    font-family: var(--f-serif);
+    font-size: 2.6vw;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  .card .big em { font-style: normal; color: var(--v-unsupported-label); }
+  .card hr {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 1.2vw 0;
+    width: 100%;
+  }
+  .card .sub {
+    font-family: var(--f-sans);
+    font-weight: 600;
+    font-size: 1.5vw;
+    color: var(--ink);
+  }
+  .card .meta {
+    font-family: var(--f-mono);
+    font-weight: 500;
+    font-size: 1.1vw;
+    color: var(--muted);
+    margin-top: 1.5vw;
+  }
+  .scene.live .card > *:nth-child(1) { animation: rise 420ms var(--ease-out, ease-out) 150ms both; }
+  .scene.live .card > *:nth-child(2) { animation: rise 420ms var(--ease-out, ease-out) 350ms both; }
+  .scene.live .card > *:nth-child(3) { animation: rise 420ms var(--ease-out, ease-out) 800ms both; }
+  .scene.live .card > *:nth-child(4) { animation: rise 420ms var(--ease-out, ease-out) 1000ms both; }
+  .scene.live .card > *:nth-child(5) { animation: rise 420ms var(--ease-out, ease-out) 1200ms both; }
+
+  /* 모션을 줄여도 끝 상태는 남는다 — 빈 화면이 되면 안 된다. */
+  @media (prefers-reduced-motion: reduce) {
+    .scene.live .type,
+    .scene.live .verdict-cell,
+    .scene.live .ask,
+    .scene.live .wordmark,
+    .scene.live .claim-mark.draw[data-mark="unsupported"],
+    .scene.live .card > * {
+      animation: none !important;
+      opacity: 1 !important;
+      clip-path: none !important;
+      transform: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<section class="scene" data-scene="1">
+  <div>
+    <div class="sheet">
+      <div class="sheet-caption">AI가 쓴 글</div>
+      <div class="line-row">
+        <div class="line-text">
+          <span class="type" style="--type-at:250ms; --type-dur:1000ms; --type-steps:20">간헐적 단식이 노화를</span>
+          <span class="type" style="--type-at:1300ms; --type-dur:850ms; --type-steps:16"><span class="claim-mark draw" data-mark="unsupported">임상시험으로 이미 입증됐습니다</span></span>
+        </div>
+        <div class="verdict-cell">
+          <div class="verdict-rule"></div>
+          <div class="verdict-label">뒷받침 안 됨</div>
+        </div>
+      </div>
+    </div>
+    <div class="ask">그 글은 누가 검증하나?</div>
+    <div class="wordmark">RED<b>█</b>LINE</div>
+  </div>
+</section>
+
+<section class="scene" data-scene="2">
+  <div class="card">
+    <div class="big"><em>빨간 줄</em>은 시작입니다.</div>
+    <div class="big">이 글이 말하지 않은 것까지 찾습니다.</div>
+    <hr />
+    <div class="sub">AI가 쓰고, REDLINE이 감사합니다.</div>
+    <div class="meta">Liner 학술 인덱스 · OpenAI Agents SDK</div>
+  </div>
+</section>
+
+<script>
+  (function () {
+    var scenes = Array.prototype.slice.call(document.querySelectorAll(".scene"));
+    var at = 0;
+
+    function play(index) {
+      at = Math.max(0, Math.min(scenes.length - 1, index));
+      scenes.forEach(function (el, i) {
+        el.classList.remove("live");
+        if (i === at) {
+          void el.offsetWidth; // 리플로우 — 빼면 같은 장면 재생 시 애니메이션이 다시 돌지 않는다
+          el.classList.add("live");
+        }
+      });
+    }
+
+    document.addEventListener("keydown", function (e) {
+      var k = e.key;
+      if (k === " " || k === "ArrowRight") { play(at + 1); e.preventDefault(); }
+      else if (k === "ArrowLeft" || k === "Backspace") { play(at - 1); e.preventDefault(); }
+      else if (k === "r" || k === "R") { play(at); }
+      else if (k === "1") { play(0); }
+      else if (k === "2") { play(1); }
+    });
+
+    play(0);
+  })();
+</script>
+</body>
+</html>
