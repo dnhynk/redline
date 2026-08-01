@@ -36,7 +36,7 @@ CLAIM_CAPS: dict[str, int] = {"demo": 12, "surprise": 9}
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 FIXTURE_DIR = UI_DIR / "fixtures"
-DEFAULT_FIXTURE = FIXTURE_DIR / "complete.jsonl"
+DEFAULT_FIXTURE = UI_DIR / "mock_events.jsonl"
 
 NO_STORE = "no-store, must-revalidate"
 MEDIA_TYPES = {
@@ -82,13 +82,17 @@ class _Client:
 class Hub:
     """이벤트 재번호·히스토리 재생·팬아웃."""
 
-    def __init__(self, *, timebox_s: float, client_queue_max: int, mock: bool) -> None:
+    def __init__(
+        self, *, timebox_s: float, client_queue_max: int, mock: bool, history_max: int = 4000
+    ) -> None:
         self.timebox_s = float(timebox_s)
         self.client_queue_max = int(client_queue_max)
         self.mock = bool(mock)
+        self.history_max = int(history_max)
         self.run_id: str | None = None
         self.active = False
         self.history: list[dict] = []
+        self.history_dropped = 0
         self.seq = 0
         self.clients: set[_Client] = set()
         self._lock = asyncio.Lock()
@@ -100,6 +104,7 @@ class Hub:
             self.active = True
             self.seq = 0
             self.history = []
+            self.history_dropped = 0
 
     async def finish_run(self) -> None:
         async with self._lock:
@@ -114,6 +119,9 @@ class Hub:
                 "mock": self.mock,
                 "run": self.run_id,
                 "active": self.active,
+                # 보관 상한을 넘겨 버린 앞부분. 늦게 붙은 화면이 자기가 덜 봤다는 것을 알아야 한다.
+                "history_dropped": self.history_dropped,
+                "history_from": self.history[0]["seq"] if self.history else self.seq + 1,
             },
         }
 
@@ -131,6 +139,10 @@ class Hub:
             if "t" not in out:  # 원본 적재 시각이 있으면 보존한다
                 out["t"] = time.time()
             self.history.append(out)
+            if len(self.history) > self.history_max:
+                cut = len(self.history) - self.history_max
+                del self.history[:cut]
+                self.history_dropped += cut
             for client in tuple(self.clients):
                 if client.dropped:
                     continue
@@ -224,9 +236,12 @@ def create_app(
     client_queue_max: int = 2048,
     *,
     mock: bool = False,
+    history_max: int = 4000,
 ) -> FastAPI:
     app = FastAPI(title="REDLINE relay", docs_url=None, redoc_url=None)
-    hub = Hub(timebox_s=timebox_s, client_queue_max=client_queue_max, mock=mock)
+    hub = Hub(
+        timebox_s=timebox_s, client_queue_max=client_queue_max, mock=mock, history_max=history_max
+    )
     app.state.hub = hub
     run_lock = asyncio.Lock()
 
