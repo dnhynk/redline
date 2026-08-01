@@ -1533,10 +1533,11 @@ a {
   background: var(--paper);
   border: 1px solid var(--edge);
 }
+/* 흐르는 문장 안에서는 서체를 바꾸지 않는다 — 숫자만 모노로 뽑으면 글이 기워 붙인 것으로
+   읽힌다. 자릿수만 고정해 수치가 흔들리지 않게 한다. 모노는 지표·칩·프로젝터의 몫이다. */
 .report .num {
-  font-family: var(--f-mono);
-  font-size: 0.92em;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 .fix-from {
