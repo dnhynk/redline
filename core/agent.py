@@ -329,6 +329,9 @@ async def run_audit(
         "final_report": final_report,
         "audit": audit.to_dict(),
         "completion": completion,
+        # 축3 실행량은 화면이 "왜 완주가 아닌가"를 말할 수 있어야 하는 수치다.
+        "axis3_done": completion["axis3_done"],
+        "axis3_expected": completion["axis3_expected"],
         "turn_backstop": turn_backstop,
         "events_dropped": events_dropped,
         "timing": {

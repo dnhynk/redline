@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import time
 import unicodedata
+from math import ceil
 from typing import Any, Callable, Iterable, Sequence, TypedDict
 from urllib.parse import urlsplit, urlunsplit
 
@@ -27,6 +28,11 @@ DEFAULT_MAX_CLAIMS = 12
 # 기록 툴 소프트 상한 — 정상 런의 기록 호출은 클레임당 3축 + 분류 + 누락 몇 건이라
 # 상한의 1/3에도 닿지 않는다. 폭주(같은 판정 무한 재호출)만 막는 백스톱이다.
 MAX_RECORD_CALLS = 150
+
+# 살아남은 클레임 중 축3(완전성)을 실제로 수행해야 하는 최소 비율.
+# "최소 1회"였을 때 12건 중 1건만 하고도 완주로 기록되는 런이 나왔다 — 축3은 이 제품의
+# 시그니처 산출물이라, 통째로 생략된 런을 완주라고 부르면 안 한 것을 한 것처럼 보이게 된다.
+AXIS3_MIN_FRACTION = 0.5
 
 # 문장 종류 — `sentences`와 같은 길이의 병렬 배열 `sentence_kinds`의 어휘.
 SENTENCE_KINDS = (
@@ -89,7 +95,7 @@ class Claim(TypedDict):
     claim_type: str
     auditable: bool
     cited_source: str | None
-    prior: float
+    base_confidence: float   # 호스트 상수 BASE_CONFIDENCE — 모델은 시작값을 정하지 않는다
     confidence: float
     verdict: str
     axis_results: list[AxisResult]
@@ -278,6 +284,13 @@ _ALLOWED_SUGGESTIONS: dict[tuple[int, str], frozenset[str]] = {
 }
 
 
+# 모든 클레임이 여기서 출발한다. 시작값을 모델이 정하면 화면의 %가 "확보한 근거의 양"이
+# 아니라 "모델의 첫인상 + 근거"가 된다 — 증거를 더 적게 확보한 주장이 첫인상 덕에 더 높게
+# 뜨는 일이 실제로 일어났다. 고정하면 표시값이 증거만의 함수가 되고, 지지 판정의 상한은
+# 0.5 + 축1 0.10 + 축2 0.20 = 0.80이 되어 1.00(확실함)이 구조적으로 나올 수 없다.
+BASE_CONFIDENCE = 0.5
+
+
 def clamp01(x: float) -> float:
     return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
 
@@ -337,13 +350,13 @@ def derive_claim_verdict(axis_results: Sequence[AxisResult]) -> str:
     return verdict
 
 
-def replay_confidence(prior: float, axis_results: Sequence[AxisResult]) -> float:
-    """`prior`부터 기록 순서대로 다시 적용해 신뢰도와 각 축의 실변화량을 재계산한다.
+def replay_confidence(base: float, axis_results: Sequence[AxisResult]) -> float:
+    """시작값부터 기록 순서대로 다시 적용해 신뢰도와 각 축의 실변화량을 재계산한다.
 
     단순 뺄셈으로 이전 델타를 되돌리면 0/1 경계에서 잘렸던 값이 복원되지 않는다.
     전체 리플레이만이 클램프 상호작용까지 정확하다. `AxisResult["delta"]`를 제자리 갱신한다.
     """
-    conf = clamp01(prior)
+    conf = clamp01(base)
     for r in axis_results:
         stepped = clamp01(conf + r.get("raw_delta", 0.0))
         r["delta"] = round(stepped - conf, 6)
@@ -541,7 +554,6 @@ class Audit:
         text: str,
         claim_type: str,
         auditable: bool,
-        prior: float,
         cited_source: str | None = None,
         budget_per_claim: int | None = None,
     ) -> dict:
@@ -585,11 +597,6 @@ class Audit:
             )
 
         normalized_args: dict[str, Any] = {}
-        prior_f = float(prior)
-        clamped = clamp01(prior_f)
-        if clamped != prior_f:
-            normalized_args["prior"] = {"given": prior_f, "used": clamped}
-
         claim: Claim = {
             "id": f"C{len(self.claims) + 1}",
             "index": index,
@@ -597,8 +604,9 @@ class Audit:
             "claim_type": claim_type,
             "auditable": bool(auditable),
             "cited_source": cited_source or None,
-            "prior": clamped,
-            "confidence": clamped,
+            # 시작값은 호스트 상수다 — 모델도 호출자도 다른 값을 넣을 수 없다.
+            "base_confidence": BASE_CONFIDENCE,
+            "confidence": BASE_CONFIDENCE,
             "verdict": "pending",
             "axis_results": [],
         }
@@ -739,8 +747,8 @@ class Audit:
         else:
             claim["axis_results"].append(result)
 
-        # 델타는 prior부터 전체 리플레이로 재계산한다 — 같은 축을 다시 불러도 펌핑이 없다.
-        claim["confidence"] = replay_confidence(claim["prior"], claim["axis_results"])
+        # 델타는 시작값부터 전체 리플레이로 재계산한다 — 같은 축을 다시 불러도 펌핑이 없다.
+        claim["confidence"] = replay_confidence(claim["base_confidence"], claim["axis_results"])
         claim["verdict"] = derive_claim_verdict(claim["axis_results"])
 
         warning = None
@@ -861,6 +869,25 @@ class Audit:
             out.setdefault(str(c["index"]), []).append(c["id"])
         return out
 
+    def axis3_progress(self) -> tuple[int, int, int]:
+        """(수행, 기대, 최소 요구) — 축1을 통과하고 살아남은 클레임이 축3의 대상이다."""
+        targets = [c for c in self.claims if c["auditable"]]
+        expected = [
+            c
+            for c in targets
+            if any(r["axis"] == 1 and r["outcome"] in ("pass", "undecidable") for r in c["axis_results"])
+            and not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
+        ]
+        with_omission = {o["claim_id"] for o in self.omissions}
+        done = sum(
+            1
+            for c in expected
+            if c["id"] in with_omission
+            or any(r["axis"] == 3 and r["outcome"] != "skip" for r in c["axis_results"])
+        )
+        required = ceil(len(expected) * AXIS3_MIN_FRACTION) if expected else 0
+        return done, len(expected), max(1, required) if expected else 0
+
     def completion_report(self) -> dict:
         """완주 조건 판정 — `reason="complete"`의 유일한 근거.
 
@@ -868,30 +895,28 @@ class Audit:
         """
         targets = [c for c in self.claims if c["auditable"]]
         pending = [c["id"] for c in targets if c["verdict"] == "pending"]
-        survivors = [
-            c
-            for c in targets
-            if any(r["axis"] == 1 and r["outcome"] in ("pass", "undecidable") for r in c["axis_results"])
-            and not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
-        ]
-        axis3_done = bool(self.omissions) or any(
-            r["axis"] == 3 for c in targets for r in c["axis_results"]
-        )
+        axis3_done, axis3_expected, axis3_required = self.axis3_progress()
         missing: list[str] = []
         if self.status != "non_auditable":
             if not targets:
                 missing.append("감사 대상 클레임이 하나도 등록되지 않았다")
             if pending:
                 missing.append(f"미확정 클레임 {', '.join(pending)}")
-            if survivors and not axis3_done:
-                missing.append("축3(완전성)이 한 번도 실행되지 않았다")
+            if axis3_expected and axis3_done < axis3_required:
+                missing.append(
+                    f"축3(완전성)을 {axis3_done}/{axis3_expected} 클레임에만 실행했다"
+                    f"(최소 {axis3_required})"
+                )
         return {
             "complete": not missing,
             "missing_actions": missing,
             "claims_total": len(self.claims),
             "auditable_claims": len(targets),
             "pending_claims": pending,
-            "axis3_executed": axis3_done,
+            "axis3_executed": axis3_done > 0,
+            "axis3_done": axis3_done,
+            "axis3_expected": axis3_expected,
+            "axis3_required": axis3_required,
             "omission_count": len(self.omissions),
         }
 
