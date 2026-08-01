@@ -57,6 +57,49 @@ def test_decimal_point_does_not_split_a_sentence():
     assert sentences == ["수명이 정확히 7.2년 길다고 한다."]
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        (
+            "人工智能可以诊断疾病。研究表明准确率为95%。这是重大突破。",
+            ["人工智能可以诊断疾病。", "研究表明准确率为95%。", "这是重大突破。"],
+        ),
+        (
+            "これは事実です。研究によると80%減少しました。",
+            ["これは事実です。", "研究によると80%減少しました。"],
+        ),
+        ("本当ですか？いいえ！そうです。", ["本当ですか？", "いいえ！", "そうです。"]),
+    ],
+)
+def test_fullwidth_terminals_split_without_a_following_space(text, expected):
+    """중국어·일본어는 종결부호 뒤에 공백을 두지 않는다.
+
+    공백을 요구하면 한 단락이 문장 하나로 접히고, 좌표계 위에 선 하이라이트·커버리지·
+    클레임 앵커가 전부 그 하나로 뭉갠다 — 어떤 언어가 올지 모르는 이상 막아야 한다.
+    """
+    assert split_sentences_with_kinds(text)[0] == expected
+
+
+def test_fullwidth_decimal_point_is_not_a_terminal():
+    """전각 종결부호는 소수점으로 쓰이지 않는다 — 반각 규칙을 그대로 물려받지 않는다."""
+    assert split_sentences_with_kinds("价格是7.2元。这很便宜。")[0] == [
+        "价格是7.2元。",
+        "这很便宜。",
+    ]
+
+
+def test_closing_bracket_stays_with_the_sentence_it_closes():
+    """구분자가 닫는 부호를 삼키면 좌표계에서 글자가 사라진다 — 화면은 이 배열을 원문으로 그린다."""
+    assert split_sentences_with_kinds("「これは事実です。」次の文です。")[0] == [
+        "「これは事実です。」",
+        "次の文です。",
+    ]
+    assert split_sentences_with_kinds('He said "yes." Then left.')[0] == [
+        'He said "yes."',
+        "Then left.",
+    ]
+
+
 def test_markdown_kinds_are_classified():
     sentences, kinds = split_sentences_with_kinds(CHATBOT)
     pairs = dict(zip(sentences, kinds))

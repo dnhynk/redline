@@ -7,6 +7,7 @@
 import pytest
 
 from core.agent import RUN_REASONS, PARTIAL_REASONS
+from core.audit import DEFAULT_MAX_CLAIMS
 from core.model_tools import ALL_TOOLS
 
 import main as cli
@@ -154,3 +155,13 @@ def test_both_entry_points_cap_the_input_at_the_same_length():
     args = argparse.Namespace(text="가" * (cli.TEXT_MAX_CHARS + 1), file=None)
     with pytest.raises(SystemExit):
         cli._read_text(args)
+
+
+def test_the_claim_cap_has_one_source_and_the_core_is_it():
+    """코어 기본값과 진입점 상수가 갈라지면 상한을 두 곳에 적은 것이다.
+
+    프롬프트는 `{{MAX_CLAIMS}}` 자리표시자로 코어 값을 주입받으므로, 코어가 12이고
+    진입점이 14이면 진입점을 거치지 않는 경로(직접 `Audit(...)`·테스트·픽스처 빌드)만
+    조용히 다른 제품이 된다.
+    """
+    assert DEFAULT_MAX_CLAIMS == cli.MAX_CLAIMS
