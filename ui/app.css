@@ -116,8 +116,14 @@ body {
   font-size: 16px;
   color: var(--ink);
   background: var(--paper);
-  -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+/* 밝은 면은 기본 렌더링이 인쇄물에 가깝게 두툼하다. 어두운 면에서는 글자가 번져
+   antialiased 가 낫다 — 두 표면이 다른 이유가 여기에도 있다. */
+body.page-raw {
+  -webkit-font-smoothing: antialiased;
 }
 
 h1,
@@ -184,7 +190,7 @@ a {
   gap: 22px;
   margin: 0 auto;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 600;  letter-spacing: 0.01em;
 }
 .stage-rail li {
   display: flex;
@@ -227,7 +233,7 @@ a {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  white-space: nowrap;
+  white-space: nowrap;  letter-spacing: 0.01em;
 }
 .conn::before {
   content: "";
@@ -506,7 +512,7 @@ a {
   flex-wrap: wrap;
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--muted);  letter-spacing: 0.01em;
 }
 .legend li {
   display: flex;
@@ -521,6 +527,10 @@ a {
   color: var(--paper);
   background: var(--ink);
   white-space: nowrap;
+}
+#phase-badge[data-live="1"] {
+  min-width: 151px;
+  text-align: center;
 }
 .badge[data-outcome="complete"] {
   background: var(--v-supported-label);
@@ -591,7 +601,7 @@ a {
 .s-text {
   font-family: var(--f-serif);
   font-size: var(--t-manuscript);
-  line-height: 1.65;
+  line-height: 1.65;  text-wrap: pretty;
 }
 .s-margin {
   border-left: 1px solid var(--rule);
@@ -811,6 +821,9 @@ a {
   transition: transform 280ms ease-out;
 }
 .mark-pct {
+  flex: none;
+  min-width: 82px;
+  text-align: right;
   font-family: var(--f-mono);
   font-size: 12px;
   line-height: 16px;
@@ -960,7 +973,7 @@ a {
   font-size: 12px;
   line-height: 1.6;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--muted);  letter-spacing: 0.01em;
 }
 .axis-bar {
   display: flex;
@@ -1032,7 +1045,7 @@ a {
   text-decoration: none;
 }
 .rebut-card.arrive {
-  animation: card-arrive 240ms ease-out both;
+  animation: card-arrive 240ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 @keyframes card-arrive {
   from {
@@ -1051,7 +1064,7 @@ a {
   flex-wrap: wrap;
   font-size: 12px;
   font-weight: 600;
-  color: var(--rebut-label);
+  color: var(--rebut-label);  letter-spacing: 0.01em;
 }
 .stance-tag {
   padding: 1px 7px;
@@ -1070,13 +1083,13 @@ a {
   font-family: var(--f-serif);
   font-size: 18px;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.45;  text-wrap: balance;
 }
 .rebut-card p {
   font-size: 14px;
   line-height: 1.65;
   margin-bottom: 12px;
-  color: var(--ink);
+  color: var(--ink);  text-wrap: pretty;
 }
 .rebut-meta {
   font-family: var(--f-mono);
@@ -1167,6 +1180,7 @@ a {
   width: fit-content;
 }
 .error-detail pre {
+  font-variant-ligatures: none;
   margin: 10px 0 0;
   padding: 12px 14px;
   max-width: 74ch;
@@ -1220,7 +1234,7 @@ a {
 .report {
   max-width: 74ch;
   font-size: var(--t-report);
-  line-height: 1.7;
+  line-height: 1.7;  text-wrap: pretty;
 }
 .report h1,
 .report h2 {
@@ -1530,6 +1544,7 @@ body.has-banner .lanes {
   padding-top: 8px;
 }
 .ev {
+  font-variant-ligatures: none;
   border-left: 3px solid var(--p-line);
   padding: 3px 0 3px 12px;
   margin-bottom: 2px;
@@ -1653,6 +1668,8 @@ body.has-banner .lanes {
   color: var(--p-muted-panel);
 }
 .budget b {
+  display: inline-block;
+  min-width: 68px;
   font-size: 28px;
   font-weight: 700;
   color: var(--p-search);
@@ -1742,6 +1759,8 @@ body.has-banner .lanes {
 }
 .state-verdict {
   margin-left: auto;
+  min-width: 102px;
+  text-align: right;
   font-size: 14px;
   font-weight: 700;
   color: var(--p-muted-panel);

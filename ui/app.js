@@ -1301,6 +1301,8 @@
   function revealStage() {
     $("#galley").hidden = false;
     $("#omissions-section").hidden = false;
+    // 무대가 올라오는 그 프레임에 배지 폭을 확정한다 — 검사 이름이 바뀌어도 안 흔들린다
+    $("#phase-badge").dataset.live = "1";
   }
 
   function driveStage(event) {
