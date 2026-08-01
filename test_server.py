@@ -691,6 +691,18 @@ def test_the_banner_is_driven_by_source_mode_not_by_the_server_flag_alone():
     assert "state.fixtureSearch = false" in JS, "런 경계에서 픽스처 사실이 안 지워진다"
 
 
+def test_the_deck_and_the_intro_close_on_the_same_sentence():
+    """두 산출물이 같은 결론을 다른 말로 하면 보는 사람이 알아본다."""
+    intro = (UI / "intro.html").read_text(encoding="utf-8")
+    deck = (UI / "slides.html").read_text(encoding="utf-8")
+    scene = intro.split('data-scene="2"')[1].split("</section>")[0]
+    closing = [re.sub(r"\s+", " ", strip_tags(m)).strip()
+               for m in re.findall(r'<div class="big">(.*?)</div>', scene, re.S)]
+    assert closing, "인트로 마무리 카드에서 문장을 못 찾았다"
+    foot = re.search(r'<p class="proof-foot">(.*?)</p>', deck, re.S).group(1)
+    assert re.sub(r"\s+", " ", strip_tags(foot)).strip() == " ".join(closing)
+
+
 def test_the_screen_does_not_explain_its_own_design_decisions():
     for phrase in ("본문을 가리지 않", "여백에 붙습니다", "그래서 빨강", "설계", "은유"):
         assert phrase not in strip_tags(INDEX), phrase
