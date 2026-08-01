@@ -71,6 +71,10 @@ SUGGESTABLE_VERDICTS = tuple(v for v in VERDICTS if v != "pending")
 
 EVIDENCE_TOOLS = ("search_web", "search_scholar", "fetch_source")
 
+# `Audit.status`가 가질 수 있는 값. `error`는 **시작하지 못한 런**이다 — 시간이 모자라
+# 일부만 한 `partial`과 섞으면 크래시가 부분 감사로 위장된다.
+AUDIT_STATUSES = ("running", "complete", "partial", "non_auditable", "error")
+
 # 검색의 방향. 축1이 "지지 증거가 있는가"를 묻는 순간 그 검색은 구조적으로 확증이 된다 —
 # 방향을 툴에서 구분하지 못하면 반증 검색은 셀 수도 강제할 수도 없는 부탁으로 남는다.
 STANCES = ("support", "challenge")
@@ -327,8 +331,10 @@ def decide_verdict(axis: int, outcome: str, suggested: str | None, current: str)
         return suggested
 
     if outcome == "skip":
-        # 축2를 건너뛴 채 끝나면 "확인하지 못했다"가 정직한 라벨이다.
-        return "undecidable" if (current == "pending" and axis >= 2) else current
+        # skip은 "안 했다"이지 "확인할 수 없었다"가 아니다. 미확정을 해소하지 않는다 —
+        # 그러면 아무 일도 하지 않고 모든 축을 skip으로 선언한 런이 완주가 된다.
+        # 축 순서를 지나가는 용도로만 쓰이고, 그 클레임은 pending으로 남는다.
+        return current
     if outcome == "undecidable":
         return "undecidable" if current in ("pending", "undecidable") else current
     if outcome == "pass":
@@ -497,18 +503,27 @@ class Audit:
 
     # ── 검색 기록 (발사 시점) ───────────────────────────────────────────
     def note_search(self, stance: str, query: str) -> dict:
-        """검색이 나가는 순간을 기록한다 — 결과가 아니라 **발사**를 센다.
+        """검색이 나가는 순간을 기록한다. 반환한 항목에 `mark_search_result`로 회수를 적는다.
 
-        원장에서 반증 검색을 세면 안 된다. 원장은 URL로 중복을 접으므로, 이미 본 자료만
-        돌려준 반증 검색은 원장에 아무 자국도 남기지 않고 사라진다. 쏜 것은 쏜 것이다.
+        발사 기록은 관측용이다. 완주 게이트가 세는 것은 **회수**다 —
+        같은 질의를 세 번 쏜 것도, 전부 실패한 검색도 감사를 한 것이 아니다.
         """
         entry = {
             "stance": stance if stance in STANCES else "support",
             "query": query,
             "at": round(self._clock() - self._started_at, 3),
+            "ok": None,
+            "result_count": 0,
         }
         self.searches.append(entry)
         return entry
+
+    def mark_search_result(self, entry: dict | None, ok: bool, result_count: int) -> None:
+        """그 검색이 무엇을 받아왔는지 기록한다. 결과 0건은 회수가 아니다."""
+        if not isinstance(entry, dict):
+            return
+        entry["ok"] = bool(ok)
+        entry["result_count"] = max(0, int(result_count or 0))
 
     def search_counts(self) -> dict[str, int]:
         counts = {s: 0 for s in STANCES}
@@ -517,7 +532,21 @@ class Audit:
         return counts
 
     def challenge_query_count(self) -> int:
+        """발사된 반증 검색 수 — 관측치다. 게이트가 쓰는 수는 `effective_challenge_count()`다."""
         return self.search_counts()["challenge"]
+
+    def effective_challenge_count(self) -> int:
+        """게이트가 세는 반증 검색 수: **서로 다른 질의**로 **결과를 받아온** 것만."""
+        seen = set()
+        for entry in self.searches:
+            if entry["stance"] != "challenge":
+                continue
+            if not entry.get("ok") or entry.get("result_count", 0) < 1:
+                continue
+            key = normalize_for_match(entry["query"])
+            if key:
+                seen.add(key)
+        return len(seen)
 
     def evidence_catalog(self, *, limit: int = CATALOG_MAX) -> list[dict]:
         return [
@@ -746,7 +775,8 @@ class Audit:
             if missing:
                 return _fail(
                     f"축 순서가 어긋났다 — {claim_id}에 축{missing[0]}이 아직 없다. "
-                    "수행하지 않을 축은 outcome=\"skip\"으로 명시하면 통과한다(기록 툴은 예산 0).",
+                    f"축{missing[0]}을 먼저 판정하라. outcome=\"skip\"은 순서만 지나갈 뿐 "
+                    "판정이 아니다 — 그 클레임은 미확정으로 남아 완주에 걸린다.",
                     expected_next_axis=missing[0],
                     recorded_axes=sorted(state),
                 )
@@ -912,13 +942,16 @@ class Audit:
         return out
 
     def axis3_progress(self) -> tuple[int, int, int]:
-        """(수행, 기대, 최소 요구) — 축1을 통과하고 살아남은 클레임이 축3의 대상이다."""
+        """(수행, 기대, 최소 요구) — 축1 확인 실패로 종결된 것만 빼고 전부 축3 대상이다.
+
+        분모를 축1 **수행 이력**으로 잡으면 축1을 건너뛴 런에서 요구치가 0이 되어 게이트가
+        사라진다 — 일을 한 런만 벌하는 게이트가 된다. 그래서 **등록 사실**로 잡는다.
+        """
         targets = [c for c in self.claims if c["auditable"]]
         expected = [
             c
             for c in targets
-            if any(r["axis"] == 1 and r["outcome"] in ("pass", "undecidable") for r in c["axis_results"])
-            and not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
+            if not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
         ]
         with_omission = {o["claim_id"] for o in self.omissions}
         done = sum(
@@ -931,11 +964,14 @@ class Audit:
         return done, len(expected), max(1, required) if expected else 0
 
     def challenge_progress(self) -> tuple[int, int]:
-        """(나간 반증 쿼리 수, 최소 요구치). 요구치는 **사후 정직성 라벨**이다 —
-        모델에게 주는 할당량이 아니다(§봉투에 필요치를 싣지 않는 이유)."""
+        """(게이트가 세는 반증 검색 수, 최소 요구치).
+
+        세는 것은 **회수**다 — 서로 다른 질의로 결과를 받아온 반증 검색만. 요구치는
+        **사후 정직성 라벨**이지 모델에게 주는 할당량이 아니다(봉투에 싣지 않는 이유).
+        """
         targets = sum(1 for c in self.claims if c["auditable"])
         required = max(1, ceil(targets * CHALLENGE_RATIO)) if targets else 0
-        return self.challenge_query_count(), required
+        return self.effective_challenge_count(), required
 
     def completion_report(self) -> dict:
         """완주 조건 판정 — `reason="complete"`의 유일한 근거.
@@ -957,11 +993,16 @@ class Audit:
                     f"축3(완전성)을 {axis3_done}/{axis3_expected} 클레임에만 실행했다"
                     f"(최소 {axis3_required})"
                 )
+            if targets and axis3_expected and not self.omissions:
+                # 시그니처 산출물이 0건인 런을 완주라고 부르면, 화면이 "반박까지 찾아봤지만
+                # 없었다"고 단정하게 된다. 못 찾은 것과 안 찾은 것을 구분할 수 없다.
+                missing.append("축3 누락 증거가 0건이다")
             if targets and challenge_queries < challenge_required:
                 # 벌하는 것은 호출 거부가 아니라 반증의 부재다 — 모델이 우아하게 마무리한
                 # 것과 감사가 완주된 것은 다른 사건이다.
                 missing.append(
-                    f"반증 검색이 {challenge_queries}회뿐이다(최소 {challenge_required})"
+                    f"결과를 받아온 서로 다른 반증 검색이 {challenge_queries}회뿐이다"
+                    f"(최소 {challenge_required}, 발사 {self.challenge_query_count()}회)"
                 )
         return {
             "complete": not missing,
@@ -975,6 +1016,7 @@ class Audit:
             "axis3_required": axis3_required,
             "challenge_queries": challenge_queries,
             "challenge_required": challenge_required,
+            "challenge_dispatched": self.challenge_query_count(),
             "search_counts": self.search_counts(),
             "omission_count": len(self.omissions),
         }

@@ -499,14 +499,14 @@ async def search_web(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
-    ctx.audit.note_search(stance, query)
+    entry = ctx.audit.note_search(stance, query)
     reply = await _io_call(
         ctx,
         lambda: _io_search_web(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_web", query, reply, normalized, stance)
+    return _search_reply(ctx, "search_web", query, reply, normalized, stance, entry)
 
 
 @function_tool
@@ -541,18 +541,24 @@ async def search_scholar(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
-    ctx.audit.note_search(stance, query)
+    entry = ctx.audit.note_search(stance, query)
     reply = await _io_call(
         ctx,
         lambda: _io_search_scholar(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance)
+    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance, entry)
 
 
 def _search_reply(
-    ctx: AuditContext, tool: str, query: str, reply: dict, normalized: dict, stance: str
+    ctx: AuditContext,
+    tool: str,
+    query: str,
+    reply: dict,
+    normalized: dict,
+    stance: str,
+    entry: dict | None = None,
 ) -> dict:
     passthrough = dict(reply)
     request = dict(passthrough.get("request") or {})
@@ -561,13 +567,16 @@ def _search_reply(
     if request:
         passthrough["request"] = request
     if not reply.get("ok"):
+        ctx.audit.mark_search_result(entry, False, 0)
         return _reply(ctx, ok=False, error=reply.get("error"), passthrough=passthrough)
     results = reply.get("data") or []
     if not isinstance(results, list):
+        ctx.audit.mark_search_result(entry, False, 0)
         return _reply(
             ctx, ok=False, error=f"tool_error: 예상하지 못한 반환 형식({type(results).__name__})"
         )
     enriched = _register_search_evidence(ctx.audit, tool, query, results, stance)
+    ctx.audit.mark_search_result(entry, True, len(enriched))
     return _reply(
         ctx,
         ok=True,
