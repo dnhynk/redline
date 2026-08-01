@@ -20,7 +20,7 @@ EXPECTED_REQUIRED = {
     "search_scholar": ["query", "max_results", "lang", "date_range"],
     "fetch_source": ["url", "max_chars"],
     "record_classification": ["input_kind", "lang", "auditable", "sentence_count", "rationale"],
-    "record_claim": ["index", "text", "claim_type", "auditable", "prior", "cited_source"],
+    "record_claim": ["index", "text", "claim_type", "auditable", "cited_source"],
     "update_verdict": ["claim_id", "axis", "outcome", "evidence", "evidence_ids", "verdict"],
     "record_omission": ["claim_id", "evidence_id", "summary"],
 }
