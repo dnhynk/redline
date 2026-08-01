@@ -1911,22 +1911,54 @@ body.has-banner .lanes {
   color: var(--p-muted);
 }
 
-/* --- 움직임을 원하지 않는 사람에게는 전부 끈다 -------------------------- */
+/* --- 움직임은 줄이고, 이해를 돕는 것은 남긴다 ---------------------------
+   전부 끄면 무엇이 언제 바뀌었는지 말해 주던 신호까지 사라진다. 자리를 옮기고
+   크기를 바꾸는 것만 끈다 — 이동 토큰을 0 으로 되돌리면 획은 제 길이로 있고
+   부호는 뜨지 않으며, 남는 것은 120ms 교차 페이드와 색 전환뿐이다.
+   전환이 사라지는 게 아니라 짧아지므로, 시작한 애니메이션은 그대로 끝난다.
+
+   아래 두 블록은 같은 규칙이어야 한다. 하나는 기기 설정을, 하나는 화면 안의
+   강제 스위치를 받는다. */
 
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --stage-scale: 1;
+    --stage-lift: 0px;
+    --press-scale: 1;
+    --settle-rise: 0px;
+    --mark-draw-from: 100%;
+    --mark-wave-from: 0%;
+  }
   *,
   *::before,
   *::after {
-    animation: none !important;
-    transition: none !important;
+    animation-duration: var(--dur-reduced) !important;
+    animation-delay: 0ms !important;
+    transition-property: opacity, background-color, border-color, color,
+      text-decoration-color !important;
+    transition-duration: var(--dur-reduced) !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+html.force-reduced {
+  --stage-scale: 1;
+  --stage-lift: 0px;
+  --press-scale: 1;
+  --settle-rise: 0px;
+  --mark-draw-from: 100%;
+  --mark-wave-from: 0%;
 }
 html.force-reduced *,
 html.force-reduced *::before,
 html.force-reduced *::after {
-  animation: none !important;
-  transition: none !important;
+  animation-duration: var(--dur-reduced) !important;
+  animation-delay: 0ms !important;
+  transition-property: opacity, background-color, border-color, color,
+    text-decoration-color !important;
+  transition-duration: var(--dur-reduced) !important;
+  transition-delay: 0ms !important;
   scroll-behavior: auto !important;
 }
 
