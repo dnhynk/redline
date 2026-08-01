@@ -580,8 +580,6 @@ async def _post(endpoint: str, path: str, request: dict, key: str) -> ToolReply:
         await asyncio.sleep(SCHOLAR_BACKOFF_BASE_S * (2**attempt))
 
     assert last is not None
-    if last.get("error_code") == errors.RATE_LIMITED:
-        last["error"] = f"{errors.RATE_LIMITED}: rate limited after {attempts} retries"
     return last
 
 

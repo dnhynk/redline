@@ -16,6 +16,7 @@ import asyncio
 import json
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -624,6 +625,9 @@ class _Stub(BaseHTTPRequestHandler):
             self._send(200, b"<!doctype html><html><head><title>t</title></head><body></body></html>")
         elif path == "/badpdf":
             self._send(200, b"%PDF-1.4 this is not really a pdf", content_type="application/pdf")
+        elif path == "/slow":
+            time.sleep(1.5)
+            self._send(200, ARTICLE_HTML.encode("utf-8"))
         elif path == "/redirect-ok":
             self._send(302, b"", extra={"location": "/article"})
         elif path == "/redirect-private":
@@ -720,6 +724,14 @@ def test_an_unreadable_pdf_is_typed(stub):
     reply = fetch.fetch_source(f"{stub}/badpdf")
     assert reply["error_code"] in (errors.PARSE_FAILED, errors.EMPTY_CONTENT)
     assert reply["retryable"] is False
+
+
+def test_a_slow_source_times_out_and_says_to_use_the_snippet(stub, monkeypatch):
+    monkeypatch.setattr(fetch, "HTML_TIMEOUT_S", 0.4)
+    reply = fetch.fetch_source(f"{stub}/slow")
+    assert reply["error_code"] == errors.TIMEOUT
+    assert reply["retryable"] is True
+    assert reply["hint"]["fallback"] == "use_snippet"
 
 
 def test_a_redirect_within_policy_is_followed(stub):

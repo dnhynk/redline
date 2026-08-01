@@ -98,7 +98,7 @@ def _split(url: str) -> Any:
 def _check_url_shape(url: str) -> Any:
     """Syntactic checks. Raises ``_Blocked`` with the reason."""
     if not isinstance(url, str) or not url.strip():
-        raise _Blocked("url was empty")
+        raise _Blocked("url was empty or not a string")
     parts = _split(url)
     if parts.scheme.lower() not in _ALLOWED_SCHEMES:
         raise _Blocked(f"scheme {parts.scheme or '(none)'!r} is not http or https")
