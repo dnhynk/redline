@@ -6,7 +6,8 @@
 
     python ui/fixtures/_build.py
 
-complete / timebox / incomplete / non_auditable / error / structured 여섯 개를 다시 쓴다.
+complete / timebox / incomplete / non_auditable / error / no_start / structured
+일곱 개를 다시 쓴다.
 """
 
 from __future__ import annotations
@@ -266,6 +267,8 @@ def status(
         "done": done,
         "reason": reason,
     }
+    if done:
+        payload.update({"error": None, "axis3_done": 0, "axis3_expected": 0})
     if extra:
         payload.update(extra)
     return payload
@@ -480,7 +483,7 @@ def build_claims(upto: dict[str, int] | None = None) -> list[dict]:
                 "claim_type": ctype,
                 "auditable": True,
                 "cited_source": cited,
-                "prior": prior,
+                "base_confidence": prior,
                 "confidence": round(confidence, 4),
                 "verdict": verdict,
                 "axis_results": axis_results,
@@ -515,6 +518,7 @@ def audit_payload(
     missed = sum(1 for c in claims if c["verdict"] in ("unsupported", "overstated"))
     no_source = sum(1 for c in claims if c["verdict"] == "no_source")
     covered = sorted({c["index"] for c in audited})
+    claimable = sum(1 for k in kinds if k not in ("heading", "table_header", "code_fence", "divider"))
     return {
         "sentences": sentences,
         "sentence_kinds": kinds,
@@ -523,6 +527,7 @@ def audit_payload(
         "evidence": ledger,
         "evidence_total": evidence_total,
         "evidence_cited": len(ledger),
+        "omission_count": len(omissions),
         "status": status_value,
         "classification": classification
         or {
@@ -538,7 +543,8 @@ def audit_payload(
         "source_mode": "mock",
         "unsupported_rate": [missed, len(audited)],
         "no_source_count": no_source,
-        "coverage": [len(covered), sum(1 for k in kinds if k not in ("heading", "table_header", "code_fence", "divider"))],
+        "coverage": [len(covered), claimable],
+        "claimable_sentence_count": claimable,
         "audited_claim_count": len(audited),
         "claims_by_index": {str(c["index"]): [c["id"]] for c in claims},
     }
@@ -578,7 +584,7 @@ def build_complete() -> list[dict]:
         _, call_id = raw.call(
             "record_claim",
             {"index": index, "text": text, "claim_type": ctype, "auditable": True,
-             "prior": prior, "cited_source": cited_src},
+             "cited_source": cited_src},
             t,
         )
         raw.output("record_claim", call_id,
@@ -760,7 +766,12 @@ def build_complete() -> list[dict]:
                                   "tool_time_serial_s": 48.1, "max_concurrent_tools": 4, "parallel_speedup": 2.15},
                        "completion": {"complete": True, "audited_claims": 5, "omissions": len(omissions_so_far),
                                       "missing_actions": [], "axis3_done": 4, "axis3_expected": 4,
-                                      "axis3_required": 3},
+                                      "axis3_required": 3, "challenge_queries": 7,
+                                      "challenge_required": 2, "omission_count": len(omissions_so_far),
+                                      "search_counts": {"support": 5, "challenge": 7}},
+                       "partial": False,
+                       "challenge_queries": 7,
+                       "challenge_required": 2,
                        "axis3_done": 4,
                        "axis3_expected": 4,
                        "turn_backstop": False,
@@ -810,7 +821,13 @@ def build_timebox() -> list[dict]:
                        "completion": {"complete": False, "audited_claims": 4, "omissions": 0,
                                       "missing_actions": ["미확정 클레임 C5",
                                                           "축3(완전성)을 1/4 클레임에만 실행했다(최소 3)"],
-                                      "axis3_done": 1, "axis3_expected": 4, "axis3_required": 3},
+                                      "axis3_done": 1, "axis3_expected": 4, "axis3_required": 3,
+                                      "challenge_queries": 4, "challenge_required": 2,
+                                      "omission_count": 0,
+                                      "search_counts": {"support": 4, "challenge": 4}},
+                       "partial": True,
+                       "challenge_queries": 4,
+                       "challenge_required": 2,
                        "axis3_done": 1,
                        "axis3_expected": 4,
                        "turn_backstop": False,
@@ -875,7 +892,13 @@ def build_incomplete() -> list[dict]:
                        "completion": {"complete": False, "audited_claims": 4, "omissions": 1,
                                       "missing_actions": ["미확정 클레임 C5",
                                                           "축3(완전성)을 1/4 클레임에만 실행했다(최소 3)"],
-                                      "axis3_done": 1, "axis3_expected": 4, "axis3_required": 3},
+                                      "axis3_done": 1, "axis3_expected": 4, "axis3_required": 3,
+                                      "challenge_queries": 4, "challenge_required": 2,
+                                      "omission_count": 0,
+                                      "search_counts": {"support": 4, "challenge": 4}},
+                       "partial": True,
+                       "challenge_queries": 4,
+                       "challenge_required": 2,
                        "axis3_done": 1,
                        "axis3_expected": 4,
                        "turn_backstop": False,
@@ -929,11 +952,16 @@ def build_non_auditable() -> list[dict]:
             status("종결", 2.2, claims=0, tool_calls=0, axis=0, done=True, reason="non_auditable",
                    extra={
                        "final_report": "",
-                       "reason_detail": "검증 가능한 사실 주장을 찾지 못했습니다.",
                        "audit": {**audit, "input_text": " ".join(OPINION_SENTENCES)},
                        "timing": {"total_s": 2.2, "model_s": 2.0, "tool_wait_s": 0.2,
                                   "tool_time_serial_s": 0.2, "max_concurrent_tools": 1, "parallel_speedup": 1.0},
-                       "completion": {"complete": True, "audited_claims": 0, "omissions": 0, "missing_actions": []},
+                       "partial": False,
+                       "challenge_queries": 0,
+                       "challenge_required": 0,
+                       "completion": {"complete": True, "audited_claims": 0, "omissions": 0,
+                                      "missing_actions": [], "omission_count": 0,
+                                      "challenge_queries": 0, "challenge_required": 0,
+                                      "search_counts": {"support": 0, "challenge": 0}},
                        "turn_backstop": False,
                        "events_dropped": 0,
                    }),
@@ -972,7 +1000,13 @@ def build_error() -> list[dict]:
                                   "tool_time_serial_s": 12.0, "max_concurrent_tools": 3, "parallel_speedup": 1.3},
                        "completion": {"complete": False, "audited_claims": 2, "omissions": 0,
                                       "missing_actions": ["미확정 클레임 C3, C4, C5"],
-                                      "axis3_done": 0, "axis3_expected": 4, "axis3_required": 3},
+                                      "axis3_done": 0, "axis3_expected": 4, "axis3_required": 3,
+                                      "challenge_queries": 1, "challenge_required": 2,
+                                      "omission_count": 0,
+                                      "search_counts": {"support": 4, "challenge": 1}},
+                       "partial": False,
+                       "challenge_queries": 1,
+                       "challenge_required": 2,
                        "axis3_done": 0,
                        "axis3_expected": 4,
                        "turn_backstop": False,
@@ -1054,12 +1088,13 @@ def build_structured() -> list[dict]:
         spec = STRUCT_CLAIM_SPEC[n]
         _, call_id = raw.call("record_claim",
                               {"index": spec[1], "text": spec[2], "claim_type": spec[3],
-                               "auditable": True, "prior": spec[5], "cited_source": None}, t)
+                               "auditable": True, "cited_source": None}, t)
         raw.output("record_claim", call_id,
                    {"ok": True, "data": {"claim_id": cid_, "index": spec[1], "sentence_kind": STRUCT_KINDS[spec[1]]},
                     "error": None, "budget": budget(t, n, n + 1, 0)}, t + 0.4)
         made.append({"id": cid_, "index": spec[1], "text": spec[2], "claim_type": spec[3], "auditable": True,
-                     "cited_source": None, "prior": spec[5], "confidence": spec[5], "verdict": "pending",
+                     "cited_source": None, "base_confidence": spec[5], "confidence": spec[5],
+                     "verdict": "pending",
                      "axis_results": []})
         out.extend(raw.events)
         raw.events = []
@@ -1082,7 +1117,8 @@ def build_structured() -> list[dict]:
              "delta": 0.0, "raw_delta": 0.0, "suggested_verdict": None},
             {"axis": 2, "outcome": "fail" if verdict != "supported" else "pass", "evidence": note,
              "evidence_ids": eids, "source_urls": [by_id(e)["url"] for e in eids],
-             "delta": round(conf - target["prior"], 4), "raw_delta": round(conf - target["prior"], 4),
+             "delta": round(conf - target["base_confidence"], 4),
+             "raw_delta": round(conf - target["base_confidence"], 4),
              "suggested_verdict": verdict},
         ]
         out.extend(raw.events)
@@ -1108,7 +1144,13 @@ def build_structured() -> list[dict]:
                      "audit": {**audit, "input_text": "\n".join(STRUCT_SENTENCES)},
                      "timing": {"total_s": round(t + 0.5, 2), "model_s": 9.0, "tool_wait_s": 4.0,
                                 "tool_time_serial_s": 5.5, "max_concurrent_tools": 2, "parallel_speedup": 1.4},
-                     "completion": {"complete": True, "audited_claims": 3, "omissions": 0, "missing_actions": []},
+                     "partial": False,
+                     "challenge_queries": 3,
+                     "challenge_required": 2,
+                     "completion": {"complete": True, "audited_claims": 3, "omissions": 0,
+                                    "missing_actions": [], "omission_count": 0,
+                                    "challenge_queries": 3, "challenge_required": 2,
+                                    "search_counts": {"support": 3, "challenge": 3}},
                      "turn_backstop": False,
                      "events_dropped": 0,
                  }),
@@ -1117,12 +1159,69 @@ def build_structured() -> list[dict]:
     return out
 
 
+# --------------------------------------------------------------------------
+# 시나리오 6 — 시작조차 못 했다
+#
+# 자격증명이 없어 모델을 부르지도 못한 런. 이벤트는 종결 하나뿐이고 감사 수치는
+# 존재하지 않는다. 화면이 이것을 완주한 감사처럼 그리면 안 된다.
+# --------------------------------------------------------------------------
+
+
+def build_no_start() -> list[dict]:
+    empty = {
+        "sentences": [],
+        "sentence_kinds": [],
+        "claims": [],
+        "omissions": [],
+        "evidence": [],
+        "evidence_total": 0,
+        "evidence_cited": 0,
+        "omission_count": 0,
+        "status": "partial",
+        "classification": None,
+        "source_mode": "mock",
+        "unsupported_rate": [0, 0],
+        "no_source_count": 0,
+        "coverage": [0, 1],
+        "claimable_sentence_count": 1,
+        "audited_claim_count": 0,
+        "claims_by_index": {},
+    }
+    return [
+        ev(
+            "status",
+            status("중단", 0.83, claims=0, tool_calls=0, axis=0, done=True, reason="error",
+                   extra={
+                       "partial": False,
+                       "error": "OpenAIError: Missing credentials. Please pass an `api_key`, "
+                                "`workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` "
+                                "or `OPENAI_ADMIN_KEY` environment variable.",
+                       "final_report": "뒷받침 안 됨 0/0 · 출처 못 찾음 0건 · 커버리지 0/1",
+                       "audit": {**empty, "input_text": " ".join(SENTENCES)},
+                       "timing": {"total_s": 0.83, "model_s": 0.83, "tool_wait_s": 0.0,
+                                  "tool_time_serial_s": 0.0, "max_concurrent_tools": 0,
+                                  "parallel_speedup": 1.0},
+                       "completion": {"complete": False, "audited_claims": 0, "omissions": 0,
+                                      "missing_actions": [], "omission_count": 0,
+                                      "challenge_queries": 0, "challenge_required": 0,
+                                      "search_counts": {"support": 0, "challenge": 0}},
+                       "challenge_queries": 0,
+                       "challenge_required": 0,
+                       "turn_backstop": False,
+                       "events_dropped": 0,
+                   }),
+            0.83,
+        )
+    ]
+
+
 SCENARIOS = {
     "complete": build_complete,
     "timebox": build_timebox,
     "incomplete": build_incomplete,
     "non_auditable": build_non_auditable,
     "error": build_error,
+    "no_start": build_no_start,
     "structured": build_structured,
 }
 
