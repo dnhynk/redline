@@ -201,24 +201,79 @@ h2 {
   line-height: 1;
   letter-spacing: calc(-0.055 * var(--u) * 11);
 }
-/* 제품 화면의 빨간 밑줄 색을 글자 사이에 한 칸 세워 둔다 */
-.wm-block {
-  display: inline-block;
-  width: calc(2.6 * var(--u));
-  height: calc(7.6 * var(--u));
-  margin: 0 calc(0.5 * var(--u));
-  background: var(--v-unsupported-line);
+/* 제품 상단 바의 워드마크와 같다 — 뒷말이 빨강이다 */
+.wm-b {
+  color: var(--v-unsupported-line);
 }
+/* 본문은 물러나고 강조가 앞에 선다. 밑줄은 쓰지 않는다 — 이 화면에서 밑줄은
+   판정 부호라서, 판정이 아닌 것에 그으면 제품의 어휘와 싸운다. */
 .lede {
   font-family: var(--f-serif);
   font-size: calc(3.15 * var(--u));
   line-height: 1.45;
   max-width: 46ch;
+  color: var(--muted);
 }
 .lede em {
   font-style: normal;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* --- 2장: 순환 -------------------------------------------------------- */
+
+.loop {
+  display: flex;
+  align-items: center;
+  gap: calc(1.4 * var(--u));
+  flex-wrap: wrap;
+}
+.loop-node {
+  padding: calc(0.85 * var(--u)) calc(1.6 * var(--u));
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  font-family: var(--f-serif);
+  font-size: calc(2.1 * var(--u));
+  white-space: nowrap;
+}
+.loop-node.is-out {
+  border-color: var(--v-unsupported-line);
+  color: var(--v-unsupported-label);
   font-weight: 700;
-  box-shadow: inset 0 calc(-0.34 * var(--u)) 0 var(--v-unsupported-line);
+}
+.loop-arrow {
+  font-family: var(--f-mono);
+  font-size: calc(2 * var(--u));
+  color: var(--rule);
+}
+
+.probs {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.35 * var(--u));
+}
+.probs li {
+  display: flex;
+  align-items: baseline;
+  gap: calc(1.6 * var(--u));
+}
+.p-n {
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: calc(2 * var(--u));
+  color: var(--v-unsupported-label);
+}
+.p-k {
+  flex: none;
+  font-family: var(--f-serif);
+  font-size: calc(2.4 * var(--u));
+  font-weight: 700;
+  white-space: nowrap;
+}
+.p-t {
+  font-family: var(--f-serif);
+  font-size: calc(2.15 * var(--u));
+  color: var(--muted);
 }
 .byline {
   margin-top: auto;
@@ -361,18 +416,20 @@ h2 {
 }
 .ax-n {
   flex: none;
-  width: calc(7.5 * var(--u));
+  width: calc(2.4 * var(--u));
   font-family: var(--f-mono);
   font-size: calc(1.75 * var(--u));
   font-weight: 500;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
+/* 이름과 질문은 한 줄에 선다. 이름을 폭으로 묶으면 긴 이름에서 질문이 접혀
+   내려가 세 항목이 서로 다른 모양이 된다. */
 .ax-k {
   flex: none;
-  width: calc(7.5 * var(--u));
   font-family: var(--f-serif);
   font-weight: 700;
+  white-space: nowrap;
 }
 .ax-q {
   font-family: var(--f-serif);
@@ -385,7 +442,10 @@ h2 {
   color: var(--rebut-label);
 }
 .axes .is-key .ax-q b {
-  box-shadow: inset 0 calc(-0.3 * var(--u)) 0 var(--rebut-line);
+  color: var(--rebut-label);
+}
+.ax-q {
+  min-width: 0;
 }
 
 .proof {
@@ -457,63 +517,46 @@ h2 {
 .slide-order {
   gap: calc(1.6 * var(--u));
 }
-.pipe {
-  display: flex;
-  align-items: stretch;
-  gap: calc(0.5 * var(--u));
-}
-.pipe li {
-  flex: 1;
+/* 규칙 하나가 한 덩어리다. 위는 호스트가 요구하는 것, 아래는 어겼을 때 일어나는
+   일. 두 줄이 붙어 있어야 "부탁이 아니라 집행"이 한눈에 읽힌다. */
+.rules {
   display: flex;
   flex-direction: column;
-  gap: calc(0.5 * var(--u));
-  padding: calc(0.9 * var(--u)) calc(0.9 * var(--u));
-  background: var(--sheet);
-  border: 1px solid var(--edge);
-  border-top: calc(0.3 * var(--u)) solid var(--rule);
-  font-size: calc(1.7 * var(--u));
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
+  gap: calc(1.9 * var(--u));
 }
-.pipe i {
+.rules li {
+  padding-left: calc(1.7 * var(--u));
+  border-left: calc(0.35 * var(--u)) solid var(--rule);
+}
+.rules li:last-child {
+  border-left-color: var(--v-unsupported-line);
+}
+.r-do {
+  display: flex;
+  align-items: baseline;
+  gap: calc(1.3 * var(--u));
+  font-family: var(--f-serif);
+  font-size: calc(2.45 * var(--u));
+  font-weight: 700;
+  line-height: 1.3;
+}
+.r-n {
+  flex: none;
   font-family: var(--f-mono);
-  font-style: normal;
-  font-size: calc(1.6 * var(--u));
+  font-size: calc(1.75 * var(--u));
   font-weight: 500;
   color: var(--muted);
 }
-.pipe .is-key {
-  border-top-color: var(--v-unsupported-line);
-}
-.pipe .is-key i {
-  color: var(--v-unsupported-label);
-}
-
-.whys {
-  display: flex;
-  flex-direction: column;
-  gap: calc(0.95 * var(--u));
-}
-.whys li {
-  display: flex;
-  align-items: baseline;
-  gap: calc(1.8 * var(--u));
+.r-else {
+  padding-top: calc(0.45 * var(--u));
+  padding-left: calc(3.05 * var(--u));
+  font-family: var(--f-serif);
   font-size: calc(2.05 * var(--u));
-}
-.w-n {
-  flex: none;
+  line-height: 1.4;
   color: var(--muted);
 }
-.w-k {
-  flex: none;
-  width: calc(7 * var(--u));
-  font-family: var(--f-serif);
-  font-weight: 700;
-}
-.w-t {
-  font-family: var(--f-serif);
-  color: var(--muted);
+.r-else b {
+  color: var(--v-unsupported-label);
 }
 
 .evidence {
@@ -559,6 +602,32 @@ h2 {
 
 /* --- 5장 ---------------------------------------------------------------- */
 
+.who-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.05 * var(--u));
+}
+.who-list li {
+  display: flex;
+  align-items: baseline;
+  gap: calc(1.4 * var(--u));
+  font-family: var(--f-serif);
+  font-size: calc(2.35 * var(--u));
+  color: var(--muted);
+}
+.who-list li::before {
+  content: "";
+  flex: none;
+  width: calc(0.85 * var(--u));
+  height: calc(0.85 * var(--u));
+  border-radius: 50%;
+  background: var(--v-unsupported-line);
+  transform: translateY(calc(-0.35 * var(--u)));
+}
+.who-list b {
+  color: var(--ink);
+}
+
 .limits {
   display: flex;
   flex-direction: column;
@@ -573,24 +642,27 @@ h2 {
 }
 .limits dt {
   flex: none;
-  width: calc(24 * var(--u));
-  font-size: calc(2.3 * var(--u));
+  width: calc(11 * var(--u));
+  font-size: calc(2.1 * var(--u));
   font-weight: 700;
   color: var(--muted);
 }
 .limits dd {
   font-family: var(--f-serif);
-  font-size: calc(2.4 * var(--u));
+  font-size: calc(2.25 * var(--u));
+  line-height: 1.45;
 }
 
 .live {
   margin-top: auto;
-  padding: calc(2.6 * var(--u)) calc(3 * var(--u));
+  padding: calc(2 * var(--u)) calc(2.6 * var(--u));
   background: var(--ink);
   color: var(--paper);
   font-family: var(--f-serif);
-  font-size: calc(2.85 * var(--u));
+  font-size: calc(2.6 * var(--u));
   line-height: 1.35;
+  /* 오른쪽 아래 조종 버튼과 겹치지 않게 자리를 비워 둔다 */
+  padding-right: calc(16 * var(--u));
 }
 .live b {
   box-shadow: inset 0 calc(-0.34 * var(--u)) 0 var(--v-unsupported-line);
