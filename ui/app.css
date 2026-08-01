@@ -522,6 +522,10 @@ a {
   background: var(--ink);
   white-space: nowrap;
 }
+#phase-badge[data-live="1"] {
+  min-width: 151px;
+  text-align: center;
+}
 .badge[data-outcome="complete"] {
   background: var(--v-supported-label);
 }
@@ -811,6 +815,9 @@ a {
   transition: transform 280ms ease-out;
 }
 .mark-pct {
+  flex: none;
+  min-width: 82px;
+  text-align: right;
   font-family: var(--f-mono);
   font-size: 12px;
   line-height: 16px;
@@ -1032,7 +1039,7 @@ a {
   text-decoration: none;
 }
 .rebut-card.arrive {
-  animation: card-arrive 240ms ease-out both;
+  animation: card-arrive 240ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 @keyframes card-arrive {
   from {
@@ -1653,6 +1660,8 @@ body.has-banner .lanes {
   color: var(--p-muted-panel);
 }
 .budget b {
+  display: inline-block;
+  min-width: 68px;
   font-size: 28px;
   font-weight: 700;
   color: var(--p-search);
@@ -1742,6 +1751,8 @@ body.has-banner .lanes {
 }
 .state-verdict {
   margin-left: auto;
+  min-width: 102px;
+  text-align: right;
   font-size: 14px;
   font-weight: 700;
   color: var(--p-muted-panel);
