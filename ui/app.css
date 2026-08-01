@@ -302,7 +302,8 @@ a {
   display: grid;
   grid-template-columns: 1fr 1.1fr;
   gap: 56px;
-  align-items: start;
+  /* 두 단의 아래 면을 맞춘다 — 남는 높이는 입력창이 받는다(아래 .form-card). */
+  align-items: stretch;
 }
 
 .hero-title {
@@ -342,7 +343,8 @@ a {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 18px;
-  align-items: start;
+  /* 판정은 원고의 마지막 줄 옆에 선다 — 교정지에서 부호를 다 읽고 나서 붙이는 자리다. */
+  align-items: end;
   padding: 12px 0;
   border-top: 1px solid var(--hair);
 }
@@ -371,6 +373,8 @@ a {
 
 .form-card {
   padding: 26px 28px 24px;
+  display: flex;
+  flex-direction: column;
 }
 .form-label {
   display: block;
@@ -381,6 +385,7 @@ a {
 #input-text {
   display: block;
   width: 100%;
+  flex: 1 1 auto;
   min-height: 220px;
   padding: 16px 18px;
   font-family: var(--f-serif);
@@ -399,6 +404,8 @@ a {
 /* 글자 수는 빈 입력창의 안내이자 상한 고지다 — 읽는 데 방해되지 않게 연하게 둔다. */
 .input-wrap {
   position: relative;
+  display: flex;
+  flex: 1 1 auto;
 }
 .input-count {
   position: absolute;
