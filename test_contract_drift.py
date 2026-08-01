@@ -16,8 +16,8 @@ TOOL_ORDER = [
 ]
 
 EXPECTED_REQUIRED = {
-    "search_web": ["query", "stance", "max_results", "lang", "date_range"],
-    "search_scholar": ["query", "stance", "max_results", "lang", "date_range"],
+    "search_web": ["query", "claim_id", "stance", "max_results", "lang", "date_range"],
+    "search_scholar": ["query", "claim_id", "stance", "max_results", "lang", "date_range"],
     "fetch_source": ["url", "max_chars"],
     "record_classification": ["input_kind", "lang", "auditable", "sentence_count", "rationale"],
     "record_claim": ["index", "text", "claim_type", "auditable", "cited_source"],
@@ -78,6 +78,15 @@ def test_search_must_declare_a_stance():
         assert props["stance"]["enum"] == ["support", "challenge"], name
         assert "stance" in schemas[name]["required"], name
     assert "stance" not in schemas["fetch_source"]["properties"]
+
+
+def test_search_must_name_the_claim_it_serves():
+    """검색을 클레임에 귀속시켜야 확증·반증 쌍을 셀 수 있다."""
+    schemas = _schemas()
+    for name in ("search_web", "search_scholar"):
+        assert "claim_id" in schemas[name]["required"], name
+        assert schemas[name]["properties"]["claim_id"]["type"] == "string", name
+    assert "claim_id" not in schemas["fetch_source"]["properties"]
 
 
 def test_record_tool_enums():
