@@ -88,6 +88,11 @@ SNIPPET_MAX_CHARS = 500
 HOST_SENTENCES_MAX = 80
 HOST_SENTENCE_CHARS = 160
 CANDIDATE_MAX = 8
+# 정규화 기준 최소 앵커 길이 — 한두 글자짜리 조각은 아무 문장에나 들어맞는다.
+# 한 문장에 주장이 둘일 때 쓰는 정상적인 조각("성인의 62%")은 통과해야 하므로 낮게 잡고,
+# 숫자가 다른 수 안에 박히는 경우는 길이가 아니라 anchor_matches의 경계 검사가 막는다.
+# 문장 전체를 옮겨 적은 경우는 길이와 무관하게 통과한다.
+MIN_ANCHOR_CHARS = 3
 CATALOG_MAX = 20
 
 # 화면의 %가 무엇인지 — 반환값에 그대로 실어 모델·시청자가 오독하지 않게 한다.
@@ -252,6 +257,29 @@ def normalize_for_match(s: str) -> str:
             continue
         out.append(ch)
     return "".join(out).casefold()
+
+
+def anchor_matches(needle: str, hay: str) -> bool:
+    """정규화된 앵커가 문장 안에 **경계를 지켜** 들어 있는가.
+
+    단순 부분열 검사는 `"100"`을 `"회원은 1004명이다"`에 붙인다 — 정규화가 문장부호를
+    지우므로 숫자가 더 긴 수 안에 박혀도 통과한다. 좌표계는 이 제품이 서 있는 유일한
+    축이라, 숫자 앵커가 다른 수의 일부인 경우는 매치로 세지 않는다.
+    """
+    if not needle or not hay:
+        return False
+    start = hay.find(needle)
+    while start != -1:
+        end = start + len(needle)
+        left = hay[start - 1] if start > 0 else ""
+        right = hay[end] if end < len(hay) else ""
+        inside_number = (needle[0].isdigit() and left.isdigit()) or (
+            needle[-1].isdigit() and right.isdigit()
+        )
+        if not inside_number:
+            return True
+        start = hay.find(needle, start + 1)
+    return False
 
 
 def normalize_url(url: str) -> str:
@@ -484,7 +512,12 @@ class Audit:
         existing_id = self._evidence_by_url.get(key)
         if existing_id:
             rec = self._evidence_by_id[existing_id]
-            # 먼저 받은 값이 정본이다 — 비어 있던 자리만 채운다.
+            # ★ stance만은 예외로 승격한다. 확증 검색이 먼저 데려온 문헌을 반증 검색이 다시
+            # 데려왔다면 그것은 반증 검색이 정식으로 찾아낸 자료다 — 최초 등록 시점에
+            # 고정하면 반박 카드가 "뒷받침 검색에서 나온 약한 증거"로 오라벨된다.
+            if stance == "challenge":
+                rec["stance"] = "challenge"
+            # 나머지는 먼저 받은 값이 정본이다 — 비어 있던 자리만 채운다.
             if not rec["title"] and title:
                 rec["title"] = title
             if not rec["snippet"] and snippet:
@@ -667,12 +700,35 @@ class Audit:
                 sentence_kind=kind,
             )
         needle, hay = normalize_for_match(text), normalize_for_match(self.sentences[index])
-        if not needle or needle not in hay:
+        if not needle or not anchor_matches(needle, hay):
             return _fail(
                 f"text가 호스트 문장 {index}에 들어 있지 않다. 원문 문장을 그대로 복사하고 "
-                "index_candidates의 좌표로 다시 호출하라.",
+                "index_candidates의 좌표로 다시 호출하라. (숫자만 옮겨 적으면 다른 수의 "
+                "일부에 붙을 수 있어 거부된다 — 문장을 통째로 복사하라.)",
                 index_candidates=self.find_index_candidates(text),
                 sentence=self.sentences[index][:HOST_SENTENCE_CHARS],
+            )
+        whole_sentence = needle == hay
+        if not whole_sentence and len(needle) < MIN_ANCHOR_CHARS:
+            return _fail(
+                f"앵커가 너무 짧다({len(needle)}자) — 이렇게 짧은 조각은 엉뚱한 문장에도 들어맞는다. "
+                "그 주장이 담긴 문장을 통째로 복사하라.",
+                index_candidates=self.find_index_candidates(text),
+                sentence=self.sentences[index][:HOST_SENTENCE_CHARS],
+                min_anchor_chars=MIN_ANCHOR_CHARS,
+            )
+        also_matches = [
+            i
+            for i in sorted(self.claimable_indices())
+            if i != index and anchor_matches(needle, normalize_for_match(self.sentences[i]))
+        ]
+        if also_matches and not whole_sentence:
+            # 여러 문장에 들어맞는 조각은 어느 주장에 대한 것인지 호스트가 알 수 없다.
+            return _fail(
+                f"이 조각은 문장 {[index, *also_matches]} 여러 곳에 들어맞는다 — 어느 주장인지 "
+                "가릴 수 없다. 그 주장이 담긴 문장을 통째로 복사하라.",
+                index_candidates=self.find_index_candidates(text),
+                ambiguous_indices=[index, *also_matches],
             )
 
         normalized_args: dict[str, Any] = {}
@@ -694,6 +750,14 @@ class Audit:
         note = None
         if len(at_index) > 1:
             note = f"문장 {index}에 클레임이 {len(at_index)}개다 — 한 문장 다중 주장은 정상이다."
+        warning = None
+        if also_matches:
+            # 같은 문장이 원문에 여러 번 나온다. 어느 복사본에 밑줄이 가도 글자는 같지만,
+            # 반복 사실 자체는 모델이 알고 보고해야 한다.
+            warning = (
+                f"같은 문장이 {[index, *also_matches]}에 반복된다 — 이 클레임은 문장 {index}에 "
+                "앵커됐다. 반복을 새 클레임으로 또 등록하지 말고 최종 보고에 반복 횟수를 적어라."
+            )
         return {
             "ok": True,
             "error": None,
@@ -716,7 +780,7 @@ class Audit:
                     else "의견·권고로 등록됐다. 감사하지 말고 다음 클레임으로 가라."
                 ),
                 "note": note,
-                "warning": None,
+                "warning": warning,
             },
         }
 

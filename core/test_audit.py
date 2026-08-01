@@ -515,6 +515,55 @@ def test_headline_numerator_has_one_definition():
     assert "no_source" not in UNSUPPORTED_VERDICTS
 
 
+def test_short_numeric_anchor_cannot_attach_to_a_longer_number():
+    """정규화가 문장부호를 지우므로 100 ⊂ 1004 가 성립한다 — 경계를 검사해야 한다."""
+    audit = Audit("성장률은 100% 늘었다. 회원은 1004명이다.")
+    bad = _claim(audit, 1, "100")
+    assert bad["ok"] is False
+    assert audit.claims == []
+    good = _claim(audit, 0, "100% 늘었다")
+    assert good["ok"] is True
+
+
+def test_anchor_that_fits_several_sentences_is_rejected():
+    audit = Audit("첫 문장은 매출이 늘었다고 말한다. 둘째 문장도 매출이 늘었다고 말한다.")
+    out = _claim(audit, 0, "매출이 늘었다")
+    assert out["ok"] is False
+    assert out["data"]["ambiguous_indices"] == [0, 1]
+    assert audit.claims == []
+
+
+def test_repeated_whole_sentence_anchors_where_the_model_pointed():
+    audit = Audit("같은 문장이 반복된다. 같은 문장이 반복된다. 다른 문장이다.")
+    out = _claim(audit, 1, "같은 문장이 반복된다.")
+    assert out["ok"] is True
+    assert audit.claims[0]["index"] == 1
+    assert "반복된다" in out["data"]["warning"]
+
+
+def test_one_character_anchor_is_rejected():
+    audit = _audit_two_sentences()
+    out = _claim(audit, 0, "는")
+    assert out["ok"] is False
+    assert out["data"]["min_anchor_chars"] == 3
+
+
+def test_challenge_search_promotes_the_stance_of_a_known_document():
+    """확증 검색이 먼저 데려온 문헌을 반증 검색이 다시 데려오면 그것은 반증 자료다."""
+    audit = _audit_two_sentences()
+    first = audit.register_evidence(
+        tool="search_web", query="coffee benefits", url="https://ex.test/a", stance="support"
+    )
+    again = audit.register_evidence(
+        tool="search_scholar", query="coffee harms limitations", url="https://ex.test/a", stance="challenge"
+    )
+    assert first["id"] == again["id"]
+    assert again["stance"] == "challenge"
+    # 반대 방향으로는 강등되지 않는다.
+    audit.register_evidence(tool="search_web", query="coffee benefits", url="https://ex.test/a")
+    assert audit.evidence[0]["stance"] == "challenge"
+
+
 def test_axis_order_violation_is_rejected_with_recovery_path():
     audit = _with_evidence()
     out = audit.update_verdict(
