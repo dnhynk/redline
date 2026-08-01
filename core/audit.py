@@ -89,7 +89,7 @@ class Claim(TypedDict):
     claim_type: str
     auditable: bool
     cited_source: str | None
-    prior: float
+    base_confidence: float   # 호스트 상수 BASE_CONFIDENCE — 모델은 시작값을 정하지 않는다
     confidence: float
     verdict: str
     axis_results: list[AxisResult]
@@ -278,6 +278,13 @@ _ALLOWED_SUGGESTIONS: dict[tuple[int, str], frozenset[str]] = {
 }
 
 
+# 모든 클레임이 여기서 출발한다. 시작값을 모델이 정하면 화면의 %가 "확보한 근거의 양"이
+# 아니라 "모델의 첫인상 + 근거"가 된다 — 증거를 더 적게 확보한 주장이 첫인상 덕에 더 높게
+# 뜨는 일이 실제로 일어났다. 고정하면 표시값이 증거만의 함수가 되고, 지지 판정의 상한은
+# 0.5 + 축1 0.10 + 축2 0.20 = 0.80이 되어 1.00(확실함)이 구조적으로 나올 수 없다.
+BASE_CONFIDENCE = 0.5
+
+
 def clamp01(x: float) -> float:
     return 0.0 if x < 0.0 else (1.0 if x > 1.0 else x)
 
@@ -337,13 +344,13 @@ def derive_claim_verdict(axis_results: Sequence[AxisResult]) -> str:
     return verdict
 
 
-def replay_confidence(prior: float, axis_results: Sequence[AxisResult]) -> float:
-    """`prior`부터 기록 순서대로 다시 적용해 신뢰도와 각 축의 실변화량을 재계산한다.
+def replay_confidence(base: float, axis_results: Sequence[AxisResult]) -> float:
+    """시작값부터 기록 순서대로 다시 적용해 신뢰도와 각 축의 실변화량을 재계산한다.
 
     단순 뺄셈으로 이전 델타를 되돌리면 0/1 경계에서 잘렸던 값이 복원되지 않는다.
     전체 리플레이만이 클램프 상호작용까지 정확하다. `AxisResult["delta"]`를 제자리 갱신한다.
     """
-    conf = clamp01(prior)
+    conf = clamp01(base)
     for r in axis_results:
         stepped = clamp01(conf + r.get("raw_delta", 0.0))
         r["delta"] = round(stepped - conf, 6)
@@ -541,7 +548,6 @@ class Audit:
         text: str,
         claim_type: str,
         auditable: bool,
-        prior: float,
         cited_source: str | None = None,
         budget_per_claim: int | None = None,
     ) -> dict:
@@ -585,11 +591,6 @@ class Audit:
             )
 
         normalized_args: dict[str, Any] = {}
-        prior_f = float(prior)
-        clamped = clamp01(prior_f)
-        if clamped != prior_f:
-            normalized_args["prior"] = {"given": prior_f, "used": clamped}
-
         claim: Claim = {
             "id": f"C{len(self.claims) + 1}",
             "index": index,
@@ -597,8 +598,9 @@ class Audit:
             "claim_type": claim_type,
             "auditable": bool(auditable),
             "cited_source": cited_source or None,
-            "prior": clamped,
-            "confidence": clamped,
+            # 시작값은 호스트 상수다 — 모델도 호출자도 다른 값을 넣을 수 없다.
+            "base_confidence": BASE_CONFIDENCE,
+            "confidence": BASE_CONFIDENCE,
             "verdict": "pending",
             "axis_results": [],
         }
@@ -739,8 +741,8 @@ class Audit:
         else:
             claim["axis_results"].append(result)
 
-        # 델타는 prior부터 전체 리플레이로 재계산한다 — 같은 축을 다시 불러도 펌핑이 없다.
-        claim["confidence"] = replay_confidence(claim["prior"], claim["axis_results"])
+        # 델타는 시작값부터 전체 리플레이로 재계산한다 — 같은 축을 다시 불러도 펌핑이 없다.
+        claim["confidence"] = replay_confidence(claim["base_confidence"], claim["axis_results"])
         claim["verdict"] = derive_claim_verdict(claim["axis_results"])
 
         warning = None

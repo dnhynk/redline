@@ -663,18 +663,17 @@ async def record_claim(
     text: str,
     claim_type: Literal["statistical", "causal", "attribution", "definitional", "normative"],
     auditable: bool,
-    prior: float,
     cited_source: str | None = None,
 ) -> dict:
     """감사할 클레임 하나를 호스트 문장 좌표 위에 등록한다.
 
     호스트가 text를 sentences[index]와 대조한다. 어긋나면 등록이 거부되고
     data.index_candidates에 좌표 후보가 온다 — 거부는 실패가 아니라 정정 신호다.
+    모든 클레임은 같은 신뢰도에서 시작한다 — 시작값을 정하는 파라미터는 없다.
 
     Args:
         index: 호스트 문장 좌표 (0부터, 하이라이트 앵커). host_sentences에서 고른다
         text: 그 문장의 원문(또는 주장 부분)을 그대로 복사
-        prior: 0~1 초기 신뢰도 (호스트 클램프)
         cited_source: 텍스트가 지목한 출처. 없으면 null
     """
     ctx = wrapper.context
@@ -685,7 +684,6 @@ async def record_claim(
         text=text,
         claim_type=claim_type,
         auditable=auditable,
-        prior=prior,
         cited_source=cited_source,
         budget_per_claim=ctx.claim_budget(),
     )
@@ -708,7 +706,7 @@ async def update_verdict(
     """축 판정 하나를 기록한다. 반환의 delta(하강폭)와 confidence_after가 화면에 실시간으로 뜬다.
 
     축1 확인 실패는 항상 no_source로 저장된다 — 검색이 못 찾은 것과 존재하지 않는 것은 다르다.
-    같은 (클레임, 축)을 다시 부르면 이전 판정이 교체되고 신뢰도는 prior부터 재계산된다.
+    같은 (클레임, 축)을 다시 부르면 이전 판정이 교체되고 신뢰도는 시작값부터 재계산된다.
 
     Args:
         axis: 1=존재 2=충실도 3=완전성

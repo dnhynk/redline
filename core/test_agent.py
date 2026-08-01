@@ -32,7 +32,7 @@ from core.agent import (
     resolve_model,
     run_audit,
 )
-from core.audit import DEFAULT_MAX_CLAIMS
+from core.audit import BASE_CONFIDENCE, DEFAULT_MAX_CLAIMS
 from core.model_tools import (
     ALL_TOOLS,
     FIRST_TOOL_NAME,
@@ -133,7 +133,6 @@ CLAIM = _tool_call(
         "text": "성인의 62%가 매일 카페인을 섭취한다",
         "claim_type": "statistical",
         "auditable": True,
-        "prior": 0.6,
         "cited_source": None,
     },
     "t3",
@@ -252,7 +251,8 @@ async def test_mini_run_reaches_an_axis1_verdict():
     assert claim["axis_results"][0]["evidence_ids"] == ["E1"]
     # URL은 모델이 쓴 것이 아니라 호스트가 원장에서 채운 것이다.
     assert claim["axis_results"][0]["source_urls"] == [audit["evidence"][0]["url"]]
-    assert claim["confidence"] > claim["prior"]
+    assert claim["base_confidence"] == BASE_CONFIDENCE
+    assert claim["confidence"] > BASE_CONFIDENCE  # 축1 pass가 올린 만큼만
     assert audit["source_mode"] in ("mock", "live", "unknown")
     assert status["final_report"].startswith("### 최종 보고")
     # 축2·3을 안 했으므로 완주가 아니다 — 안 한 것을 한 것처럼 말하지 않는다.
@@ -313,7 +313,6 @@ async def test_audit_events_are_emitted_only_for_successful_records():
             "text": "성인의 62%가 매일 카페인을 섭취한다",
             "claim_type": "statistical",
             "auditable": True,
-            "prior": 0.6,
             "cited_source": None,
         },
         "bad",
@@ -633,7 +632,6 @@ def test_fallback_report_says_what_was_not_done():
         text="성인의 62%가 매일 카페인을 섭취한다",
         claim_type="statistical",
         auditable=True,
-        prior=0.6,
     )
     audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
     audit.update_verdict(
@@ -665,7 +663,6 @@ def test_fallback_report_lists_the_counter_evidence_panel():
         text="성인의 62%가 매일 카페인을 섭취한다",
         claim_type="statistical",
         auditable=True,
-        prior=0.6,
     )
     audit.register_evidence(
         tool="search_scholar", query="q", url="https://s.test", title="메타분석"
