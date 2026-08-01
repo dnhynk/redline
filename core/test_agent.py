@@ -281,7 +281,8 @@ async def test_all_four_relay_event_kinds_are_emitted_with_the_wire_shape():
     for e in events:
         assert set(e) == {"kind", "seq", "t", "payload"}
         assert isinstance(e["t"], float)
-        json.dumps(e, ensure_ascii=False, default=str)  # 와이어로 나갈 수 있어야 한다
+        # 와이어로 나갈 수 있어야 한다 — raw 스트림도 변환 없이 직렬화된다.
+        json.dumps(e, ensure_ascii=False)
 
 
 @pytest.mark.asyncio
@@ -435,6 +436,33 @@ async def test_network_cap_refuses_the_call_but_not_the_run():
     assert status["tool_calls_refused"] == 1
     assert status["reason"] in ("complete", "incomplete")  # 런은 끝까지 간다
     assert status["audit"]["claims"][0]["axis_results"]
+
+
+@pytest.mark.asyncio
+async def test_same_response_tool_calls_fire_concurrently(monkeypatch):
+    """확증·반증 동시 발사가 실제로 동시인가 — 그리고 회계가 그것을 한 번만 세는가."""
+
+    async def slow_search(query, *, max_results=8, lang=None, date_range=None):
+        await asyncio.sleep(0.2)
+        return {
+            "ok": True,
+            "error": None,
+            "data": [{"title": query, "url": f"https://x.test/{query}", "description": "d"}],
+        }
+
+    monkeypatch.setattr("core.model_tools._io_search_web", slow_search)
+    burst = [
+        _tool_call("search_web", {"query": f"q{i}", "max_results": 3, "lang": None, "date_range": None}, f"b{i}")
+        for i in range(3)
+    ]
+    model = FakeModel([[CLASSIFY], burst, [_message("끝")]])
+    events = await _collect(model, timebox_s=20)
+    timing = _last_status(events)["timing"]
+    assert timing["max_concurrent_tools"] == 3
+    assert timing["tool_wait_s"] < 0.45  # 벽시계 1회분 — 0.6초로 중복 합산되지 않는다
+    assert timing["tool_time_serial_s"] > 0.5
+    assert timing["parallel_speedup"] > 2.0
+    assert timing["model_s"] > 0  # 대기 중복 합산이 모델 시간을 0으로 누르지 않는다
 
 
 @pytest.mark.asyncio

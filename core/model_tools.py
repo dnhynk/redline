@@ -340,9 +340,9 @@ class AuditContext:
         return snap
 
     def claim_budget(self) -> int:
+        """클레임 하나에 남는 네트워크 호출 수 — 등록된 클레임이 늘수록 줄어드는 신호다."""
         remaining_calls = max(0, self.max_tool_calls - self.tool_calls_used)
-        claims_left = max(1, len(self.audit.claims) or 1)
-        return plan_claim_budget(remaining_calls, claims_left)
+        return plan_claim_budget(remaining_calls, len(self.audit.claims) or 1)
 
 
 def estimate_search_cost(endpoint_calls: dict) -> float:
