@@ -625,6 +625,14 @@ h2 {
 .rules.is-brief .r-n {
   font-size: calc(2.2 * var(--u));
 }
+/* 모델이 내는 것과 코드가 내는 것을 색으로 갈라 놓는다 — 한쪽은 말이고
+   다른 쪽은 호스트가 실제로 받아 둔 것이다. */
+.r-model {
+  color: var(--muted);
+}
+.r-code {
+  color: var(--v-unsupported-label);
+}
 
 .evidence {
   margin-top: auto;
