@@ -312,6 +312,16 @@ h2 {
   padding: 0 calc(0.7 * var(--u));
   font-weight: 400;
 }
+/* 저장소 주소는 서명 줄 오른쪽 끝에 선다. 발표 중 읽히지 않아도 되고,
+   제출본에서 찾을 수 있으면 된다. */
+.byline {
+  display: flex;
+  align-items: baseline;
+}
+.repo {
+  margin-left: auto;
+  color: var(--rule);
+}
 
 /* --- 2장 ---------------------------------------------------------------- */
 
