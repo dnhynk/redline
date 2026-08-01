@@ -631,13 +631,10 @@ a {
   display: block;
   height: 100%;
   width: 100%;
-  background: var(--rule);
+  background: var(--v-unsupported-line);
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform var(--dur-settle) linear;
-}
-.status-band[data-outcome] .sb-fill {
-  background: var(--ink);
 }
 .status-band[data-outcome="error"] .sb-fill {
   background: var(--v-no_source-line);
@@ -1343,11 +1340,24 @@ a {
   background: var(--hair);
   overflow: hidden;
 }
+/* 셋의 이름은 화살표로 잇지 않는다. 순서가 아니라 각각이 끝났는지를 말하는
+   자리라서, 이름이 자기 칸 밑에 그대로 서 있는 편이 맞다. */
+.axis-legend {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.axis-legend li {
+  flex: 1;
+  min-width: 0;
+}
 .axis-cell::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--ink);
+  background: var(--v-unsupported-line);
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform var(--dur-stage) var(--ease-ink);
