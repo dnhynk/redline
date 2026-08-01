@@ -16,6 +16,10 @@ from pathlib import Path
 # server.py 와 같은 승인 상수. 임의 초 입력은 지원하지 않는다 — 프로파일 이름 2종만.
 PROFILES = {"demo": 110.0, "surprise": 90.0}
 
+# 프로파일별 클레임 상한 — server.py 와 같은 값. 짧은 박스에서 상한을 낮추는 쪽이
+# 산출물 손실 없이 시간 여유를 산다.
+CLAIM_CAPS = {"demo": 12, "surprise": 9}
+
 
 def _read_text(args: argparse.Namespace) -> str:
     if args.text:
@@ -28,7 +32,7 @@ def _read_text(args: argparse.Namespace) -> str:
     return data
 
 
-async def _run(text: str, *, timebox_s: float, model: str | None,
+async def _run(text: str, *, timebox_s: float, max_claims: int, model: str | None,
                save_events: Path | None) -> dict:
     from core.agent import run_audit
 
@@ -36,7 +40,8 @@ async def _run(text: str, *, timebox_s: float, model: str | None,
     final_payload: dict = {}
     counts: dict[str, int] = {}
     try:
-        async for event in run_audit(text, model=model, timebox_s=timebox_s):
+        async for event in run_audit(text, model=model, timebox_s=timebox_s,
+                                     max_claims=max_claims):
             kind = event.get("kind", "?")
             counts[kind] = counts.get(kind, 0) + 1
             if sink:
@@ -93,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     text = _read_text(args)
     save = Path(args.save_events) if args.save_events else None
     payload = asyncio.run(_run(text, timebox_s=PROFILES[args.profile],
+                               max_claims=CLAIM_CAPS[args.profile],
                                model=args.model, save_events=save))
 
     report = payload.get("final_report") or ""

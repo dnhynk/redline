@@ -30,6 +30,10 @@ from pydantic import BaseModel
 # 타임박스 프로파일. 사용자 소유 상수 — 이 두 값 밖의 값을 만들지 않는다.
 PROFILES: dict[str, float] = {"demo": 110.0, "surprise": 90.0}
 
+# 프로파일별 클레임 상한. 짧은 박스에서 상한 12는 여유가 1~6초라 위험하고,
+# 상한 9는 누락 산출물이 같으면서 10초 빠르다 — 측정으로 정한 값.
+CLAIM_CAPS: dict[str, int] = {"demo": 12, "surprise": 9}
+
 UI_DIR = Path(__file__).resolve().parent / "ui"
 FIXTURE_DIR = UI_DIR / "fixtures"
 DEFAULT_FIXTURE = FIXTURE_DIR / "complete.jsonl"
@@ -357,11 +361,12 @@ def agent_source(profile: str) -> EventSource:
     """실 모드. core 는 여기서만, 그것도 호출 시점에 import 한다."""
 
     timebox = PROFILES[profile]
+    max_claims = CLAIM_CAPS[profile]
 
     async def source(text: str) -> AsyncIterator[dict]:
         from core.agent import run_audit  # noqa: PLC0415 — mock 모드는 core 없이 돈다
 
-        async for event in run_audit(text, timebox_s=timebox):
+        async for event in run_audit(text, timebox_s=timebox, max_claims=max_claims):
             yield event
 
     return source
