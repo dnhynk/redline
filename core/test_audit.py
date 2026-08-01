@@ -561,6 +561,7 @@ def test_completion_report_gates_on_pending_and_axis3():
     assert report["complete"] is False
     assert "축3" in report["missing_actions"][0]
     audit.update_verdict(claim_id="C1", axis=3, outcome="pass", evidence="반증 없음", evidence_ids=["E1"])
+    audit.note_search("challenge", "커피 각성 효과 반박")
     assert audit.completion_report()["complete"] is True
 
 
@@ -569,6 +570,7 @@ def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
     audit = Audit(" ".join(f"주장 {i}번이 여기 있다." for i in range(count)))
     audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
     for i in range(count):
+        audit.note_search("challenge", f"주장 {i} 반박 자료")
         _claim(audit, i, f"주장 {i}번이 여기 있다")
         cid = f"C{i + 1}"
         audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
@@ -594,6 +596,57 @@ def test_axis3_collapse_is_not_complete():
     assert _audit_with_survivors(1, 0).completion_report()["complete"] is False
 
 
+def test_challenge_queries_are_counted_at_dispatch_not_from_the_ledger():
+    """이미 본 URL만 돌려준 반증 검색은 원장에 자국을 남기지 않는다 — 쏜 것은 쏜 것이다."""
+    audit = _audit_two_sentences()
+    audit.register_evidence(tool="search_web", query="확증 질의", url="https://a.test/x")
+
+    audit.note_search("challenge", "커피 각성 효과 반박 자료")
+    audit.register_evidence(
+        tool="search_web", query="반박 질의", url="https://a.test/x", stance="challenge"
+    )
+    audit.note_search("challenge", "커피 각성 효과 한계 연구")
+    audit.register_evidence(
+        tool="search_web", query="한계 질의", url="https://a.test/x/", stance="challenge"
+    )
+
+    assert len(audit.evidence) == 1  # URL 하나로 접혔다
+    assert audit.challenge_query_count() == 2  # 그래도 두 발은 나갔다
+    assert audit.search_counts() == {"support": 0, "challenge": 2}
+
+
+def test_challenge_floor_gates_completion():
+    audit = _audit_with_survivors(4, 4)  # 헬퍼가 클레임마다 반증을 한 발씩 쏜다
+    report = audit.completion_report()
+    assert report["challenge_queries"] == 4
+    assert report["challenge_required"] == 2  # ceil(4 * 0.5)
+    assert report["complete"] is True
+
+    starved = _audit_with_survivors(4, 4)
+    starved.searches = [s for s in starved.searches if s["stance"] != "challenge"]
+    starved_report = starved.completion_report()
+    assert starved_report["challenge_queries"] == 0
+    assert starved_report["complete"] is False
+    assert "반증 검색" in starved_report["missing_actions"][-1]
+
+
+def test_challenge_floor_has_a_minimum_of_one():
+    audit = _with_evidence()
+    audit.note_search("support", "커피 각성 효과 근거")
+    audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
+    report = audit.completion_report()
+    assert report["challenge_required"] == 1  # 감사 대상 1건이어도 반증은 한 발 나가야 한다
+    assert report["complete"] is False
+    audit.note_search("challenge", "커피 각성 효과 반박")
+    assert audit.completion_report()["complete"] is True
+
+
+def test_note_search_normalizes_unknown_stance():
+    audit = _audit_two_sentences()
+    audit.note_search("sideways", "이상한 방향")
+    assert audit.search_counts() == {"support": 1, "challenge": 0}
+
+
 def test_skipped_axis3_does_not_count_as_executed():
     audit = _audit_with_survivors(2, 0)
     audit.update_verdict(claim_id="C1", axis=3, outcome="skip", evidence="시간 없음", evidence_ids=[])
@@ -617,6 +670,7 @@ def test_value_claim_pending_is_not_partial_audit():
 
 def test_axis1_fail_only_run_can_still_complete():
     audit = _with_evidence()
+    audit.note_search("challenge", "커피 각성 효과 반박")
     audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
     assert audit.completion_report()["complete"] is True
 

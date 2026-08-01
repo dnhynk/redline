@@ -330,9 +330,12 @@ async def run_audit(
         "final_report": final_report,
         "audit": audit.to_dict(),
         "completion": completion,
-        # 축3 실행량은 화면이 "왜 완주가 아닌가"를 말할 수 있어야 하는 수치다.
+        # 화면이 "왜 완주가 아닌가"를 말할 수 있어야 하는 수치다. 모델은 종결 status를
+        # 보지 않으므로, 필요치를 여기 싣는 것은 봉투에 싣는 것과 다른 일이다.
         "axis3_done": completion["axis3_done"],
         "axis3_expected": completion["axis3_expected"],
+        "challenge_queries": completion["challenge_queries"],
+        "challenge_required": completion["challenge_required"],
         "turn_backstop": turn_backstop,
         "events_dropped": events_dropped,
         "timing": {

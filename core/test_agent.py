@@ -126,6 +126,17 @@ SEARCH = _tool_call(
     {"query": "카페인 각성 효과", "stance": "support", "max_results": 3, "lang": "ko", "date_range": None},
     "t2",
 )
+CHALLENGE = _tool_call(
+    "search_web",
+    {
+        "query": "카페인 섭취율 통계 과대추정 한계",
+        "stance": "challenge",
+        "max_results": 3,
+        "lang": "ko",
+        "date_range": None,
+    },
+    "t2c",
+)
 CLAIM = _tool_call(
     "record_claim",
     {
@@ -415,7 +426,15 @@ async def test_complete_requires_the_completion_gate():
         "t7",
     )
     model = FakeModel(
-        [[CLASSIFY], [SEARCH], [CLAIM], [AXIS1], [axis2], [axis3, omission], [_message("### 최종 보고")]]
+        [
+            [CLASSIFY],
+            [SEARCH, CHALLENGE],
+            [CLAIM],
+            [AXIS1],
+            [axis2],
+            [axis3, omission],
+            [_message("### 최종 보고")],
+        ]
     )
     events = await _collect(model, timebox_s=20)
     status = _last_status(events)
@@ -460,9 +479,23 @@ def _three_claim_turns(axis3_claims: list[str]) -> list[list]:
         for i, text in enumerate(["첫 주장이 여기 있다", "둘째 주장이 여기 있다", "셋째 주장이 여기 있다"])
     ]
     ids = ["C1", "C2", "C3"]
+    challenges = [
+        _tool_call(
+            "search_web",
+            {
+                "query": f"주장 {i} 반박·한정 자료",
+                "stance": "challenge",
+                "max_results": 3,
+                "lang": "ko",
+                "date_range": None,
+            },
+            f"x{i}",
+        )
+        for i in range(2)
+    ]
     return [
         [CLASSIFY],
-        [SEARCH],
+        [SEARCH, *challenges],
         claims,
         [_verdict_call(cid, 1) for cid in ids],
         [_verdict_call(cid, 2) for cid in ids],
@@ -715,6 +748,73 @@ async def test_stance_reaches_the_ledger_through_a_run():
     ]
     assert outputs[1]["data"]["stance"] == "support"
     assert outputs[2]["data"]["stance"] == "challenge"
+
+
+def test_budget_envelope_hides_the_challenge_quota():
+    """필요치를 알려주면 하한이 상한이 된다 — 모델이 정확히 그 수에서 멈춘다."""
+    ctx = _ctx()
+    ctx.audit.note_search("challenge", "반박 질의")
+    snap = ctx.budget_snapshot()
+    assert snap["challenge_queries"] == 1  # 관측치는 준다
+    serialized = json.dumps(snap, ensure_ascii=False)
+    for forbidden in ("challenge_required", "challenge_needed", "required", "needed", "quota"):
+        assert forbidden not in serialized, forbidden
+
+
+@pytest.mark.asyncio
+async def test_search_tools_count_the_query_not_the_results():
+    model = FakeModel([[CLASSIFY], [SEARCH, CHALLENGE], [CLAIM], [_message("끝")]])
+    events = await _collect(model, timebox_s=20)
+    audit = _last_status(events)["audit"]
+    outputs = [
+        e["payload"]["item"]["output"]
+        for e in events
+        if e["kind"] == "run_item" and e["payload"]["name"] == "tool_output"
+    ]
+    # 봉투는 관측치만 싣는다.
+    assert outputs[2]["budget"]["challenge_queries"] == 1
+    assert "challenge_required" not in outputs[2]["budget"]
+    assert _last_status(events)["challenge_queries"] == 1
+    assert _last_status(events)["challenge_required"] == 1
+    assert audit["claims"]
+
+
+@pytest.mark.asyncio
+async def test_a_run_without_any_challenge_search_is_not_complete():
+    """모델이 우아하게 마무리한 것과 감사가 완주된 것은 다른 사건이다."""
+    axis2 = _tool_call(
+        "update_verdict",
+        {
+            "claim_id": "C1",
+            "axis": 2,
+            "outcome": "pass",
+            "evidence": "출처가 주장을 지지한다",
+            "evidence_ids": ["E1"],
+            "verdict": None,
+        },
+        "n5",
+    )
+    axis3 = _tool_call(
+        "update_verdict",
+        {
+            "claim_id": "C1",
+            "axis": 3,
+            "outcome": "pass",
+            "evidence": "반증을 찾지 못했다",
+            "evidence_ids": ["E1"],
+            "verdict": None,
+        },
+        "n6",
+    )
+    # 확증 검색 1발 뒤 상한에 걸려 반증을 한 번도 못 쐈다.
+    model = FakeModel(
+        [[CLASSIFY], [SEARCH, CHALLENGE], [CLAIM], [AXIS1], [axis2], [axis3], [_message("### 최종 보고")]]
+    )
+    status = _last_status(await _collect(model, timebox_s=20, max_tool_calls=1))
+    assert status["tool_calls"] == 1 and status["tool_calls_refused"] == 1
+    assert status["challenge_queries"] == 0
+    assert status["reason"] == "incomplete"
+    assert "반증 검색" in " ".join(status["completion"]["missing_actions"])
 
 
 def test_progress_status_carries_the_network_cap():

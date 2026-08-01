@@ -23,6 +23,9 @@
   - **`fetch_allowed`**: 지금 새 `fetch_source`를 시작해도 되는가. **false면 시작하지 마라.**
     (`fetch_cutoff_s`가 그 경계 시각이다.)
   - `endpoint_calls`: web/scholar/fetch 각각의 호출·캐시 적중·실패 수.
+  - `challenge_queries`: 지금까지 나간 반증 검색 수. ★ **채워야 할 할당량이 아니다.**
+    클레임마다 반증을 쏘는 것이 규율이고, 이 수는 **그 규율을 지켰는지 비추는 거울**일
+    뿐이다. 어떤 수에 도달했다고 반증을 멈추지 마라.
   - `tool_calls_used`는 **네트워크 호출 수**(상한 30의 대상)이고 `record_calls_used`는
     기록 호출 수(참고용, 상한 비대상)다 — 구분해 읽어라.
 - `fetch_calls_used`는 그중 `fetch_source` 횟수다. **fetch는 검색보다 몇 배 느린,
