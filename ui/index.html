@@ -1,9 +1,9 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>REDLINE ??臾몄옣留덈떎 異쒖쿂瑜??뺤씤?⑸땲??/title>
+<title>REDLINE — 문장마다 출처를 확인합니다</title>
 <link rel="preload" as="font" type="font/woff2" href="/ui/fonts/PretendardVariable.subset.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="/ui/fonts/NotoSerifKR-Regular.subset.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="/ui/fonts/SourceSerif4Variable-latin.woff2" crossorigin>
@@ -14,52 +14,52 @@
 <header class="topbar">
   <a class="wordmark" href="/">RED<span class="wm-b">LINE</span></a>
   <ul class="stage-rail" id="stage-rail">
-    <li data-stage="1" data-target="#galley">?먭퀬</li>
-    <li data-stage="2" data-target="#galley">?뺤씤</li>
-    <li data-stage="3" data-target="#galley">?먯젙</li>
-    <li data-stage="4" data-target="#omissions-section">諛섎컯</li>
-    <li data-stage="5" data-target="#terminal-summary">蹂닿퀬</li>
+    <li data-stage="1" data-target="#galley">원고</li>
+    <li data-stage="2" data-target="#galley">확인</li>
+    <li data-stage="3" data-target="#galley">판정</li>
+    <li data-stage="4" data-target="#omissions-section">반박</li>
+    <li data-stage="5" data-target="#terminal-summary">보고</li>
   </ul>
-  <span class="conn" id="connection-label">?곌껐 以?/span>
-  <a class="projector-link" href="/raw" target="_blank" rel="noopener">?꾨줈?앺꽣 ?붾㈃ ??/a>
+  <span class="conn" id="connection-label">연결 중</span>
+  <a class="projector-link" href="/raw" target="_blank" rel="noopener">프로젝터 화면 ↗</a>
 </header>
 
 <main class="shell">
 
-  <!-- ?④퀎 0 ???낅젰 -->
+  <!-- 단계 0 — 입력 -->
   <section id="intake">
     <div class="intake-grid">
       <div>
-        <h1 class="hero-title">AI媛 ?⑥? ??湲,<br><span class="hl">誘우뼱???좉퉴??</span></h1>
-        <p class="hero-sub">臾몄옣留덈떎 異쒖쿂瑜??ㅼ젣濡??뺤씤?섍퀬,<br>??湲?????諛섎컯源뚯? 李얠븘?쒕┰?덈떎.</p>
+        <h1 class="hero-title">AI가 써준 이 글,<br><span class="hl">믿어도 될까요?</span></h1>
+        <p class="hero-sub">문장마다 출처를 실제로 확인하고,<br>이 글에 대한 반박까지 찾아드립니다.</p>
 
         <figure class="specimen">
-          <figcaption class="specimen-title">寃곌낵???대젃寃??쒖떆?⑸땲??/figcaption>
+          <figcaption class="specimen-title">결과는 이렇게 표시됩니다</figcaption>
           <div class="specimen-row">
-            <p class="specimen-text">???곌뎄???곕Ⅴ硫?<span class="claim-mark" data-mark="unsupported">吏꾨떒 ?ㅻ쪟瑜?80% 以꾩???/span>怨??⑸땲??</p>
-            <p class="specimen-label" style="color:var(--v-unsupported-label)">?룸컺移?????/p>
+            <p class="specimen-text">한 연구에 따르면 <span class="claim-mark" data-mark="unsupported">진단 오류를 80% 줄였다</span>고 합니다.</p>
+            <p class="specimen-label" style="color:var(--v-unsupported-label)">뒷받침 안 됨</p>
           </div>
           <div class="specimen-row">
-            <p class="specimen-text"><span class="claim-mark" data-mark="overstated">紐⑤뱺 ?곕졊??먯꽌 ?덉쇅 ?놁씠</span> ?④낵媛 ?덉뿀?듬땲??</p>
-            <p class="specimen-label" style="color:var(--v-overstated-label)">吏?섏튇 ?⑥젙</p>
+            <p class="specimen-text"><span class="claim-mark" data-mark="overstated">모든 연령대에서 예외 없이</span> 효과가 있었습니다.</p>
+            <p class="specimen-label" style="color:var(--v-overstated-label)">지나친 단정</p>
           </div>
           <div class="specimen-row">
-            <p class="specimen-text"><span class="claim-mark" data-mark="no_source">2024???ㅽ깲?쇰뱶 ?μ닔 ?곌뎄</span>媛 利앸챸?덉뒿?덈떎.</p>
-            <p class="specimen-label" style="color:var(--muted)">異쒖쿂 紐?李얠쓬
-              <span class="specimen-note">??몃떎媛 ?꾨땲?? 李얠? 紐삵뻽?ㅻ뒗 ??/span>
+            <p class="specimen-text"><span class="claim-mark" data-mark="no_source">2024년 스탠퍼드 장수 연구</span>가 증명했습니다.</p>
+            <p class="specimen-label" style="color:var(--muted)">출처 못 찾음
+              <span class="specimen-note">틀렸다가 아니라, 찾지 못했다는 뜻</span>
             </p>
           </div>
         </figure>
       </div>
 
       <form class="form-card sheet" id="run-form">
-        <label class="form-label" for="input-text">媛먯궗???띿뒪????AI媛 ?앹꽦??湲??遺숈뿬?ｌ뼱 蹂댁꽭??/label>
+        <label class="form-label" for="input-text">감사할 텍스트 — AI가 생성한 글을 붙여넣어 보세요</label>
         <div class="input-wrap">
           <textarea id="input-text" name="text" rows="9" spellcheck="false"></textarea>
           <span class="input-count" id="input-count" aria-hidden="true">0 / 2,000</span>
         </div>
         <div class="form-foot">
-          <button class="btn-ink" id="run-button" type="submit">媛먯궗 ?쒖옉 ??/button>
+          <button class="btn-ink" id="run-button" type="submit">감사 시작 →</button>
         </div>
         <p class="form-error" id="form-error" role="alert" hidden></p>
       </form>
@@ -70,135 +70,135 @@
         <div class="process-item">
           <span class="process-num">1</span>
           <div>
-            <h3>?쇰Ц쨌??異쒖쿂 ?뺤씤</h3>
-            <p>臾몄옣?먯꽌 ?뺤씤???꾩슂??二쇱옣??怨⑤씪, 洹?異쒖쿂媛 ?ㅼ옱?섎뒗吏 ?숈닠 ?쇰Ц怨??뱀뿉???ㅼ젣濡?寃?됲빀?덈떎.</p>
+            <h3>논문·웹 출처 확인</h3>
+            <p>문장에서 확인이 필요한 주장을 골라, 그 출처가 실재하는지 학술 논문과 웹에서 실제로 검색합니다.</p>
           </div>
         </div>
         <div class="process-item">
           <span class="process-num">2</span>
           <div>
-            <h3>?댁슜 ?뺤씤</h3>
-            <p>李얠? 臾몄꽌瑜??댁뼱 洹?二쇱옣???뺣쭚 ?룸컺移⑦븯?붿? ?댁슜???쎄퀬 ?먯젙?⑸땲??</p>
+            <h3>내용 확인</h3>
+            <p>찾은 문서를 열어 그 주장을 정말 뒷받침하는지 내용을 읽고 판정합니다.</p>
           </div>
         </div>
         <div class="process-item">
           <span class="process-num">3</span>
           <div>
-            <h3>諛섎컯 李얘린</h3>
-            <p>?먯젙???듦낵??二쇱옣????댁꽌?? ??湲?????諛섎컯???곕줈 李얠뒿?덈떎.</p>
+            <h3>반박 찾기</h3>
+            <p>판정을 통과한 주장에 대해서도, 이 글에 대한 반박을 따로 찾습니다.</p>
           </div>
         </div>
       </div>
-      <p class="process-meta">紐⑤뱺 ?먯젙?먮뒗 ?ㅼ젣濡?諛쏆? 寃??寃곌낵 留곹겕媛 遺숈뒿?덈떎 쨌 ?뮤룻븰??寃?됱? Liner 寃??API濡??ㅽ뻾?⑸땲??쨌 吏꾪뻾 ??怨쇱젙? <a href="/raw" target="_blank" rel="noopener">?꾨줈?앺꽣 ?붾㈃</a>?먯꽌 洹몃?濡?蹂????덉뒿?덈떎</p>
+      <p class="process-meta">모든 판정에는 실제로 받은 검색 결과 링크가 붙습니다 · 웹·학술 검색은 Liner 검색 API로 실행됩니다 · 진행 전 과정은 <a href="/raw" target="_blank" rel="noopener">프로젝터 화면</a>에서 그대로 볼 수 있습니다</p>
     </section>
   </section>
 
   <div class="intake-collapsed" id="intake-collapsed" hidden>
-    <span>?낅젰???묓? ?덉뒿?덈떎 ???꾨옒 ?먭퀬媛 媛먯궗 ??곸엯?덈떎.</span>
-    <button class="btn-quiet" id="intake-open" type="button">?ㅼ떆 ?낅젰</button>
+    <span>입력이 접혀 있습니다 — 아래 원고가 감사 대상입니다.</span>
+    <button class="btn-quiet" id="intake-open" type="button">다시 입력</button>
   </div>
 
-  <!-- 寃곌낵 ??????踰덉뿉 ?섎굹留?蹂댁씤?? 醫낃껐 ?섏튂????諛뽰뿉 ?덈떎 -->
+  <!-- 결과 탭 — 한 번에 하나만 보인다. 종결 수치는 탭 밖에 있다 -->
   <div class="tabs" id="result-tabs" hidden>
-    <div class="tablist" id="tablist" role="tablist" aria-label="媛먯궗 寃곌낵">
+    <div class="tablist" id="tablist" role="tablist" aria-label="감사 결과">
       <button class="tab" type="button" role="tab" id="tab-sentences"
               aria-controls="galley" aria-selected="true" tabindex="0">
-        臾몄옣蹂??먯젙<b class="tab-count tnum" id="count-sentences"></b>
+        문장별 판정<b class="tab-count tnum" id="count-sentences"></b>
       </button>
       <button class="tab" type="button" role="tab" id="tab-rebut"
               aria-controls="omissions-section" aria-selected="false" tabindex="-1">
-        ??湲?????諛섎컯<b class="tab-count tnum" id="count-rebut"></b>
+        이 글에 대한 반박<b class="tab-count tnum" id="count-rebut"></b>
       </button>
       <button class="tab" type="button" role="tab" id="tab-fix"
               aria-controls="fix-panel" aria-selected="false" tabindex="-1">
-        異붿쿇 ?섏젙??b class="tab-count tnum" id="count-fix"></b>
+        추천 수정안<b class="tab-count tnum" id="count-fix"></b>
       </button>
     </div>
   </div>
 
-  <!-- ?④퀎 1~3 ???먭퀬 + ?щ갚 -->
+  <!-- 단계 1~3 — 원고 + 여백 -->
   <section class="galley sheet tabpanel" id="galley" role="tabpanel"
            aria-labelledby="tab-sentences" tabindex="0" hidden>
     <div class="section-head">
       <ul class="legend">
-        <li><i class="swatch" data-mark="unsupported"></i>?룸컺移?????/li>
-        <li><i class="swatch" data-mark="overstated"></i>吏?섏튇 ?⑥젙</li>
-        <li><i class="swatch" data-mark="no_source"></i>異쒖쿂 紐?李얠쓬</li>
-        <li><i class="swatch" data-mark="supported"></i>?룸컺移⑤맖</li>
+        <li><i class="swatch" data-mark="unsupported"></i>뒷받침 안 됨</li>
+        <li><i class="swatch" data-mark="overstated"></i>지나친 단정</li>
+        <li><i class="swatch" data-mark="no_source"></i>출처 못 찾음</li>
+        <li><i class="swatch" data-mark="supported"></i>뒷받침됨</li>
       </ul>
-      <span class="badge" id="phase-badge">?湲?/span>
+      <span class="badge" id="phase-badge">대기</span>
     </div>
 
     <div class="sentences" id="sentences"></div>
-    <p class="empty" id="galley-empty">媛먯궗瑜??쒖옉?섎㈃ 湲??臾몄옣 ?⑥쐞濡??ш린???ㅻⅤ怨? 媛?臾몄옣???먯젙?????щ갚???쒖떆?⑸땲??</p>
+    <p class="empty" id="galley-empty">감사를 시작하면 글이 문장 단위로 여기에 오르고, 각 문장의 판정이 옆 여백에 표시됩니다.</p>
 
     <div class="tally">
       <div class="tally-cell">
-        <h3>?룸컺移?????/h3>
-        <b class="metric danger tnum" id="unsupported-rate">??<span class="sep">/</span> ??/b>
-        <p class="tally-sub">?룸컺移?????+ 吏?섏튇 ?⑥젙 쨌 <span id="no-source-count">異쒖쿂 紐?李얠쓬 0嫄?/span></p>
+        <h3>뒷받침 안 됨</h3>
+        <b class="metric danger tnum" id="unsupported-rate">— <span class="sep">/</span> —</b>
+        <p class="tally-sub">뒷받침 안 됨 + 지나친 단정 · <span id="no-source-count">출처 못 찾음 0건</span></p>
       </div>
       <div class="tally-cell">
-        <h3>媛먯궗 而ㅻ쾭由ъ?</h3>
-        <b class="metric tnum" id="coverage">??<span class="sep">/</span> ??/b>
-        <p class="tally-sub"><span id="claim-count">?깅줉 ?대젅??0嫄?/span> 쨌 ?먯젙源뚯? 媛?臾몄옣 / ?꾩껜 臾몄옣</p>
+        <h3>감사 커버리지</h3>
+        <b class="metric tnum" id="coverage">— <span class="sep">/</span> —</b>
+        <p class="tally-sub"><span id="claim-count">등록 클레임 0건</span> · 판정까지 간 문장 / 전체 문장</p>
       </div>
       <div class="tally-cell">
-        <h3>寃???④퀎</h3>
+        <h3>검사 단계</h3>
         <div class="axis-bar" id="axis">
           <i class="axis-cell"></i><i class="axis-cell"></i><i class="axis-cell"></i>
         </div>
-        <p class="tally-sub">?쇰Ц쨌??異쒖쿂 ?뺤씤 ???댁슜 ?뺤씤 ??諛섎컯 李얘린</p>
+        <p class="tally-sub">논문·웹 출처 확인 → 내용 확인 → 반박 찾기</p>
       </div>
-      <p class="tally-note">?щ갚??% = ?뺣낫??吏吏 洹쇨굅????쨌 李몄씪 ?뺣쪧???꾨떃?덈떎 쨌 <span id="evidence-summary">?ㅼ젣 諛쏆? 寃??寃곌낵 0嫄?쨌 ?먯젙???몄슜 0嫄?/span></p>
+      <p class="tally-note">여백의 % = 확보한 지지 근거의 양 · 참일 확률이 아닙니다 · <span id="evidence-summary">실제 받은 검색 결과 0건 · 판정에 인용 0건</span></p>
     </div>
   </section>
 
-  <!-- ?④퀎 4 ????湲?????諛섎컯 -->
+  <!-- 단계 4 — 이 글에 대한 반박 -->
   <section class="rebut sheet tabpanel" id="omissions-section" role="tabpanel"
            aria-labelledby="tab-rebut" tabindex="0" hidden>
     <div class="section-head">
-      <p class="rebut-sub">?由?怨녹씠 ?놁뼱??遊낅땲?????먯젙???듦낵??二쇱옣源뚯? 諛섎컯 洹쇨굅瑜??곕줈 李얠뒿?덈떎</p>
+      <p class="rebut-sub">틀린 곳이 없어도 봅니다 — 판정을 통과한 주장까지 반박 근거를 따로 찾습니다</p>
     </div>
     <div class="rebut-grid" id="omissions"></div>
     <p class="rebut-empty" id="omissions-empty">
       <span class="ring">3</span>
-      <span>??踰덉㎏ 寃?ъ뿉????湲?????諛섎컯??李얠뒿?덈떎 ???먯젙???듦낵??二쇱옣源뚯?. 李얠? 諛섎컯? ?ㅼ젣 臾몄꽌 留곹겕? ?④퍡 ?ш린???쒖떆?⑸땲??</span>
+      <span>세 번째 검사에서 이 글에 대한 반박을 찾습니다 — 판정을 통과한 주장까지. 찾은 반박은 실제 문서 링크와 함께 여기에 표시됩니다.</span>
     </p>
   </section>
 
-  <!-- 異붿쿇 ?섏젙????理쒖쥌 蹂닿퀬?먯꽌 爰쇰궡 ?먭린 ?⑤꼸濡??몄슫??-->
+  <!-- 추천 수정안 — 최종 보고에서 꺼내 자기 패널로 세운다 -->
   <section class="fixes sheet tabpanel" id="fix-panel" role="tabpanel"
            aria-labelledby="tab-fix" tabindex="0" hidden>
     <div class="section-head">
-      <p class="fixes-sub">吏?곸쑝濡??앸궡吏 ?딆뒿?덈떎 ??怨좎퀜 ??臾몄옣??洹몃?濡???꺼 ?곸쓣 ???덇쾶 ?대넃?듬땲??/p>
+      <p class="fixes-sub">지적으로 끝내지 않습니다 — 고쳐 쓸 문장을 그대로 옮겨 적을 수 있게 내놓습니다</p>
     </div>
     <ul class="fix-list" id="fix-list"></ul>
-    <p class="fixes-empty" id="fix-empty">媛먯궗媛 ?앸굹硫?怨좎퀜 ??臾몄옣???ш린???쒖떆?⑸땲??</p>
+    <p class="fixes-empty" id="fix-empty">감사가 끝나면 고쳐 쓸 문장이 여기에 표시됩니다.</p>
   </section>
 
-  <!-- ?④퀎 5 ??理쒖쥌 蹂닿퀬 -->
+  <!-- 단계 5 — 최종 보고 -->
   <section class="terminal" id="terminal-summary" hidden>
     <div class="terminal-head">
       <div>
-        <h2 id="terminal-title">媛먯궗 ?꾨즺</h2>
+        <h2 id="terminal-title">감사 완료</h2>
         <span class="terminal-note" id="terminal-note" hidden></span>
         <p id="terminal-reason"></p>
         <details class="error-detail" id="error-detail" hidden></details>
         <ul id="missing-actions" hidden></ul>
       </div>
       <div class="terminal-coverage" id="terminal-coverage" hidden>
-        <h3>媛먯궗 而ㅻ쾭由ъ?</h3>
-        <b class="metric tnum">??<span class="sep">/</span> ??/b>
+        <h3>감사 커버리지</h3>
+        <b class="metric tnum">— <span class="sep">/</span> —</b>
       </div>
     </div>
-    <p class="report-label">理쒖쥌 蹂닿퀬</p>
+    <p class="report-label">최종 보고</p>
     <div class="report" id="final-report"></div>
   </section>
 
 </main>
 
-<button class="follow-run" id="follow-run" type="button" hidden>吏꾪뻾 ?곕씪媛湲???/button>
+<button class="follow-run" id="follow-run" type="button" hidden>진행 따라가기 ↓</button>
 <div class="source-banner" id="source-banner" role="status" hidden></div>
 
 <script src="/ui/app.js?v=__V__"></script>
