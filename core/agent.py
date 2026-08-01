@@ -53,6 +53,10 @@ DRAIN_MAX_S = 1.5
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system.md"
 MAX_CLAIMS_PLACEHOLDER = "{{MAX_CLAIMS}}"
 
+# 오류 런의 화면 문구. 제공자 원문 예외는 `status.error`에만 남기고 화면에는 이 문장을 쓴다 —
+# 프로젝터에 영문 자격증명 안내문이 뜨면 안 된다.
+ERROR_REPORT_TEXT = "감사를 시작하지 못했습니다 — 내부 오류로 런이 중단됐습니다."
+
 VERDICT_LABELS = {
     "unsupported": "뒷받침 안 됨",
     "overstated": "지나친 단정",
@@ -133,11 +137,17 @@ def _progress_status(ctx: AuditContext) -> dict:
     }
 
 
-def fallback_report(audit: Audit, completion: dict, reason: str) -> str:
+def fallback_report(
+    audit: Audit, completion: dict, reason: str, *, error_detail: str | None = None
+) -> str:
     """모델이 최종 보고를 남기지 못했을 때 호스트가 쓰는 보고.
 
     화면이 비면 안 되지만, 하지 않은 것을 한 것처럼 적어서도 안 된다.
     """
+    if reason == "error":
+        # 시작도 못 한 런에 "뒷받침 안 됨 0/0 · 커버리지 0/1" 같은 수치를 찍으면
+        # 크래시가 "아무 문제 없었음"으로 읽힌다. 수치를 내지 않는다.
+        return ERROR_REPORT_TEXT
     lines: list[str] = []
     unsupported, audited = audit.unsupported_rate()
     covered, coverable = audit.coverage()
@@ -305,6 +315,9 @@ async def run_audit(
         audit.status = "complete"
     elif reason == "non_auditable":
         audit.status = "non_auditable"
+    elif reason == "error":
+        # 시작하지 못한 런을 "완결된 부분 결과"로 저장하지 않는다.
+        audit.status = "error"
     else:
         audit.status = "partial"
 
@@ -317,7 +330,7 @@ async def run_audit(
         except Exception:
             final_report = None
     if not final_report:
-        final_report = fallback_report(audit, completion, reason)
+        final_report = fallback_report(audit, completion, reason, error_detail=error_detail)
 
     total_s = round(clock() - t0, 3)
     tool_wait_s = ctx.tool_wait_s()
@@ -326,7 +339,9 @@ async def run_audit(
         "done": True,
         "reason": reason,
         "partial": reason in PARTIAL_REASONS,
+        # `error`는 제공자 원문 그대로 남기고(재현·사후 분석용), 화면에 쓸 문장은 따로 준다.
         "error": error_detail,
+        "error_display": ERROR_REPORT_TEXT if reason == "error" else None,
         "final_report": final_report,
         "audit": audit.to_dict(),
         "completion": completion,
@@ -338,6 +353,7 @@ async def run_audit(
         "challenge_required": completion["challenge_required"],
         "turn_backstop": turn_backstop,
         "events_dropped": events_dropped,
+        "audit_events_suppressed": ctx.audit_events_suppressed,
         "timing": {
             "total_s": total_s,
             "model_s": round(max(0.0, total_s - tool_wait_s), 3),

@@ -499,7 +499,24 @@ def _three_claim_turns(axis3_claims: list[str]) -> list[list]:
         claims,
         [_verdict_call(cid, 1) for cid in ids],
         [_verdict_call(cid, 2) for cid in ids],
-        [_verdict_call(cid, 3) for cid in axis3_claims],
+        [
+            *[_verdict_call(cid, 3) for cid in axis3_claims],
+            *(
+                [
+                    _tool_call(
+                        "record_omission",
+                        {
+                            "claim_id": axis3_claims[0],
+                            "evidence_id": "E1",
+                            "summary": "이 자료가 주장을 한정한다",
+                        },
+                        "om1",
+                    )
+                ]
+                if axis3_claims
+                else []
+            ),
+        ],
         [_message("### 최종 보고")],
     ]
 
@@ -524,6 +541,176 @@ async def test_axis3_collapse_is_not_complete():
     healthy = await _run_three_claim(["C1", "C2"])
     assert healthy["reason"] == "complete"
     assert (healthy["axis3_done"], healthy["axis3_expected"]) == (2, 3)
+
+
+FIVE_CLAIM_TEXT = (
+    "하루 커피 3잔은 심혈관 질환 위험을 21% 낮춘다.\n"
+    "2024년 하버드 공중보건대 연구가 이를 입증했다.\n"
+    "카페인은 대사율을 11% 높인다.\n"
+    "임산부도 하루 400mg까지는 안전하다.\n"
+    "따라서 커피는 매일 마시는 것이 좋다.\n"
+)
+FIVE_SENTENCES = [line for line in FIVE_CLAIM_TEXT.strip().splitlines()]
+
+
+async def _run(text: str, model, **kwargs) -> dict:
+    last = None
+    async for event in run_audit(text, model=model, **kwargs):
+        last = event
+    return last["payload"]
+
+
+@pytest.mark.asyncio
+async def test_all_skip_run_is_not_complete():
+    """모든 축을 '하지 않았다'로 선언하고 같은 질의를 세 번 쏜 런이 완주가 되면 안 된다."""
+    classify = _tool_call(
+        "record_classification",
+        {
+            "input_kind": "ai_answer",
+            "lang": "ko",
+            "auditable": True,
+            "sentence_count": 5,
+            "rationale": "사실 주장 다수",
+        },
+        "s0",
+    )
+    claims = [
+        _tool_call(
+            "record_claim",
+            {
+                "index": i,
+                "text": FIVE_SENTENCES[i],
+                "claim_type": "statistical",
+                "auditable": True,
+                "cited_source": None,
+            },
+            f"s{i + 1}",
+        )
+        for i in range(5)
+    ]
+    skips = [
+        _tool_call(
+            "update_verdict",
+            {
+                "claim_id": f"C{n}",
+                "axis": ax,
+                "outcome": "skip",
+                "evidence": "하지 않았다",
+                "evidence_ids": [],
+                "verdict": None,
+            },
+            f"k{n}{ax}",
+        )
+        for n in range(1, 6)
+        for ax in (1, 2, 3)
+    ]
+    same_query = [
+        _tool_call(
+            "search_web",
+            {"query": "x", "stance": "challenge", "max_results": 1, "lang": None, "date_range": None},
+            f"q{i}",
+        )
+        for i in range(3)
+    ]
+    model = FakeModel([[classify], claims, skips, same_query, [_message("감사를 마쳤다.")]])
+    status = await _run(FIVE_CLAIM_TEXT, model, timebox_s=20)
+
+    assert status["reason"] == "incomplete"
+    assert status["partial"] is True
+    assert status["audit"]["status"] == "partial"
+    missing = " ".join(status["completion"]["missing_actions"])
+    assert "미확정 클레임" in missing  # skip은 판정이 아니다
+    assert "축3" in missing  # 축1을 안 했다고 축3 하한이 사라지지 않는다
+    assert "누락 증거가 0건" in missing  # 시그니처 산출물이 없다
+    # 같은 질의 3회는 서로 다른 반증 검색 1회로만 센다.
+    assert status["completion"]["challenge_dispatched"] == 3
+    assert status["challenge_queries"] == 1
+    assert [c["verdict"] for c in status["audit"]["claims"]] == ["pending"] * 5
+
+
+@pytest.mark.asyncio
+async def test_run_whose_searches_all_failed_is_not_complete(monkeypatch):
+    """증거를 한 건도 받지 못한 런이 완주가 되면, 화면이 '찾아봤지만 없었다'고 단정한다."""
+
+    async def dead_search(query, *, max_results=8, lang=None, date_range=None):
+        return {
+            "ok": False,
+            "data": None,
+            "error": "rate_limited: 429",
+            "error_code": "rate_limited",
+            "retryable": True,
+        }
+
+    monkeypatch.setattr("core.model_tools._io_search_web", dead_search)
+    model = FakeModel(
+        [[CLASSIFY], [SEARCH, CHALLENGE], [CLAIM], [_message("### 최종 보고")]]
+    )
+    status = _last_status(await _collect(model, timebox_s=20))
+
+    assert status["audit"]["evidence_total"] == 0
+    assert status["completion"]["challenge_dispatched"] == 1
+    assert status["challenge_queries"] == 0  # 회수가 없으면 세지 않는다
+    assert status["reason"] == "incomplete"
+
+
+@pytest.mark.asyncio
+async def test_fetch_is_refused_after_the_cutoff():
+    """컷오프는 봉투에 싣기만 하는 보고가 아니라 호스트가 집행하는 규칙이다."""
+    from agents.tool_context import ToolContext
+
+    now = [0.0]
+    ctx = _ctx(timebox_s=3.0, clock=lambda: now[0])
+    tool = [t for t in ALL_TOOLS if t.name == "fetch_source"][0]
+    args = json.dumps({"url": "https://a.test/doc", "max_chars": 2000})
+
+    def call_ctx() -> ToolContext:
+        return ToolContext(
+            context=ctx, tool_name="fetch_source", tool_call_id="f1", tool_arguments=args
+        )
+
+    allowed = await tool.on_invoke_tool(call_ctx(), args)
+    assert allowed["ok"] is True and ctx.tool_calls_used == 1
+
+    now[0] = 2.46  # 컷오프 1.8s를 지났다
+    refused = await tool.on_invoke_tool(call_ctx(), args)
+    assert refused["ok"] is False
+    assert "fetch" in refused["error"]
+    assert ctx.tool_calls_used == 1  # 거부된 호출은 예산을 깎지 않는다
+    assert ctx.fetch_calls_used == 1
+    assert ctx.tool_calls_refused == 1
+    assert refused["budget"]["fetch_allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_repeated_identical_records_do_not_spam_the_relay():
+    """같은 판정을 다시 기록한 호출은 상태를 바꾸지 않는다 — 스냅샷을 또 밀어내지 않는다."""
+    repeat = _verdict_call("C1", 1, "undecidable")
+    model = FakeModel([[CLASSIFY], [SEARCH], [CLAIM], [repeat] * 20, [_message("끝")]])
+    events = await _collect(model, timebox_s=20)
+    status = _last_status(events)
+    audit_events = [e for e in events if e["kind"] == "audit"]
+
+    assert status["audit_events_suppressed"] >= 15
+    assert len(audit_events) <= 6  # 분류·클레임·첫 판정 정도만 남는다
+    assert status["audit"]["claims"][0]["axis_results"][0]["outcome"] == "undecidable"
+
+
+@pytest.mark.asyncio
+async def test_error_run_does_not_look_like_a_finished_audit():
+    class BrokenModel(FakeModel):
+        async def stream_response(self, *args, **kwargs):
+            raise RuntimeError("provider exploded: missing credentials")
+            yield  # pragma: no cover - 제너레이터로 만들기 위한 줄
+
+    status = _last_status(await _collect(BrokenModel([]), timebox_s=20))
+    assert status["reason"] == "error"
+    assert status["audit"]["status"] == "error"  # "완결된 부분 결과"로 위장하지 않는다
+    assert status["partial"] is False
+    assert "provider exploded" in status["error"]  # 원문은 재현용으로 남는다
+    assert status["error_display"] and "provider exploded" not in status["error_display"]
+    # 시작도 못 한 런에 감사 수치를 찍지 않는다.
+    assert "커버리지" not in status["final_report"]
+    assert "뒷받침 안 됨" not in status["final_report"]
 
 
 @pytest.mark.asyncio

@@ -133,6 +133,13 @@ def _audit_two_sentences() -> Audit:
     return Audit("커피는 각성 효과가 있다. 성인의 62%가 매일 마신다.")
 
 
+def _challenge(audit: Audit, query: str, *, ok: bool = True, results: int = 1) -> dict:
+    """반증 검색 한 발 — 발사하고 회수까지 기록한다."""
+    entry = audit.note_search("challenge", query)
+    audit.mark_search_result(entry, ok, results)
+    return entry
+
+
 def _claim(audit: Audit, index: int, text: str, **kw):
     args = dict(index=index, text=text, claim_type="statistical", auditable=True)
     args.update(kw)
@@ -513,11 +520,21 @@ def test_invalid_enums_are_rejected(kwargs):
     assert audit.update_verdict(**args)["ok"] is False
 
 
-def test_skip_keeps_the_claim_out_of_pending():
+def test_skip_is_not_a_verdict_and_leaves_the_claim_pending():
+    """skip은 '안 했다'이지 '확인할 수 없었다'가 아니다 — 미확정을 해소하면 안 된다."""
     audit = _with_evidence()
     audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="e", evidence_ids=["E1"])
-    out = audit.update_verdict(claim_id="C1", axis=2, outcome="skip", evidence="시간 없음", evidence_ids=[])
-    assert out["data"]["verdict"] == "undecidable"
+    out = audit.update_verdict(
+        claim_id="C1", axis=2, outcome="skip", evidence="하지 않았다", evidence_ids=[]
+    )
+    assert out["ok"] is True  # 축 순서는 지나간다
+    assert out["data"]["verdict"] == "pending"
+    assert audit.completion_report()["pending_claims"] == ["C1"]
+    # 확인을 시도했으나 판정이 안 서는 것은 다른 사건이고, 그것은 미확정을 해소한다.
+    audit.update_verdict(
+        claim_id="C1", axis=2, outcome="undecidable", evidence="본문으로 판단 불가", evidence_ids=[]
+    )
+    assert audit.claims[0]["verdict"] == "undecidable"
 
 
 def test_clamp_and_budget_helpers():
@@ -561,7 +578,9 @@ def test_completion_report_gates_on_pending_and_axis3():
     assert report["complete"] is False
     assert "축3" in report["missing_actions"][0]
     audit.update_verdict(claim_id="C1", axis=3, outcome="pass", evidence="반증 없음", evidence_ids=["E1"])
-    audit.note_search("challenge", "커피 각성 효과 반박")
+    _challenge(audit, "커피 각성 효과 반박")
+    assert audit.completion_report()["complete"] is False  # 누락 증거가 아직 0건이다
+    audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
     assert audit.completion_report()["complete"] is True
 
 
@@ -570,7 +589,7 @@ def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
     audit = Audit(" ".join(f"주장 {i}번이 여기 있다." for i in range(count)))
     audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
     for i in range(count):
-        audit.note_search("challenge", f"주장 {i} 반박 자료")
+        _challenge(audit, f"주장 {i} 반박 자료")
         _claim(audit, i, f"주장 {i}번이 여기 있다")
         cid = f"C{i + 1}"
         audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
@@ -579,6 +598,8 @@ def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
             audit.update_verdict(
                 claim_id=cid, axis=3, outcome="pass", evidence="반증 검토", evidence_ids=["E1"]
             )
+    if axis3_on:
+        audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
     return audit
 
 
@@ -623,7 +644,7 @@ def test_challenge_floor_gates_completion():
     assert report["complete"] is True
 
     starved = _audit_with_survivors(4, 4)
-    starved.searches = [s for s in starved.searches if s["stance"] != "challenge"]
+    starved.searches = [e for e in starved.searches if e["stance"] != "challenge"]
     starved_report = starved.completion_report()
     assert starved_report["challenge_queries"] == 0
     assert starved_report["complete"] is False
@@ -637,7 +658,55 @@ def test_challenge_floor_has_a_minimum_of_one():
     report = audit.completion_report()
     assert report["challenge_required"] == 1  # 감사 대상 1건이어도 반증은 한 발 나가야 한다
     assert report["complete"] is False
-    audit.note_search("challenge", "커피 각성 효과 반박")
+    _challenge(audit, "커피 각성 효과 반박")
+    assert audit.completion_report()["complete"] is True
+
+
+def test_repeated_and_failed_challenge_searches_do_not_fill_the_gate():
+    """게이트는 발사가 아니라 회수를 센다 — 같은 질의 반복도, 전멸한 검색도 감사가 아니다."""
+    audit = _audit_two_sentences()
+    for _ in range(3):
+        _challenge(audit, "완전히 똑같은 질의")
+    _challenge(audit, "결과가 0건인 질의", results=0)
+    _challenge(audit, "429로 실패한 질의", ok=False, results=0)
+
+    assert audit.challenge_query_count() == 5  # 발사 관측치는 그대로
+    assert audit.effective_challenge_count() == 1  # 게이트가 세는 것은 하나뿐이다
+
+    _challenge(audit, "다른 각도의 반박 질의")
+    assert audit.effective_challenge_count() == 2
+
+
+def test_axis3_floor_survives_a_run_that_never_recorded_axis1():
+    """분모가 수행 이력이면 아무것도 안 한 런에서 게이트가 사라진다 — 성실한 런만 벌한다."""
+    audit = Audit(" ".join(f"주장 {i}번이 여기 있다." for i in range(4)))
+    for i in range(4):
+        _claim(audit, i, f"주장 {i}번이 여기 있다")
+    done, expected, required = audit.axis3_progress()
+    assert (done, expected, required) == (0, 4, 2)
+    assert audit.completion_report()["complete"] is False
+
+
+def test_axis1_failed_claims_leave_the_axis3_denominator():
+    audit = _with_evidence()
+    _challenge(audit, "커피 각성 효과 반박")
+    audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
+    done, expected, required = audit.axis3_progress()
+    assert (done, expected, required) == (0, 0, 0)  # 종결된 클레임에 축3을 요구하지 않는다
+
+
+def test_zero_omissions_is_not_a_complete_audit():
+    """시그니처 산출물이 0건인 런을 완주라고 부르면 화면이 '찾아봤지만 없었다'고 단정한다."""
+    audit = _with_evidence()
+    _challenge(audit, "커피 각성 효과 반박")
+    for axis in (1, 2, 3):
+        audit.update_verdict(
+            claim_id="C1", axis=axis, outcome="pass", evidence="검토했다", evidence_ids=["E1"]
+        )
+    report = audit.completion_report()
+    assert report["complete"] is False
+    assert "누락 증거가 0건" in " ".join(report["missing_actions"])
+    audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
     assert audit.completion_report()["complete"] is True
 
 
@@ -670,7 +739,7 @@ def test_value_claim_pending_is_not_partial_audit():
 
 def test_axis1_fail_only_run_can_still_complete():
     audit = _with_evidence()
-    audit.note_search("challenge", "커피 각성 효과 반박")
+    _challenge(audit, "커피 각성 효과 반박")
     audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
     assert audit.completion_report()["complete"] is True
 

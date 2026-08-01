@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Sequence
@@ -206,6 +207,8 @@ class AuditContext:
     non_auditable: bool = False
     started_at: float = 0.0
     max_concurrent_tools: int = 0
+    audit_events_suppressed: int = 0
+    _last_snapshot_key: str | None = None
     _spans: list[list[float | None]] = field(default_factory=list)
     _open_calls: int = 0
 
@@ -229,8 +232,11 @@ class AuditContext:
     def fetch_cutoff_s(self) -> float:
         return round(self.timebox_s * FETCH_CUTOFF_FRACTION, 3)
 
+    def fetch_cutoff_passed(self) -> bool:
+        return self.elapsed_s() >= self.fetch_cutoff_s
+
     def fetch_allowed(self) -> bool:
-        return self.elapsed_s() < self.fetch_cutoff_s and self.tool_calls_used < self.max_tool_calls
+        return not self.fetch_cutoff_passed() and self.tool_calls_used < self.max_tool_calls
 
     # ── 툴 대기 회계 (F14) ──────────────────────────────────────────────
     # 동시 발사된 호출을 각자 더하면 벽시계 5초가 30초로 계상된다. 진행 중 구간의
@@ -305,8 +311,21 @@ class AuditContext:
         return True
 
     def emit_audit(self) -> None:
-        if self.on_audit_event is not None:
-            self.on_audit_event(self.audit.to_dict(stream=True))
+        """상태가 실제로 바뀌었을 때만 방출한다.
+
+        기록 툴은 예산을 쓰지 않으므로 상한(150회)까지 재호출이 가능하고, 그 하나하나가
+        전 문장·전 클레임 스냅샷이 되어 릴레이와 화면에 쌓인다. 같은 판정을 다시 기록한
+        호출은 상태를 바꾸지 않는다 — 없는 상태 변화를 그리지 않는다는 규칙의 연장이다.
+        """
+        if self.on_audit_event is None:
+            return
+        snapshot = self.audit.to_dict(stream=True)
+        key = json.dumps(snapshot, sort_keys=True, ensure_ascii=False, default=str)
+        if key == self._last_snapshot_key:
+            self.audit_events_suppressed += 1
+            return
+        self._last_snapshot_key = key
+        self.on_audit_event(snapshot)
 
     # ── 봉투 ────────────────────────────────────────────────────────────
     def budget_snapshot(self) -> dict:
@@ -499,14 +518,14 @@ async def search_web(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
-    ctx.audit.note_search(stance, query)
+    entry = ctx.audit.note_search(stance, query)
     reply = await _io_call(
         ctx,
         lambda: _io_search_web(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_web", query, reply, normalized, stance)
+    return _search_reply(ctx, "search_web", query, reply, normalized, stance, entry)
 
 
 @function_tool
@@ -541,18 +560,24 @@ async def search_scholar(
             "이미 모은 증거로 판정을 마무리하라(기록 툴은 계속 쓸 수 있다).",
         )
     used, normalized = _normalize_io_args(max_results=(max_results, *MAX_RESULTS_RANGE))
-    ctx.audit.note_search(stance, query)
+    entry = ctx.audit.note_search(stance, query)
     reply = await _io_call(
         ctx,
         lambda: _io_search_scholar(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance)
+    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance, entry)
 
 
 def _search_reply(
-    ctx: AuditContext, tool: str, query: str, reply: dict, normalized: dict, stance: str
+    ctx: AuditContext,
+    tool: str,
+    query: str,
+    reply: dict,
+    normalized: dict,
+    stance: str,
+    entry: dict | None = None,
 ) -> dict:
     passthrough = dict(reply)
     request = dict(passthrough.get("request") or {})
@@ -561,13 +586,16 @@ def _search_reply(
     if request:
         passthrough["request"] = request
     if not reply.get("ok"):
+        ctx.audit.mark_search_result(entry, False, 0)
         return _reply(ctx, ok=False, error=reply.get("error"), passthrough=passthrough)
     results = reply.get("data") or []
     if not isinstance(results, list):
+        ctx.audit.mark_search_result(entry, False, 0)
         return _reply(
             ctx, ok=False, error=f"tool_error: 예상하지 못한 반환 형식({type(results).__name__})"
         )
     enriched = _register_search_evidence(ctx.audit, tool, query, results, stance)
+    ctx.audit.mark_search_result(entry, True, len(enriched))
     return _reply(
         ctx,
         ok=True,
@@ -592,6 +620,16 @@ async def fetch_source(
         max_chars: 가져올 최대 글자 수 (500~20000, 호스트 클램프)
     """
     ctx = wrapper.context
+    # 컷오프는 봉투에 싣기만 하는 부탁이 아니라 호스트가 집행하는 규칙이다. 예산을 깎기
+    # 전에 막아야 거부된 호출이 남은 호출 수를 갉아먹지 않는다.
+    if ctx.fetch_cutoff_passed():
+        ctx.tool_calls_refused += 1
+        return _reply(
+            ctx,
+            ok=False,
+            error=f"타임박스 {int(FETCH_CUTOFF_FRACTION * 100)}%({ctx.fetch_cutoff_s}s)를 지나 "
+            "새 fetch는 거부됐다 — 남은 시간은 판정과 축3에 쓴다. 이미 받은 스니펫으로 판정하라.",
+        )
     if not ctx.charge_call(is_fetch=True):
         return _reply(
             ctx,
