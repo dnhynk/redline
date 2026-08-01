@@ -1494,13 +1494,23 @@
         tab.tabIndex = on ? 0 : -1;
       }
       if (!panel) continue;
-      if (!on) panel.hidden = true;
+      if (!on) hidePanel(panel);
       else if (moved || opts.force || panel.hidden) showPanel(panel);
     }
     if (opts.focus) {
       var active = $("#" + TAB_SPEC[index].tab);
       if (active) active.focus();
     }
+  }
+
+  // 숨기면 그 안에서 돌던 애니메이션이 사라진다. 브라우저가 취소를 알려 주기를
+  // 기다리지 않고 여기서 직접 매듭짓는다 — 안 그러면 그 여백 부호는 영원히
+  // "도는 중"으로 남아 다음 갱신이 밀린다.
+  function hidePanel(panel) {
+    if (panel.hidden) return;
+    var pending = panel.querySelectorAll("[data-anim]");
+    for (var i = 0; i < pending.length; i++) settleAnim(pending[i]);
+    panel.hidden = true;
   }
 
   // 들어오는 패널만 뜬다. 나가는 패널을 겹쳐 두면 두 패널의 높이가 달라 화면이
