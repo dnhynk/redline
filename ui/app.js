@@ -1491,10 +1491,11 @@
     if (at < 0) return '<p class="fix-now">' + inline(text) + "</p>";
     var was = text.slice(0, at).trim();
     var now = text.slice(at + 1).trim();
-    // "**C5** 원문: …" 에서 클레임 번호와 안내말을 떼어 낸다 — 화면이 라벨을 따로 단다
-    var id = /^\*\*([A-Z]\d+)\*\*/.exec(was);
-    was = was.replace(/^\*\*[A-Z]\d+\*\*\s*/, "").replace(/^원문[:：]\s*/, "");
-    now = now.replace(/^추천[:：]\s*/, "");
+    // "C5 원문: …" 에서 클레임 번호와 안내말을 떼어 낸다 — 화면이 이름표를 따로 단다.
+    // 굵게 표시해 오는 경우와 아닌 경우가 둘 다 있어 별표는 있어도 없어도 받는다.
+    var id = /^\*{0,2}([A-Z]\d+)\*{0,2}(?=\s|$)/.exec(was);
+    was = was.replace(/^\*{0,2}[A-Z]\d+\*{0,2}\s*/, "").replace(/^원문\s*[:：]\s*/, "");
+    now = now.replace(/^추천\s*[:：]\s*/, "");
     return (
       '<p class="fix-was"><span class="fix-tag">원문' +
       (id ? " " + inline(id[1]) : "") +

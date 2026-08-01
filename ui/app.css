@@ -785,9 +785,6 @@ a {
   border: 1px solid var(--edge);
 }
 .fix-tag {
-  display: inline-block;
-  min-width: 74px;
-  margin-right: 12px;
   font-family: var(--f-mono);
   font-size: 11px;
   font-weight: 600;
@@ -798,16 +795,20 @@ a {
 .fix-tag.is-now {
   color: var(--fix-label);
 }
-.fix-said {
-  display: inline;
+/* 이름표와 문장을 두 칸으로 세운다. 매달린 들여쓰기는 text-indent 가 상속돼
+   이름표 안쪽까지 끌려 나가므로 여기서는 쓰지 않는다. */
+.fix-was,
+.fix-now {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
 }
 .fix-was {
   font-family: var(--f-serif);
   font-size: 15px;
   line-height: 1.5;
   color: var(--muted);
-  text-indent: -86px;
-  padding-left: 86px;
 }
 .fix-was .fix-said {
   text-decoration: line-through;
@@ -817,8 +818,6 @@ a {
 .fix-now {
   margin-top: 10px;
   padding-top: 10px;
-  padding-left: 86px;
-  text-indent: -86px;
   border-top: 1px solid var(--edge);
   font-family: var(--f-serif);
   font-size: var(--t-report);

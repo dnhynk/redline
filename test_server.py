@@ -830,10 +830,15 @@ def test_every_recommendation_carries_both_halves():
     assert 'class="fix-was"' in block and 'class="fix-now"' in block
     # 화살표가 없으면 원문을 추천 자리에 그리게 되므로 그 경로를 분명히 둔다
     assert 'at < 0' in block, "화살표가 없을 때의 경로가 없다"
-    was = _balanced(CSS, CSS.index("{", CSS.index(".fix-was {")))
-    now = _balanced(CSS, CSS.index("{", CSS.index(".fix-now {")))
+    # 두 이름은 공유 규칙에도 나오므로 해당 선택자를 가진 규칙을 모아서 본다
+    def rules_for(name: str) -> str:
+        return "".join(b for sel, b in _rules(CSS) if name in sel)
+
+    was, now = rules_for(".fix-was"), rules_for(".fix-now")
     assert "var(--muted)" in was, "원문이 물러나지 않는다"
     assert "var(--f-serif)" in now and "var(--ink)" in now, "대안이 본문 세리프·잉크가 아니다"
+    # 매달린 들여쓰기는 상속돼 이름표를 카드 밖으로 끌어낸다
+    assert "text-indent" not in was + now, "이름표가 카드 밖으로 나간다"
     # 이 절의 색은 딥 틸이다 — 판정색을 빌리지 않는다
     panel = CSS[CSS.index("/* --- 추천 수정안 패널"):CSS.index("/* --- 단계 1~3")]
     for borrowed in ("--v-unsupported", "--v-overstated", "--v-supported", "--rebut-line"):
