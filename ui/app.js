@@ -1193,6 +1193,27 @@
   //
   // 전부 이스케이프한 뒤 제한 서식만 되살린다.
 
+  // 화면 라벨 → 판정 이름. 보고 본문의 [뒷받침 안 됨] 같은 표기를 판정색으로 잇는다.
+  var LABEL_TO_VERDICT = (function () {
+    var map = {};
+    for (var key in VERDICT_LABEL) if (VERDICT_LABEL.hasOwnProperty(key)) map[VERDICT_LABEL[key]] = key;
+    map["감사 안 함"] = "pending";
+    return map;
+  })();
+  var LABEL_IN_BRACKETS = new RegExp(
+    "\\[(" +
+      Object.keys(LABEL_TO_VERDICT)
+        .sort(function (a, b) {
+          return b.length - a.length; // 긴 라벨 먼저 — 짧은 라벨이 앞을 먹지 않게
+        })
+        .map(function (s) {
+          return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        })
+        .join("|") +
+      ")\\]",
+    "g"
+  );
+
   var OPEN = "\u0001";
   var CLOSE = "\u0002";
 
@@ -1205,6 +1226,10 @@
         return OPEN + "V" + name + "|" + VERDICT_LABEL[name] + CLOSE + "V";
       }
     );
+    // 모델은 판정을 영어 enum 이 아니라 대괄호 안의 화면 라벨로 쓴다 — 그쪽도 색을 입힌다.
+    s = s.replace(LABEL_IN_BRACKETS, function (m, label) {
+      return OPEN + "V" + LABEL_TO_VERDICT[label] + "|[" + label + "]" + CLOSE + "V";
+    });
     s = s.replace(/\bC(\d{1,2})\b/g, OPEN + "C" + "C$1" + CLOSE + "C");
     s = s.replace(
       /(\d+(?:\.\d+)?\s*\/\s*\d+|\d+(?:\.\d+)?(?:%|건|회|개|배|초|s))/g,
@@ -1219,6 +1244,23 @@
       .replace(new RegExp(CLOSE + "C", "g"), "</span>")
       .replace(new RegExp(OPEN + "N", "g"), '<span class="num">')
       .replace(new RegExp(CLOSE + "N", "g"), "</span>");
+  }
+
+  // 판정 줄은 두 부분이다 — 무엇을 주장했나(머리)와 왜 그렇게 봤나(설명).
+  // 머리는 굵게 세우고 설명은 한 단 들여써서, 훑는 사람이 주장만 먼저 읽을 수 있게 한다.
+  function claimLine(text) {
+    var at = text.indexOf(" — ");
+    if (at < 0) return inline(text);
+    return (
+      '<span class="claim-head">' + inline(text.slice(0, at).trim()) + "</span>" +
+      '<span class="claim-why">' + inline(text.slice(at + 3).trim()) + "</span>"
+    );
+  }
+
+  function labelVerdictIn(text) {
+    LABEL_IN_BRACKETS.lastIndex = 0;
+    var hit = LABEL_IN_BRACKETS.exec(text);
+    return hit ? LABEL_TO_VERDICT[hit[1]] : null;
   }
 
   function verdictIn(text) {
@@ -1302,10 +1344,10 @@
     var out = "<ul>";
     for (var i = 0; i < block.items.length; i++) {
       var text = block.items[i];
-      var mark = verdictIn(text);
+      var mark = verdictIn(text) || labelVerdictIn(text);
       out +=
         "<li" + (mark ? ' data-mark="' + mark + '"' : "") + ">" +
-        (inFix ? fixLine(text) : inline(text)) +
+        (inFix ? fixLine(text) : claimLine(text)) +
         "</li>";
     }
     return out + "</ul>";

@@ -1374,6 +1374,17 @@ a {
 .report .v {
   font-weight: 700;
 }
+/* 판정 줄의 머리는 굵게, 설명은 한 단 들여쓴다 — 주장과 근거가 눈에 갈린다. */
+.report .claim-head {
+  display: block;
+  font-weight: 700;
+}
+.report .claim-why {
+  display: block;
+  margin-top: 3px;
+  padding-left: 14px;
+  color: var(--muted);
+}
 .report .v[data-v="unsupported"] {
   color: var(--v-unsupported-label);
 }
