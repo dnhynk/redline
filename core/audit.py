@@ -712,7 +712,13 @@ class Audit:
         return self.search_counts()["challenge"]
 
     def effective_challenge_count(self) -> int:
-        """게이트가 세는 반증 검색 수: **서로 다른 질의**로 **결과를 받아온** 것만."""
+        """게이트가 세는 반증 검색 수: **서로 다른 질의**로 **결과를 받아온** 것만.
+
+        중복 제거는 **클레임별**이다. 전역 집합으로 접으면 서로 다른 클레임이 자연스럽게
+        같은 반증 질의문을 쓸 때("systematic review …" 류는 여러 주장에 그대로 들어맞는다)
+        두 번의 실제 반증 검색이 1회로 깎여, 일을 한 런이 부당하게 완주에서 막힌다.
+        같은 클레임에 같은 질의를 되풀이하는 것만 접으면 된다.
+        """
         seen = set()
         for entry in self.searches:
             if entry["stance"] != "challenge":
@@ -721,7 +727,7 @@ class Audit:
                 continue
             key = normalize_for_match(entry["query"])
             if key:
-                seen.add(key)
+                seen.add((entry["claim_id"], key))
         return len(seen)
 
     def evidence_catalog(self, *, limit: int = CATALOG_MAX) -> list[dict]:
@@ -1324,6 +1330,35 @@ class Audit:
         required = max(1, ceil(targets * CHALLENGE_RATIO)) if targets else 0
         return self.effective_challenge_count(), required
 
+    def claims_needing_pair(self) -> list[str]:
+        """확증·반증 쌍이 요구되는 클레임.
+
+        축1 확인 실패로 종결된 클레임은 빠진다 — 출처를 찾지 못한 주장에 반증 검색을
+        요구하는 것은 성립하지 않고(반박 기록도 같은 이유로 막혀 있다), 요구해 봐야
+        정직한 런을 벌하기만 한다.
+        """
+        return [
+            c["id"]
+            for c in self.claims
+            if c["auditable"]
+            and not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
+        ]
+
+    def pair_progress(self) -> tuple[int, int, list[str]]:
+        """(쌍이 선 클레임 수, 쌍이 요구되는 클레임 수, 아직 한 방향뿐인 클레임 id).
+
+        비율이 아니라 **전수**다. "클레임마다 확증 1건과 반증 1건"은 프롬프트의 부탁이
+        아니라 이 제품이 파는 규율이고, 게이트가 세지 않으면 규율이 아니라 희망이다 —
+        반증 2발을 전부 한 클레임에 몰아 쏜 런이 실제로 완주로 기록됐다.
+
+        세는 것은 **발사**지 회수가 아니다. 반증 검색이 0건을 물어 온 것은 모델의 잘못이
+        아니므로, 그것으로 완주를 막으면 검색 운이 정직성으로 둔갑한다.
+        """
+        needed = self.claims_needing_pair()
+        paired = set(self.paired_claims())
+        missing = [cid for cid in needed if cid not in paired]
+        return len(needed) - len(missing), len(needed), missing
+
     def completion_report(self) -> dict:
         """완주 조건 판정 — `reason="complete"`의 유일한 근거.
 
@@ -1333,8 +1368,14 @@ class Audit:
         pending = [c["id"] for c in targets if c["verdict"] == "pending"]
         axis3_done, axis3_expected, axis3_required = self.axis3_progress()
         challenge_queries, challenge_required = self.challenge_progress()
+        paired_done, paired_expected, missing_pair = self.pair_progress()
         missing: list[str] = []
         if self.status != "non_auditable":
+            if missing_pair:
+                missing.append(
+                    f"확증·반증 한 쌍이 서지 않은 클레임 {', '.join(missing_pair)}"
+                    f"(쌍 {paired_done}/{paired_expected})"
+                )
             if not targets:
                 missing.append("감사 대상 클레임이 하나도 등록되지 않았다")
             if pending:
@@ -1369,6 +1410,9 @@ class Audit:
             "challenge_required": challenge_required,
             "challenge_dispatched": self.challenge_query_count(),
             "claims_with_support_challenge_pair": len(self.paired_claims()),
+            "pair_done": paired_done,
+            "pair_expected": paired_expected,
+            "claims_missing_pair": missing_pair,
             "search_counts": self.search_counts(),
             "omission_count": len(self.omissions),
         }

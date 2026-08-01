@@ -177,11 +177,25 @@ def _audit_two_sentences() -> Audit:
     return Audit("커피는 각성 효과가 있다. 성인의 62%가 매일 마신다.")
 
 
-def _challenge(audit: Audit, query: str, *, ok: bool = True, results: int = 1) -> dict:
+def _challenge(
+    audit: Audit,
+    query: str,
+    *,
+    claim_id: str = EXPLORATORY_CLAIM_ID,
+    ok: bool = True,
+    results: int = 1,
+) -> dict:
     """반증 검색 한 발 — 발사하고 회수까지 기록한다."""
-    entry = audit.note_search("challenge", query)
+    entry = audit.note_search("challenge", query, claim_id=claim_id)
     audit.mark_search_result(entry, ok, results)
     return entry
+
+
+def _pair(audit: Audit, claim_id: str, topic: str) -> None:
+    """정직한 런의 최소 단위 — 클레임 하나에 확증·반증을 서로 다른 질의로 한 발씩."""
+    entry = audit.note_search("support", f"{topic} 근거", claim_id=claim_id)
+    audit.mark_search_result(entry, True, 1)
+    _challenge(audit, f"{topic} 한계 반박", claim_id=claim_id)
 
 
 def _claim(audit: Audit, index: int, text: str, **kw):
@@ -288,6 +302,8 @@ def test_empty_input_tells_the_model_not_to_retry():
 def _with_evidence() -> Audit:
     audit = _audit_two_sentences()
     _claim(audit, 0, "커피는 각성 효과가 있다")
+    # 정직한 런은 클레임을 등록하자마자 두 방향을 함께 쏜다 — 완주 게이트가 그것을 센다.
+    _pair(audit, "C1", "커피 각성 효과")
     audit.register_evidence(
         tool="search_web",
         query="커피 각성",
@@ -525,11 +541,10 @@ def test_axis3_success_does_not_contaminate_the_verdict_column():
     """전부 참이고 정확히 인용된 문단에서 축3이 한정 문헌을 찾아도 미지지가 되면 안 된다."""
     audit = Audit(" ".join(f"참인 진술 {i}번이 여기 있다." for i in range(4)))
     audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
-    _challenge(audit, "반박 자료 검색")
-    _challenge(audit, "다른 각도의 한정 문헌 검색")
     for i in range(4):
         _claim(audit, i, f"참인 진술 {i}번이 여기 있다")
         cid = f"C{i + 1}"
+        _pair(audit, cid, f"참인 진술 {i}")
         audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
         audit.update_verdict(claim_id=cid, axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
     # 4건 중 3건에서 축3이 한정 문헌을 찾았다.
@@ -646,6 +661,58 @@ def test_pair_metric_counts_claims_with_two_distinct_queries():
     audit.note_search("challenge", "아무 반박", claim_id=EXPLORATORY_CLAIM_ID, endpoint="web")
     assert audit.paired_claims() == ["C1"]
     assert audit.completion_report()["claims_with_support_challenge_pair"] == 1
+
+
+def test_challenge_dedup_is_per_claim_not_global():
+    """서로 다른 클레임이 같은 반증 질의문을 쓰는 것은 정상이다 — 전역 dedup 은 일한 런을 벌한다.
+
+    "systematic review …" 류의 질의는 여러 주장에 그대로 들어맞는다. 전역 집합으로 접으면
+    실제로 두 발 나간 반증 검색이 1회로 깎여 완주가 부당하게 막힌다. 접어야 하는 것은
+    같은 클레임에 되풀이한 같은 질의뿐이다.
+    """
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    _claim(audit, 1, "성인의 62%가 매일 마신다")
+    _challenge(audit, "systematic review contrary evidence", claim_id="C1")
+    _challenge(audit, "systematic review contrary evidence", claim_id="C2")
+    assert audit.effective_challenge_count() == 2
+
+    # 같은 클레임에 같은 질의를 다시 쏜 것은 여전히 1회다.
+    _challenge(audit, "systematic review  contrary evidence!", claim_id="C2")
+    assert audit.effective_challenge_count() == 2
+
+
+def test_every_surviving_claim_needs_its_own_support_challenge_pair():
+    """반증 2발을 한 클레임에 몰아 쏜 런은 완주가 아니다.
+
+    실측된 구멍이다 — 클레임 4개를 등록하고 반증 검색을 전부 C1 에만 귀속시켜도
+    통과했다(쌍 1/4). 원장은 그 사실을 알고 있었는데 게이트가 읽지 않았다.
+    """
+    audit = _audit_with_survivors(4, 4)
+    assert audit.completion_report()["complete"] is True
+
+    # C2~C4 의 반증을 전부 C1 으로 몰아 쏜 런.
+    hoarded = _audit_with_survivors(4, 4)
+    for entry in hoarded.searches:
+        if entry["stance"] == "challenge":
+            entry["claim_id"] = "C1"
+    report = hoarded.completion_report()
+    assert report["complete"] is False
+    assert report["pair_done"] == 1 and report["pair_expected"] == 4
+    assert report["claims_missing_pair"] == ["C2", "C3", "C4"]
+    assert "확증·반증" in report["missing_actions"][0]
+
+
+def test_a_claim_closed_at_axis1_fail_is_not_asked_for_a_pair():
+    """출처를 찾지 못한 주장에 반증 검색을 요구하는 것은 성립하지 않는다 — 반박 기록도 막혀 있다."""
+    audit = _audit_with_survivors(2, 2)
+    audit.update_verdict(claim_id="C2", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
+    audit.searches = [
+        e for e in audit.searches if not (e["claim_id"] == "C2" and e["stance"] == "challenge")
+    ]
+    report = audit.completion_report()
+    assert report["claims_missing_pair"] == []
+    assert report["pair_expected"] == 1
 
 
 def test_search_ledger_is_exposed_for_after_the_fact_audit():
@@ -944,9 +1011,9 @@ def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
     audit = Audit(" ".join(f"주장 {i}번이 여기 있다." for i in range(count)))
     audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
     for i in range(count):
-        _challenge(audit, f"주장 {i} 반박 자료")
         _claim(audit, i, f"주장 {i}번이 여기 있다")
         cid = f"C{i + 1}"
+        _pair(audit, cid, f"주장 {i}")
         audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
         audit.update_verdict(claim_id=cid, axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
         if i < axis3_on:
@@ -1007,13 +1074,15 @@ def test_challenge_floor_gates_completion():
 
 
 def test_challenge_floor_has_a_minimum_of_one():
-    audit = _with_evidence()
-    audit.note_search("support", "커피 각성 효과 근거")
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    _claim(audit, 1, "성인의 62%가 매일 마신다", auditable=False)
+    audit.note_search("support", "커피 각성 효과 근거", claim_id="C1")
     audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
     report = audit.completion_report()
     assert report["challenge_required"] == 1  # 감사 대상 1건이어도 반증은 한 발 나가야 한다
     assert report["complete"] is False
-    _challenge(audit, "커피 각성 효과 반박")
+    _challenge(audit, "커피 각성 효과 반박", claim_id="C1")
     assert audit.completion_report()["complete"] is True
 
 

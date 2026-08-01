@@ -145,6 +145,40 @@ CHALLENGE = _tool_call(
     },
     "t2c",
 )
+def _pair_calls(claim_id: str, topic: str) -> list:
+    """정직한 런의 최소 단위 — 클레임 하나에 확증·반증을 서로 다른 질의로 한 발씩.
+
+    완주 게이트가 이 쌍을 클레임마다 요구한다. 탐색(`explore`) 검색은 어느 클레임의
+    쌍으로도 세지 않으므로, 클레임을 등록한 뒤 그 id 로 다시 쏘는 것이 정상 경로다.
+    """
+    return [
+        _tool_call(
+            "search_web",
+            {
+                "query": f"{topic} 근거",
+                "claim_id": claim_id,
+                "stance": "support",
+                "max_results": 3,
+                "lang": "ko",
+                "date_range": None,
+            },
+            f"{claim_id}-s",
+        ),
+        _tool_call(
+            "search_web",
+            {
+                "query": f"{topic} 한계 반박 자료",
+                "claim_id": claim_id,
+                "stance": "challenge",
+                "max_results": 3,
+                "lang": "ko",
+                "date_range": None,
+            },
+            f"{claim_id}-c",
+        ),
+    ]
+
+
 CLAIM = _tool_call(
     "record_claim",
     {
@@ -438,6 +472,7 @@ async def test_complete_requires_the_completion_gate():
             [CLASSIFY],
             [SEARCH, CHALLENGE],
             [CLAIM],
+            _pair_calls("C1", "성인 카페인 섭취율"),
             [AXIS1],
             [axis2],
             [axis3, omission],
@@ -507,6 +542,7 @@ def _three_claim_turns(axis3_claims: list[str]) -> list[list]:
         [CLASSIFY],
         [SEARCH, *challenges],
         claims,
+        [call for n, cid in enumerate(ids) for call in _pair_calls(cid, f"주장 {n}")],
         [_verdict_call(cid, 1) for cid in ids],
         [_verdict_call(cid, 2) for cid in ids],
         [
