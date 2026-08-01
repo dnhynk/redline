@@ -110,6 +110,56 @@ def test_run_rejects_blank_text(text):
         assert client.post("/run", json={"text": text}).status_code == 422
 
 
+def test_text_cap_is_what_the_auditor_can_actually_read():
+    """상한의 근거는 core 의 상수다. 그 유도가 깨지면 여기서 먼저 운다."""
+    try:
+        from core.audit import HOST_SENTENCE_CHARS, HOST_SENTENCES_MAX
+    except ImportError:  # mock 모드는 core 없이 돈다
+        return
+    assert server.TEXT_MAX_CHARS == HOST_SENTENCES_MAX * HOST_SENTENCE_CHARS
+
+
+@pytest.mark.parametrize("over", [1, 1000, 2_000_000 - 12_800])
+def test_run_refuses_text_past_the_cap(over):
+    client = TestClient(create_app(list_source(sample_events())))
+    response = client.post("/run", json={"text": "가" * (server.TEXT_MAX_CHARS + over)})
+    assert response.status_code == 413
+    detail = response.json()["detail"]
+    assert isinstance(detail, str) and "12,800" in detail
+    assert client.app.state.hub.run_id is None, "거부해 놓고 런을 시작했다"
+
+
+def test_run_accepts_text_exactly_at_the_cap():
+    client = TestClient(create_app(list_source(sample_events())))
+    assert client.post("/run", json={"text": "가" * server.TEXT_MAX_CHARS}).status_code == 200
+
+
+def test_a_huge_body_is_refused_before_it_is_parsed():
+    client = TestClient(create_app(list_source(sample_events())))
+    body = b'{"text":"' + b"a" * (server.BODY_MAX_BYTES + 1) + b'"}'
+    response = client.post("/run", content=body, headers={"Content-Type": "application/json"})
+    assert response.status_code == 413
+    assert isinstance(response.json()["detail"], str)
+
+
+@pytest.mark.parametrize("body", [{"text": 12345}, {"text": None}, {"text": ["가"]}, {"text": {}}])
+def test_shape_errors_answer_in_korean(body):
+    """pydantic 영문 원문이 화면에 오르면 안 된다 — 화면은 detail 을 그대로 읽는다."""
+    client = TestClient(create_app(list_source(sample_events())))
+    response = client.post("/run", json=body)
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, str), "detail 이 배열이면 화면이 영문 msg 를 이어 붙인다"
+    assert not re.search(r"[A-Za-z]{4,}", detail), f"영문 원문이 샜다: {detail}"
+    assert re.search(r"[가-힣]", detail)
+
+
+def test_the_screen_never_prints_a_non_korean_reason():
+    block = JS.split("function detailOf(")[1].split("\n  }")[0]
+    assert 'typeof detail !== "string"' in block, "문자열이 아닌 detail 을 그대로 그린다"
+    assert ".msg" not in block, "pydantic 원문을 다시 읽고 있다"
+
+
 def test_run_is_409_while_running():
     gate = asyncio.Event()
     with TestClient(create_app(list_source(sample_events(), gate))) as client:
@@ -412,25 +462,148 @@ def test_section_accents_do_not_borrow_verdict_colours():
     assert "--v-unsupported" not in rebut, "반박 섹션이 판정 빨강을 빌려 썼다"
 
 
+def _root_block() -> str:
+    return _balanced(CSS, CSS.index(":root {") + len(":root {") - 1)
+
+
+def _balanced(text: str, brace_at: int) -> str:
+    """여는 중괄호 위치에서 시작해 짝이 맞는 곳까지. 중첩 블록을 통째로 집는다."""
+    depth = 0
+    for i in range(brace_at, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace_at + 1 : i]
+    raise AssertionError("닫히지 않은 블록")
+
+
+def _motion_tokens() -> dict[str, str]:
+    return dict(re.findall(r"(--(?:dur|ease)-[a-z-]+):\s*([^;]+);", _root_block()))
+
+
+def _resolved_durations() -> list[tuple[str, float]]:
+    """토큰을 실제 값으로 풀어서 (선언, 초) 목록. 이름을 붙였다고 예산이 눈멀면 안 된다."""
+    tokens = _motion_tokens()
+    out = []
+    for decl in re.findall(r"(?:animation|transition)(?:-duration)?\s*:\s*([^;]+);", CSS):
+        expanded = re.sub(r"var\((--[a-z-]+)\)", lambda m: tokens.get(m.group(1), ""), decl)
+        assert "var(" not in expanded, f"풀리지 않은 토큰: {decl.strip()}"
+        for value, unit in re.findall(r"(\d+(?:\.\d+)?)(ms|s)\b", expanded):
+            out.append((decl.strip(), float(value) / (1000 if unit == "ms" else 1)))
+    return out
+
+
 def test_every_motion_stays_inside_the_budget():
-    longest = 0.0
-    for prop in re.findall(r"(?:animation|transition)(?:-duration)?\s*:\s*([^;]+);", CSS):
-        for value, unit in re.findall(r"(\d+(?:\.\d+)?)(ms|s)\b", prop):
-            seconds = float(value) / (1000 if unit == "ms" else 1)
-            if seconds > 0.5:  # 0.001ms 강제 차단 규칙·큰 지연은 없다
-                pytest.fail(f"모션 예산 초과: {prop.strip()}")
-            longest = max(longest, seconds)
-    assert longest <= 0.3, f"최장 모션 {longest}s"
+    found = _resolved_durations()
+    assert found, "시간을 가진 모션 선언이 하나도 안 잡혔다 — 정규식이 눈멀었다"
+    for decl, seconds in found:
+        if seconds > 0.5:  # 0.001ms 강제 차단 규칙·큰 지연은 없다
+            pytest.fail(f"모션 예산 초과: {decl}")
+    assert max(s for _, s in found) <= 0.3, "최장 모션이 0.3s 를 넘었다"
+
+
+def test_motion_values_are_named_not_scattered():
+    """이징·지속시간의 정본은 :root 한 곳이다. 규칙에 손으로 쓴 값이 없어야 한다."""
+    body = CSS.replace(_root_block(), "")
+    assert "cubic-bezier" not in body, "규칙에 손으로 쓴 곡선이 남아 있다"
+    # 0 은 값이 아니라 값의 부재다 — 이름을 붙일 것이 없다.
+    stray = [d for d in re.findall(r"(?:animation|transition)[^;:]*:\s*[^;]*?\b\d+m?s\b", body)
+             if not re.search(r"\b0m?s\b", d)]
+    assert stray == [], f"규칙에 손으로 쓴 시간값: {stray}"
+    tokens = _motion_tokens()
+    for name in ("--ease-ink", "--ease-pen", "--ease-settle", "--dur-press", "--dur-tint",
+                 "--dur-settle", "--dur-card", "--dur-stage", "--dur-reduced"):
+        assert name in tokens, name
 
 
 def test_nothing_loops_forever():
     assert "infinite" not in CSS, "무한 반복 애니메이션은 끝나지 않는다"
 
 
+# --- 모션을 줄인 경로 -------------------------------------------------------
+#
+# 판정 기준은 0/0 이 아니다. 시작한 애니메이션이 전부 끝나야 하고(그래서 전환을
+# 지우는 대신 짧게 만든다), 자리를 옮기거나 크기를 바꾸는 것만 0 이어야 한다.
+
+MOVEMENT_TOKENS = {
+    "--stage-scale": "1",
+    "--stage-lift": "0px",
+    "--press-scale": "1",
+    "--settle-rise": "0px",
+    "--mark-draw-from": "100%",
+    "--mark-wave-from": "0%",
+}
+
+
+def _reduced_blocks() -> tuple[str, str]:
+    """기기 설정 경로와 강제 스위치 경로. 둘은 같은 것을 선언해야 한다."""
+    media = _balanced(CSS, CSS.index("{", CSS.index("@media (prefers-reduced-motion: reduce)")))
+    forced = _balanced(CSS, CSS.index("{", CSS.index("html.force-reduced {")))
+    forced += _balanced(CSS, CSS.index("{", CSS.index("html.force-reduced *,")))
+    return media, forced
+
+
 def test_reduced_motion_reaches_pseudo_elements():
-    block = CSS.split("@media (prefers-reduced-motion: reduce)")[1].split("}")[0]
-    assert "*::before" in block and "*::after" in block
+    media, _ = _reduced_blocks()
+    assert "*::before" in media and "*::after" in media
     assert "force-reduced *::before" in CSS and "force-reduced *::after" in CSS
+
+
+def test_reduced_motion_stops_movement_but_keeps_the_fade():
+    media, forced = _reduced_blocks()
+    for name, zero in MOVEMENT_TOKENS.items():
+        for path, block in (("media", media), ("force-reduced", forced)):
+            assert re.search(rf"{name}:\s*{re.escape(zero)}\s*;", block), f"{path} 가 {name} 를 안 세운다"
+    for path, block in (("media", media), ("force-reduced", forced)):
+        # 전환을 지우지 않고 짧게 만든다 — 지우면 시작한 것이 끝나지 않는다.
+        assert "transition: none" not in block, f"{path} 가 전환을 통째로 지운다"
+        assert "animation: none" not in block, f"{path} 가 애니메이션을 통째로 지운다"
+        allowed = re.search(r"transition-property:\s*([^;]+)!important", block, re.S)
+        assert allowed, f"{path} 가 전환 대상을 좁히지 않는다"
+        props = {p.strip() for p in allowed.group(1).replace("\n", " ").split(",") if p.strip()}
+        assert "opacity" in props, f"{path} 가 불투명도 전환까지 껐다"
+        for moving in ("transform", "scale", "translate", "rotate", "box-shadow", "all"):
+            assert moving not in props, f"{path} 가 {moving} 전환을 남겼다"
+        assert "var(--dur-reduced)" in block, f"{path} 가 줄인 시간을 안 쓴다"
+
+
+def test_both_reduced_paths_say_the_same_thing():
+    media, forced = _reduced_blocks()
+    # 선언만 뽑아 비교한다. 미디어 블록은 한 겹 더 들여쓰므로 공백은 지운다.
+    def norm(block: str) -> list[str]:
+        flat = re.sub(r"[^{}]*\{|\}", ";", block)
+        return sorted(re.sub(r"\s+", " ", d).strip() for d in flat.split(";") if d.strip())
+    assert norm(media) == norm(forced), "두 reduced 경로가 갈라졌다"
+
+
+def test_the_stage_never_animates_its_shadow():
+    """큰 면의 그림자 전환은 가장 눈에 띄는 순간에 가장 비싸다."""
+    for selector, block in _rules(CSS):
+        if not re.search(r"\.(galley|rebut)\b", selector):
+            continue
+        transition = re.search(r"transition:\s*([^;]+);", block)
+        if transition:
+            assert "box-shadow" not in transition.group(1), f"그림자를 전환한다: {selector.strip()}"
+    assert ".galley::after" in CSS and ".rebut::after" in CSS, "그림자를 들 의사 요소가 없다"
+
+
+def test_hover_needs_a_real_pointer():
+    """터치에서 hover 는 탭 뒤에 들러붙는다."""
+    gated = re.findall(r"@media \(hover: hover\) and \(pointer: fine\) \{", CSS)
+    inside = sum(
+        _balanced(CSS, m.end() - 1).count(":hover")
+        for m in re.finditer(r"@media \(hover: hover\) and \(pointer: fine\) \{", CSS)
+    )
+    assert gated, "포인터 게이트가 하나도 없다"
+    assert CSS.count(":hover") == inside, "게이트 밖에 남은 hover 규칙이 있다"
+
+
+def test_the_primary_button_answers_the_press():
+    block = _balanced(CSS, CSS.index("{", CSS.index(".btn-ink:active")))
+    assert "scale(var(--press-scale))" in block, "누름에 크기 응답이 없다"
+    assert "background" in block, "모션을 줄이면 색만 남는다 — 그 색이 없다"
 
 
 def test_stage_classes_only_touch_paint_properties():
@@ -462,6 +635,26 @@ def test_the_tool_gauge_counts_network_tools_only():
     assert set(re.findall(r"(\w+):", block)) == CONTRACT_NETWORK_TOOLS
     counter = [line for line in JS.splitlines() if "state.netCalls++" in line]
     assert counter and all("NETWORK_TOOLS" in line for line in counter)
+
+
+def test_the_banner_separates_the_two_mock_modes():
+    """서버가 이벤트를 트는 것과, 검색만 픽스처인 것은 다른 사실이다."""
+    block = JS.split("var SOURCE_NOTE = {")[1].split("\n  };")[0]
+    notes = dict(re.findall(r"(\w+):\s*\"([^\"]+)\"", block))
+    assert set(notes) == {"replay", "fixture"}, notes
+    assert notes["replay"] != notes["fixture"]
+    # 재생은 입력이 안 읽힌다고, 픽스처 검색은 감사는 진짜라고 말해야 한다.
+    assert "무관" in notes["replay"]
+    assert "실제로 감사" in notes["fixture"] and "무관" not in notes["fixture"]
+    assert "config" not in notes["fixture"]
+    for page in (INDEX, RAW):
+        assert "고정 시나리오" not in page, "낡은 문구가 화면에 박혀 있다"
+
+
+def test_the_banner_is_driven_by_source_mode_not_by_the_server_flag_alone():
+    assert 'state.replay = !!cfg.mock' in JS
+    assert JS.count('source_mode === "mock"') == 2, "봉투와 종결 상태 양쪽을 봐야 한다"
+    assert "state.fixtureSearch = false" in JS, "런 경계에서 픽스처 사실이 안 지워진다"
 
 
 def test_the_screen_does_not_explain_its_own_design_decisions():
