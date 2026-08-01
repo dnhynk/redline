@@ -593,7 +593,7 @@ def test_axis3_success_does_not_contaminate_the_verdict_column():
             verdict="overstated",
         )
         assert out["data"]["verdict"] == "supported"
-        assert "축3은 판정을 바꾸지 않는다" in out["data"]["warning"]
+        assert "3단계는 판정을 바꾸지 않는다" in out["data"]["warning"]
         audit.record_omission(claim_id=cid, evidence_id="E1", summary="이 자료가 주장을 한정한다")
 
     assert [c["verdict"] for c in audit.claims] == ["supported"] * 4
@@ -788,7 +788,7 @@ def test_negative_findings_need_evidence(axis):
         claim_id="C1", axis=axis, outcome="fail", evidence="근거 없이 부정", evidence_ids=[]
     )
     assert out["ok"] is False
-    assert "undecidable" in out["error"] and "축1" in out["error"]
+    assert "undecidable" in out["error"] and "1단계" in out["error"]
     # 인용하면 통과한다.
     assert audit.update_verdict(
         claim_id="C1", axis=axis, outcome="fail", evidence="대조 결과", evidence_ids=["E1"]
@@ -1206,7 +1206,7 @@ def test_completion_report_gates_on_pending_and_axis3():
     audit.update_verdict(claim_id="C1", axis=2, outcome="pass", evidence="e", evidence_ids=["E1"])
     report = audit.completion_report()
     assert report["complete"] is False
-    assert "축3" in report["missing_actions"][0]
+    assert "3단계" in report["missing_actions"][0]
     audit.update_verdict(claim_id="C1", axis=3, outcome="pass", evidence="반증 없음", evidence_ids=["E1"])
     _challenge(audit, "커피 각성 효과 반박")
     assert audit.completion_report()["complete"] is False  # 누락 증거가 아직 0건이다
@@ -1338,7 +1338,7 @@ def test_axis3_collapse_is_not_complete():
     report = collapsed.completion_report()
     assert report["complete"] is False
     assert (report["axis3_done"], report["axis3_expected"], report["axis3_required"]) == (1, 12, 6)
-    assert "축3" in report["missing_actions"][0]
+    assert "3단계" in report["missing_actions"][0]
 
     assert _audit_with_survivors(12, 6).completion_report()["complete"] is True
     # 하한 max(1, …) — 생존 클레임이 1건이면 1건으로 충족된다.
@@ -1437,7 +1437,7 @@ def test_zero_omissions_is_not_a_complete_audit():
         )
     report = audit.completion_report()
     assert report["complete"] is False
-    assert "누락 증거가 0건" in " ".join(report["missing_actions"])
+    assert "산출물이 0건" in " ".join(report["missing_actions"])
     audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
     assert audit.completion_report()["complete"] is True
 

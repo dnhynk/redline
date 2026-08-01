@@ -610,7 +610,7 @@ async def test_axis3_collapse_is_not_complete():
     assert collapsed["reason"] == "incomplete"
     assert collapsed["partial"] is True
     assert (collapsed["axis3_done"], collapsed["axis3_expected"]) == (1, 3)
-    assert "축3" in " ".join(collapsed["completion"]["missing_actions"])
+    assert "3단계" in " ".join(collapsed["completion"]["missing_actions"])
 
     healthy = await _run_three_claim(["C1", "C2"])
     assert healthy["reason"] == "complete"
@@ -701,8 +701,8 @@ async def test_all_skip_run_is_not_complete():
     assert status["audit"]["status"] == "partial"
     missing = " ".join(status["completion"]["missing_actions"])
     assert "미확정 클레임" in missing  # skip은 판정이 아니다
-    assert "축3" in missing  # 축1을 안 했다고 축3 하한이 사라지지 않는다
-    assert "누락 증거가 0건" in missing  # 시그니처 산출물이 없다
+    assert "3단계" in missing  # 1단계를 안 했다고 3단계 하한이 사라지지 않는다
+    assert "산출물이 0건" in missing  # 시그니처 산출물이 없다
     # 같은 질의 3회는 서로 다른 반증 검색 1회로만 센다.
     assert status["completion"]["challenge_dispatched"] == 3
     assert status["challenge_queries"] == 1
@@ -846,8 +846,8 @@ def test_prompt_requires_declaring_fixture_runs():
     prompt = PROMPT_PATH.read_text(encoding="utf-8")
     assert "source_mode" in prompt
     assert "픽스처 기반 데모" in prompt
-    # 축3이 판정 열을 만지지 않는다는 규칙도 프롬프트에 있어야 이중 방어가 된다.
-    assert "축3은 판정을 바꾸지 않는다" in prompt
+    # 3단계가 판정 열을 만지지 않는다는 규칙도 프롬프트에 있어야 이중 방어가 된다.
+    assert "3단계는 판정을 바꾸지 않는다" in prompt
 
 
 @pytest.mark.asyncio
@@ -1313,7 +1313,7 @@ def test_prompt_pins_the_ui_recognised_section_titles():
 def test_prompt_states_the_rules_the_run_depends_on():
     prompt = PROMPT_PATH.read_text(encoding="utf-8")
     assert "evidence_id" in prompt  # 인용의 유일한 화폐
-    assert "축1" in prompt and "축2" in prompt and "축3" in prompt
+    assert "1단계" in prompt and "2단계" in prompt and "3단계" in prompt
     assert "동시에 발사" in prompt  # 확증·반증 앵커링 방지
     assert "환각으로 단정하지 마라" in prompt  # 1순위 리스크
     assert "record_classification" in prompt
@@ -1409,3 +1409,46 @@ def test_the_prompt_tells_the_model_input_is_data_not_instruction():
     # 세 가지 요구 — 판정 뒤집기·조기 종료·감사 대상 아님으로 넘기기 — 를 모두 이름 짓는다.
     for demand in ("판정을 뒤집", "조기 종료", "auditable=false"):
         assert demand in prompt, demand
+
+
+# ── 화면 어휘 (W2-9) ─────────────────────────────────────────────────────────
+def test_the_prompt_never_teaches_the_model_the_internal_axis_word():
+    """실측: 최종 보고 첫 줄에 "축3 반증·한정 자료도 검토했으며"가 나왔다.
+
+    프롬프트가 그 낱말을 쉰 번 넘게 쓰면 모델은 그것을 사용자에게 쓸 말로 배운다.
+    툴 이름·필드 이름(`axis`, `expected_next_axis`)은 계약이라 그대로 두고,
+    모델이 읽는 한국어 산문에서만 화면 이름을 쓴다.
+    """
+    prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    # 남아도 되는 자리는 둘뿐이다: 쓰지 말라는 금지 목록과 그 나쁜 예.
+    leftovers = [line for line in prompt.splitlines() if "축" in line]
+    for line in leftovers:
+        assert '"축"' in line or "나쁜 예" in line, f"내부 낱말 '축'이 산문에 남아 있다: {line}"
+    assert len(leftovers) == 2
+    assert "axis=1" in prompt and "expected_next_axis" in prompt  # 계약은 그대로다
+
+
+def test_the_prompt_names_the_stages_the_way_the_screen_does():
+    prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    for label in ("출처 확인", "내용 확인", "반박 찾기"):
+        assert label in prompt, label
+    # 보고서에 내부 용어를 쓰지 말라는 규칙이 명시돼 있어야 한다.
+    assert "내부 용어를 쓰지 마라" in prompt
+    assert "보고서는 사용자가 읽는 글이다" in prompt
+
+
+def test_host_messages_the_model_reads_use_the_same_words_as_the_prompt():
+    """호스트 거부·경고 문구가 다른 어휘를 쓰면 모델은 두 어휘를 다 배운다."""
+    audit = Audit(TEXT)
+    audit.record_claim(
+        index=1,
+        text="성인의 62%가 매일 카페인을 섭취한다",
+        claim_type="statistical",
+        auditable=True,
+    )
+    out_of_order = audit.update_verdict(
+        claim_id="C1", axis=3, outcome="fail", evidence="반증", evidence_ids=[]
+    )
+    assert "축" not in out_of_order["error"]
+    assert "단계" in out_of_order["error"]
+    assert "축" not in json.dumps(audit.completion_report(), ensure_ascii=False)

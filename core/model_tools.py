@@ -693,7 +693,7 @@ async def fetch_source(
     url: str,
     max_chars: int = 8000,
 ) -> dict:
-    """URL의 본문을 가져온다. 축2 대조가 스니펫으로 서지 않을 때만 쓰는 최후 수단이다.
+    """URL의 본문을 가져온다. 2단계(내용 확인) 대조가 스니펫으로 서지 않을 때만 쓰는 최후 수단이다.
 
     API 과금은 없지만 지연이 가장 크다 — 비용이 돈이 아니라 시간인 경우다.
     반환의 truncated/original_chars/returned_chars로 본문이 잘렸는지 반드시 확인하라.
@@ -711,7 +711,7 @@ async def fetch_source(
             ctx,
             ok=False,
             error=f"타임박스 {int(FETCH_CUTOFF_FRACTION * 100)}%({ctx.fetch_cutoff_s}s)를 지나 "
-            "새 fetch는 거부됐다 — 남은 시간은 판정과 축3에 쓴다. 이미 받은 스니펫으로 판정하라.",
+            "새 fetch는 거부됐다 — 남은 시간은 판정과 3단계(반박 찾기)에 쓴다. 이미 받은 스니펫으로 판정하라.",
         )
     if not ctx.charge_call(is_fetch=True):
         return _reply(
@@ -839,13 +839,13 @@ async def update_verdict(
     verdict: Literal["unsupported", "overstated", "supported", "no_source", "undecidable"]
     | None = None,
 ) -> dict:
-    """축 판정 하나를 기록한다. 반환의 delta(하강폭)와 confidence_after가 화면에 실시간으로 뜬다.
+    """단계 판정 하나를 기록한다. 반환의 delta(하강폭)와 confidence_after가 화면에 실시간으로 뜬다.
 
-    축1 확인 실패는 항상 no_source로 저장된다 — 검색이 못 찾은 것과 존재하지 않는 것은 다르다.
-    같은 (클레임, 축)을 다시 부르면 이전 판정이 교체되고 신뢰도는 시작값부터 재계산된다.
+    1단계(출처 확인) 실패는 항상 no_source로 저장된다 — 검색이 못 찾은 것과 존재하지 않는 것은 다르다.
+    같은 (클레임, 단계)를 다시 부르면 이전 판정이 교체되고 신뢰도는 시작값부터 재계산된다.
 
     Args:
-        axis: 1=존재 2=충실도 3=완전성
+        axis: 1=출처 확인(존재) 2=내용 확인(충실도) 3=반박 찾기(완전성)
         evidence: 이 판정의 근거 한 문장 (판단 서술 — 출처 표기가 아니다)
         evidence_ids: 인용하는 증거 원장 id ("E1"…). pass는 최소 1개 필수, fail·undecidable·skip은 빈 배열 허용
         verdict: null이면 호스트가 규칙으로 파생

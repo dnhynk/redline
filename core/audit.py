@@ -142,7 +142,7 @@ CATALOG_MAX = 20
 # ★ 이 수는 축별 outcome이 정해진 폭만큼 움직이는 **단계 점수**다. 인용 증거가 1건이든
 # 10건이든 같은 outcome이면 같은 폭으로 움직인다 — 그러니 "근거의 양"이라고 부르면 안 된다.
 # 실제 근거의 양은 `evidence_count`·`fetched_source_count`로 따로 센다.
-SCORE_MEANS = "호스트 규칙이 정한 단계 점수 — 축별 판정이 정해진 폭만큼 움직인다. 진실 확률도, 근거 개수도 아니다"
+SCORE_MEANS = "호스트 규칙이 정한 단계 점수 — 각 단계의 판정이 정해진 폭만큼 움직인다. 진실 확률도, 근거 개수도 아니다"
 
 
 # ── 자료구조 ─────────────────────────────────────────────────────────────────
@@ -1079,7 +1079,7 @@ class Audit:
                 "normalized_args": normalized_args,
                 "expected_next_axis": 1 if claim["auditable"] else None,
                 "next_action": (
-                    "축1(존재)부터 감사하라. 확증·반증 검색을 같은 턴에 발사하라."
+                    "1단계(출처 확인)부터 감사하라. 확증·반증 검색을 같은 턴에 발사하라."
                     if claim["auditable"]
                     else "의견·권고로 등록됐다. 감사하지 말고 다음 클레임으로 가라."
                 ),
@@ -1148,7 +1148,7 @@ class Audit:
             )
         if axis not in AXES:
             return _fail(
-                f"axis {axis}는 기록할 수 없다. 축4(오염)는 미구현이다.",
+                f"axis {axis}는 기록할 수 없다. 4단계(오염)는 미구현이다.",
                 allowed_axes=list(AXES),
             )
         if outcome not in OUTCOMES:
@@ -1165,16 +1165,16 @@ class Audit:
         if not replacing:
             if 1 in state and state[1]["outcome"] == "fail" and axis in (2, 3):
                 return _fail(
-                    f"{claim_id}은 축1 확인 실패로 종결된 클레임이다 — 축{axis}는 기록할 수 없다. "
-                    "다음 클레임으로 넘어가라. 축1 판정을 정정하려면 axis=1로 다시 호출하라.",
+                    f"{claim_id}은 1단계(출처 확인) 실패로 종결된 클레임이다 — {axis}단계는 기록할 수 "
+                    "없다. 다음 클레임으로 넘어가라. 1단계 판정을 정정하려면 axis=1로 다시 호출하라.",
                     claim_terminal=True,
                     verdict=claim["verdict"],
                 )
             missing = [a for a in AXES if a < axis and a not in state]
             if missing:
                 return _fail(
-                    f"축 순서가 어긋났다 — {claim_id}에 축{missing[0]}이 아직 없다. "
-                    f"축{missing[0]}을 먼저 판정하라. outcome=\"skip\"은 순서만 지나갈 뿐 "
+                    f"단계 순서가 어긋났다 — {claim_id}에 {missing[0]}단계가 아직 없다. "
+                    f"{missing[0]}단계를 먼저 판정하라. outcome=\"skip\"은 순서만 지나갈 뿐 "
                     "판정이 아니다 — 그 클레임은 미확정으로 남아 완주에 걸린다.",
                     expected_next_axis=missing[0],
                     recorded_axes=sorted(state),
@@ -1215,8 +1215,8 @@ class Audit:
             # 둘 다 본 것이 있어야 성립한다. 부재의 주장은 축1 fail 하나뿐이다.
             what = "출처와 대조한 근거" if axis == 2 else "찾아낸 반대·한정 자료"
             return _fail(
-                f"축{axis} fail은 {what}의 evidence_ids가 최소 1개 필요하다. "
-                "접근하지 못했으면 undecidable, 출처 자체를 못 찾았으면 축1 fail로 기록하라 — "
+                f"{axis}단계 fail은 {what}의 evidence_ids가 최소 1개 필요하다. "
+                "접근하지 못했으면 undecidable, 출처 자체를 못 찾았으면 1단계 fail로 기록하라 — "
                 "본 것 없이 내리는 부정 판정은 감사가 아니다."
                 + ("" if self.evidence else " 아직 원장이 비어 있다 — 먼저 검색을 호출하라."),
                 available_evidence=self.evidence_catalog(claim_id=claim_id),
@@ -1228,7 +1228,7 @@ class Audit:
             if not any(self.evidence_challenges_claim(e, claim_id) for e in known_ids):
                 what = "찾아낸 반대·한정 자료" if outcome == "fail" else "검토한 반증 검색 결과"
                 return _fail(
-                    f"축3 {outcome}은 {claim_id}의 **반증(challenge) 검색**이 데려온 증거를 "
+                    f"3단계(반박 찾기) {outcome}은 {claim_id}의 **반증(challenge) 검색**이 데려온 증거를 "
                     f"최소 1건 인용해야 한다 — {what}가 확증 검색에서 나온 것뿐이면 "
                     "반증을 겨냥한 적이 없는 것이다. 반박·한정 자료를 겨냥한 질의로 "
                     f"stance=\"challenge\" 검색을 {claim_id}에 쏜 뒤 그 결과의 id를 인용하라. "
@@ -1270,19 +1270,19 @@ class Audit:
         if verdict and verdict != claim["verdict"]:
             if axis == 1 and outcome == "fail":
                 warning = (
-                    f"축1 확인 실패는 항상 no_source로 저장한다 — 제안한 '{verdict}'는 무시했다. "
-                    "뒷받침 안 됨 판정이 필요하면 축2에서 출처 대조로 내려라."
+                    f"1단계(출처 확인) 실패는 항상 no_source로 저장한다 — 제안한 '{verdict}'는 무시했다. "
+                    "뒷받침 안 됨 판정이 필요하면 2단계에서 출처 대조로 내려라."
                 )
             elif axis == 3:
                 warning = (
-                    f"축3은 판정을 바꾸지 않는다 — 제안한 '{verdict}'는 무시했다. 반대·한정 문헌은 "
+                    f"3단계는 판정을 바꾸지 않는다 — 제안한 '{verdict}'는 무시했다. 반대·한정 문헌은 "
                     "record_omission으로 반박 목록에 남는다. 원문이 증거보다 세다고 판단했다면 "
-                    "그것은 축2의 일이다 — axis=2로 다시 호출해 정정하라."
+                    "그것은 2단계의 일이다 — axis=2로 다시 호출해 정정하라."
                 )
             else:
-                warning = f"제안한 verdict '{verdict}'는 이 축·결과 조합에서 쓰이지 않아 무시했다."
+                warning = f"제안한 verdict '{verdict}'는 이 단계·결과 조합에서 쓰이지 않아 무시했다."
         if replacing:
-            prefix = f"{claim_id}의 축{axis} 기존 판정('{previous_outcome}')을 교체했다."
+            prefix = f"{claim_id}의 {axis}단계 기존 판정('{previous_outcome}')을 교체했다."
             warning = f"{prefix} {warning}" if warning else prefix
 
         next_axis = self.expected_next_axis(claim)
@@ -1313,7 +1313,7 @@ class Audit:
                 "expected_next_axis": next_axis,
                 "claim_terminal": terminal,
                 "next_action": (
-                    f"{claim_id}의 다음은 축{next_axis}다."
+                    f"{claim_id}의 다음은 {next_axis}단계다."
                     if next_axis
                     else f"{claim_id}은 종결이다 — 다음 클레임으로 가라."
                 ),
@@ -1356,7 +1356,7 @@ class Audit:
             )
         if any(r["axis"] == 1 and r["outcome"] == "fail" for r in claim["axis_results"]):
             return _fail(
-                f"{claim_id}은 축1 확인 실패로 종결된 클레임이다 — 출처를 확인하지 못한 주장에 "
+                f"{claim_id}은 1단계(출처 확인) 실패로 종결된 클레임이다 — 출처를 확인하지 못한 주장에 "
                 "'이 글이 언급하지 않은 반대 문헌'을 붙이는 것은 성립하지 않는다.",
                 claim_terminal=True,
             )
@@ -1696,13 +1696,13 @@ class Audit:
                 missing.append(f"미확정 클레임 {', '.join(pending)}")
             if axis3_expected and axis3_done < axis3_required:
                 missing.append(
-                    f"축3(완전성)을 {axis3_done}/{axis3_expected} 클레임에만 실행했다"
+                    f"3단계(반박 찾기)를 {axis3_done}/{axis3_expected} 클레임에만 실행했다"
                     f"(최소 {axis3_required})"
                 )
             if targets and axis3_expected and not self.omissions:
                 # 시그니처 산출물이 0건인 런을 완주라고 부르면, 화면이 "반박까지 찾아봤지만
                 # 없었다"고 단정하게 된다. 못 찾은 것과 안 찾은 것을 구분할 수 없다.
-                missing.append("축3 누락 증거가 0건이다")
+                missing.append("3단계(반박 찾기) 산출물이 0건이다")
             if targets and challenge_queries < challenge_required:
                 # 벌하는 것은 호출 거부가 아니라 반증의 부재다 — 모델이 우아하게 마무리한
                 # 것과 감사가 완주된 것은 다른 사건이다.
