@@ -191,11 +191,25 @@ def _challenge(
     return entry
 
 
-def _pair(audit: Audit, claim_id: str, topic: str) -> None:
-    """정직한 런의 최소 단위 — 클레임 하나에 확증·반증을 서로 다른 질의로 한 발씩."""
+def _pair(audit: Audit, claim_id: str, topic: str, *, url: str | None = None) -> None:
+    """정직한 런의 최소 단위 — 클레임 하나에 확증·반증을 서로 다른 질의로 한 발씩.
+
+    `url`을 주면 두 검색이 같은 자료를 물어 온 것으로 원장에 넣는다. 흔한 일이고,
+    그렇게 등록된 자료만이 그 클레임의 반박 근거로 설 수 있다.
+    """
     entry = audit.note_search("support", f"{topic} 근거", claim_id=claim_id)
     audit.mark_search_result(entry, True, 1)
     _challenge(audit, f"{topic} 한계 반박", claim_id=claim_id)
+    for stance in ("support", "challenge"):
+        if url:
+            audit.register_evidence(
+                tool="search_web",
+                query=f"{topic} {stance}",
+                url=url,
+                title="자료",
+                stance=stance,
+                claim_id=claim_id,
+            )
 
 
 def _claim(audit: Audit, index: int, text: str, **kw):
@@ -315,15 +329,19 @@ def _with_evidence() -> Audit:
     audit = _audit_two_sentences()
     _claim(audit, 0, "커피는 각성 효과가 있다")
     # 정직한 런은 클레임을 등록하자마자 두 방향을 함께 쏜다 — 완주 게이트가 그것을 센다.
+    # 같은 자료가 두 방향 모두에서 나오는 것은 흔한 일이고, 그 자료만이 반박 근거로 선다.
     _pair(audit, "C1", "커피 각성 효과")
-    audit.register_evidence(
-        tool="search_web",
-        query="커피 각성",
-        url="https://who.int/caffeine",
-        title="WHO 카페인 보고서",
-        snippet="카페인은 각성을 유발한다",
-        extra={"date": "2019-01-01", "citation_count": None},
-    )
+    for stance in ("support", "challenge"):
+        audit.register_evidence(
+            tool="search_web",
+            query=f"커피 각성 {stance}",
+            url="https://who.int/caffeine",
+            title="WHO 카페인 보고서",
+            snippet="카페인은 각성을 유발한다",
+            stance=stance,
+            claim_id="C1",
+            extra={"date": "2019-01-01", "citation_count": None},
+        )
     return audit
 
 
@@ -353,15 +371,21 @@ def test_evidence_ledger_records_stance():
 
 
 def test_stance_travels_to_the_stream_snapshot():
-    audit = _with_evidence()
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
     audit.register_evidence(
-        tool="search_web", query="반박 질의", url="https://c.test", stance="challenge"
+        tool="search_web", query="확증 질의", url="https://a.test", stance="support", claim_id="C1"
+    )
+    audit.register_evidence(
+        tool="search_web", query="반박 질의", url="https://c.test", stance="challenge", claim_id="C1"
     )
     audit.update_verdict(
         claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1", "E2"]
     )
     stream = audit.to_dict(stream=True)
     assert {r["id"]: r["stance"] for r in stream["evidence"]} == {"E1": "support", "E2": "challenge"}
+    # 자료가 어느 클레임의 검색에서 왔는지도 함께 흐른다 — 인용 대조의 근거다.
+    assert {r["id"]: r["claim_ids"] for r in stream["evidence"]} == {"E1": ["C1"], "E2": ["C1"]}
 
 
 def test_evidence_reuse_fills_empty_fields_only():
@@ -552,11 +576,10 @@ def test_axis3_never_touches_the_verdict_column():
 def test_axis3_success_does_not_contaminate_the_verdict_column():
     """전부 참이고 정확히 인용된 문단에서 축3이 한정 문헌을 찾아도 미지지가 되면 안 된다."""
     audit = Audit(" ".join(f"참인 진술 {i}번이 여기 있다." for i in range(4)))
-    audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
     for i in range(4):
         _claim(audit, i, f"참인 진술 {i}번이 여기 있다")
         cid = f"C{i + 1}"
-        _pair(audit, cid, f"참인 진술 {i}")
+        _pair(audit, cid, f"참인 진술 {i}", url="https://a.test")
         audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
         audit.update_verdict(claim_id=cid, axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
     # 4건 중 3건에서 축3이 한정 문헌을 찾았다.
@@ -802,13 +825,100 @@ def test_omission_requires_an_auditable_surviving_claim_and_a_summary():
     assert opinion.record_omission(claim_id="C1", evidence_id="E1", summary="반박")["ok"] is False
 
 
-def test_omission_from_a_support_search_is_allowed_but_flagged():
-    audit = _with_evidence()  # E1은 support 검색에서 왔다
+def test_omission_must_stand_on_challenge_direction_evidence():
+    """반박은 반증 방향 증거 위에 서야 한다.
+
+    확증 검색이 우연히 물어 온 자료로 반박 카드를 세우면, 반증을 한 번도 겨냥하지 않은
+    런이 이 제품의 시그니처 산출물을 갖게 된다. 실재하는 자료라는 것만으로는 부족하다.
+    """
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    audit.register_evidence(
+        tool="search_web", query="커피 각성 근거", url="https://a.test", stance="support",
+        claim_id="C1",
+    )
     audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
     out = audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
-    assert out["ok"] is True  # 실재하는 자료를 막지는 않는다
-    assert out["data"]["stance_mismatch"] is True
-    assert "확증(support) 검색" in out["data"]["warning"]
+    assert out["ok"] is False
+    assert "반증 방향 증거" in out["error"]
+    assert out["data"]["evidence_stance"] == "support"
+
+    # 반증 검색이 같은 자료를 데려오면 그때는 선다.
+    audit.register_evidence(
+        tool="search_web", query="커피 각성 한계", url="https://a.test", stance="challenge",
+        claim_id="C1",
+    )
+    assert audit.record_omission(
+        claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다"
+    )["ok"] is True
+
+
+def test_another_claims_evidence_cannot_close_this_claim():
+    """원장 구조는 출처 날조를 막는다 — 관련성은 귀속이 막는다.
+
+    실측된 구멍이다. C1 의 검색이 데려온 자료를 C4 의 2단계 pass 근거로 인용해도
+    호스트가 받았다. 무관한 지지 증거 하나로 전 단계를 닫을 수 있었다.
+    """
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    _claim(audit, 1, "성인의 62%가 매일 마신다")
+    audit.register_evidence(
+        tool="search_web", query="커피 각성 근거", url="https://a.test", stance="support",
+        claim_id="C1",
+    )
+    out = audit.update_verdict(
+        claim_id="C2", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"]
+    )
+    assert out["ok"] is False
+    assert "다른 클레임" in out["error"]
+    assert out["data"]["foreign_evidence"] == {"E1": ["C1"]}
+    # 쓸 수 없는 id 가 섞인 목록은 정정 신호가 아니다 — 후보는 이 클레임 기준으로 걸러 준다.
+    assert out["data"]["available_evidence"] == []
+    assert audit.update_verdict(
+        claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"]
+    )["ok"] is True
+
+
+def test_axis3_cannot_be_closed_with_support_direction_evidence():
+    """3단계는 "반대·한정 자료를 찾아봤다"는 사건이다 — 확증 자료로는 그 사건이 성립하지 않는다."""
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    audit.register_evidence(
+        tool="search_web", query="커피 각성 근거", url="https://a.test", stance="support",
+        claim_id="C1",
+    )
+    for axis in (1, 2):
+        audit.update_verdict(
+            claim_id="C1", axis=axis, outcome="pass", evidence="근거", evidence_ids=["E1"]
+        )
+    out = audit.update_verdict(
+        claim_id="C1", axis=3, outcome="fail", evidence="반대 자료", evidence_ids=["E1"]
+    )
+    assert out["ok"] is False
+    assert "반증(challenge) 검색" in out["error"]
+    assert out["data"]["cited_stances"] == {"E1": "support"}
+
+    audit.register_evidence(
+        tool="search_web", query="커피 각성 한계", url="https://b.test", stance="challenge",
+        claim_id="C1",
+    )
+    assert audit.update_verdict(
+        claim_id="C1", axis=3, outcome="fail", evidence="반대 자료", evidence_ids=["E2"]
+    )["ok"] is True
+
+
+def test_evidence_without_attribution_serves_any_claim():
+    """탐색 검색과 fetch 는 어느 주장의 일이라고 말한 적이 없다 — 없는 귀속을 지어내지 않는다."""
+    audit = _audit_two_sentences()
+    _claim(audit, 0, "커피는 각성 효과가 있다")
+    audit.register_evidence(tool="search_web", query="훑어보기", url="https://a.test")
+    audit.register_evidence(
+        tool="search_web", query="탐색", url="https://b.test", claim_id=EXPLORATORY_CLAIM_ID
+    )
+    assert audit.evidence_owners("E1") == [] and audit.evidence_owners("E2") == []
+    assert audit.update_verdict(
+        claim_id="C1", axis=1, outcome="pass", evidence="존재", evidence_ids=["E1", "E2"]
+    )["ok"] is True
 
 
 # ── 점수의 뜻 (F-05) ─────────────────────────────────────────────────────────
@@ -1032,10 +1142,7 @@ def _audit_one_of_four() -> Audit:
     """감사 가능 문장 4개 중 1개만 골라 그 하나를 끝까지 감사한 런."""
     audit = Audit(FOUR_AUDITABLE)
     _claim(audit, 0, "재택근무는 평균 생산성을 13% 높인다")
-    _pair(audit, "C1", "재택근무 생산성")
-    audit.register_evidence(
-        tool="search_web", query="q", url="https://a.test", title="자료", stance="challenge"
-    )
+    _pair(audit, "C1", "재택근무 생산성", url="https://a.test")
     for axis in (1, 2):
         audit.update_verdict(
             claim_id="C1", axis=axis, outcome="pass", evidence="근거", evidence_ids=["E1"]
@@ -1096,10 +1203,7 @@ def test_the_claim_cap_ends_the_run_honestly_instead_of_blocking_it_forever():
     """
     audit = Audit(FOUR_AUDITABLE, max_claims=1)
     _claim(audit, 0, "재택근무는 평균 생산성을 13% 높인다")
-    _pair(audit, "C1", "재택근무 생산성")
-    audit.register_evidence(
-        tool="search_web", query="q", url="https://a.test", title="자료", stance="challenge"
-    )
+    _pair(audit, "C1", "재택근무 생산성", url="https://a.test")
     for axis in (1, 2):
         audit.update_verdict(
             claim_id="C1", axis=axis, outcome="pass", evidence="근거", evidence_ids=["E1"]
@@ -1128,11 +1232,10 @@ def test_a_repeated_sentence_is_covered_by_the_claim_that_represents_it():
 def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
     """축1·2를 통과한 클레임 count건 중 axis3_on건에만 축3을 수행한 상태를 만든다."""
     audit = Audit(" ".join(f"주장 {i}번이 여기 있다." for i in range(count)))
-    audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
     for i in range(count):
         _claim(audit, i, f"주장 {i}번이 여기 있다")
         cid = f"C{i + 1}"
-        _pair(audit, cid, f"주장 {i}")
+        _pair(audit, cid, f"주장 {i}", url="https://a.test")
         audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
         audit.update_verdict(claim_id=cid, axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
         if i < axis3_on:

@@ -190,6 +190,12 @@ CLAIM = _tool_call(
     },
     "t3",
 )
+# `_pair_calls("C1", …)` 의 반증 검색이 데려온 첫 자료의 id. 원장 id 는 등록 순서대로
+# 발급되므로 결정적이다 — 어긋나면 아래 테스트가 방향까지 함께 확인해 알려준다.
+C1_CHALLENGE = "E8"
+# `_three_claim_turns` 는 클레임마다 확증 3건·반증 2건을 물어 온다 — 그 다섯 칸 간격이다.
+CLAIM_CHALLENGE = {"C1": "E10", "C2": "E15", "C3": "E20"}
+
 AXIS1 = _tool_call(
     "update_verdict",
     {
@@ -456,15 +462,20 @@ async def test_complete_requires_the_completion_gate():
             "claim_id": "C1",
             "axis": 3,
             "outcome": "fail",
+            # C1 의 반증 검색이 데려온 자료다 — 반박은 그 방향의 증거 위에만 선다.
             "evidence": "반대 자료를 찾았다",
-            "evidence_ids": ["E1"],
+            "evidence_ids": [C1_CHALLENGE],
             "verdict": None,
         },
         "t6",
     )
     omission = _tool_call(
         "record_omission",
-        {"claim_id": "C1", "evidence_id": "E2", "summary": "섭취율 추정치를 낮게 잡은 자료다"},
+        {
+            "claim_id": "C1",
+            "evidence_id": C1_CHALLENGE,
+            "summary": "섭취율 추정치를 낮게 잡은 자료다",
+        },
         "t7",
     )
     # 남은 문장을 "사실 주장 아님"으로 등록한다 — 아무 말도 남기지 않은 문장이 있으면
@@ -506,6 +517,8 @@ THREE_CLAIM_TEXT = "첫 주장이 여기 있다. 둘째 주장이 여기 있다.
 
 
 def _verdict_call(cid: str, axis: int, outcome: str = "pass") -> ResponseFunctionToolCall:
+    # 축3은 그 클레임의 반증 검색이 데려온 자료 위에 서야 한다 — 확증 자료로는 닫히지 않는다.
+    evidence = CLAIM_CHALLENGE[cid] if axis == 3 else "E1"
     return _tool_call(
         "update_verdict",
         {
@@ -513,7 +526,7 @@ def _verdict_call(cid: str, axis: int, outcome: str = "pass") -> ResponseFunctio
             "axis": axis,
             "outcome": outcome,
             "evidence": f"{cid} 축{axis} 근거",
-            "evidence_ids": ["E1"],
+            "evidence_ids": [evidence],
             "verdict": None,
         },
         f"{cid}a{axis}",
@@ -566,7 +579,7 @@ def _three_claim_turns(axis3_claims: list[str]) -> list[list]:
                         "record_omission",
                         {
                             "claim_id": axis3_claims[0],
-                            "evidence_id": "E1",
+                            "evidence_id": CLAIM_CHALLENGE[axis3_claims[0]],
                             "summary": "이 자료가 주장을 한정한다",
                         },
                         "om1",
@@ -1270,7 +1283,12 @@ def test_fallback_report_lists_the_counter_evidence_panel():
         auditable=True,
     )
     audit.register_evidence(
-        tool="search_scholar", query="q", url="https://s.test", title="메타분석"
+        tool="search_scholar",
+        query="q",
+        url="https://s.test",
+        title="메타분석",
+        stance="challenge",
+        claim_id="C1",
     )
     audit.update_verdict(
         claim_id="C1", axis=1, outcome="pass", evidence="자료가 있다", evidence_ids=["E1"]

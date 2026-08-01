@@ -455,9 +455,18 @@ def _normalize_io_args(**pairs: tuple[int, int, int]) -> tuple[dict, dict]:
 
 
 def _register_search_evidence(
-    audit: Audit, tool: str, query: str, results: Sequence[dict], stance: str = "support"
+    audit: Audit,
+    tool: str,
+    query: str,
+    results: Sequence[dict],
+    stance: str = "support",
+    claim_id: str | None = None,
 ) -> list[dict]:
-    """검색 결과 각 건을 원장에 넣고 evidence_id를 주입해 돌려준다."""
+    """검색 결과 각 건을 원장에 넣고 evidence_id를 주입해 돌려준다.
+
+    이 결과를 데려온 검색의 (클레임, 방향)이 함께 원장에 남는다 — 인용 시점에 호스트가
+    그것을 대조해 다른 클레임의 자료로 이 클레임을 닫는 것을 막는다.
+    """
     out = []
     for r in results:
         if not isinstance(r, dict):
@@ -472,6 +481,7 @@ def _register_search_evidence(
                 title=item.get("title") or "",
                 snippet=item.get("description") or "",
                 stance=stance,
+                claim_id=claim_id,
                 extra={
                     k: item.get(k)
                     for k in ("date", "citation_count", "authors", "journal", "hostname", "source")
@@ -479,6 +489,7 @@ def _register_search_evidence(
             )
             item["evidence_id"] = rec["id"]
             item["stance"] = rec["stance"]
+            item["claim_ids"] = list(rec["claim_ids"])
         out.append(item)
     return out
 
@@ -560,7 +571,7 @@ async def search_web(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_web", query, reply, normalized, stance, entry)
+    return _search_reply(ctx, "search_web", query, reply, normalized, stance, entry, claim_id)
 
 
 @function_tool
@@ -609,7 +620,7 @@ async def search_scholar(
             query, max_results=used["max_results"], lang=lang, date_range=date_range
         ),
     )
-    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance, entry)
+    return _search_reply(ctx, "search_scholar", query, reply, normalized, stance, entry, claim_id)
 
 
 def _search_reply(
@@ -620,6 +631,7 @@ def _search_reply(
     normalized: dict,
     stance: str,
     entry: dict | None = None,
+    claim_id: str | None = None,
 ) -> dict:
     passthrough = dict(reply)
     request = dict(passthrough.get("request") or {})
@@ -636,12 +648,17 @@ def _search_reply(
         return _reply(
             ctx, ok=False, error=f"tool_error: 예상하지 못한 반환 형식({type(results).__name__})"
         )
-    enriched = _register_search_evidence(ctx.audit, tool, query, results, stance)
+    enriched = _register_search_evidence(ctx.audit, tool, query, results, stance, claim_id)
     ctx.audit.mark_search_result(entry, True, len(enriched))
     return _reply(
         ctx,
         ok=True,
-        data={"results": enriched, "result_count": len(enriched), "stance": stance},
+        data={
+            "results": enriched,
+            "result_count": len(enriched),
+            "stance": stance,
+            "claim_id": claim_id,
+        },
         passthrough=passthrough,
     )
 

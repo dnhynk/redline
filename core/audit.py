@@ -180,6 +180,7 @@ class EvidenceRecord(TypedDict):
     title: str
     snippet: str
     stance: str              # 이 결과를 데려온 검색의 방향 (support | challenge)
+    claim_ids: list[str]     # 이 결과를 데려온 검색이 귀속된 클레임 ("explore"·fetch 는 빈 목록)
     retrieved_at: float
     extra: dict
 
@@ -511,6 +512,8 @@ class Audit:
         self._started_at = self._clock()
         self._evidence_by_url: dict[str, str] = {}
         self._evidence_by_id: dict[str, EvidenceRecord] = {}
+        # evidence_id → {(claim_id, stance)} — 이 자료를 데려온 검색들의 신원.
+        self._provenance: dict[str, set[tuple[str, str]]] = {}
 
     # ── 좌표계 파생 ─────────────────────────────────────────────────────
     def claimable_indices(self) -> set[int]:
@@ -559,18 +562,28 @@ class Audit:
         title: str = "",
         snippet: str = "",
         stance: str = "support",
+        claim_id: str | None = None,
         extra: dict | None = None,
     ) -> EvidenceRecord:
         """실제로 받아온 결과 1건을 원장에 넣고 id를 발급한다. 같은 URL은 같은 id로 접힌다.
 
         `stance`는 이 결과를 데려온 검색의 방향이다. 기본값이 `support`인 것은 의도다 —
         방향을 말하지 않은 옛 호출부가 조용히 반증 자료로 둔갑하면 안 된다.
+
+        `claim_id`는 그 검색이 어느 클레임의 일이었는가다. 이 둘을 기억해 두지 않으면
+        원장은 **출처 날조만 막고 관련성은 전혀 막지 못한다** — C1의 검색이 데려온 자료로
+        C4의 판정을 닫는 인용이 통과한다. 같은 URL이 여러 검색에 걸려 나오는 것은 정상이라
+        (클레임, 방향) 쌍을 **누적**한다.
+
+        `claim_id=None`(fetch)과 `explore`(클레임 등록 전 탐색)는 귀속이 없는 자료다 —
+        어느 클레임에도 쓸 수 있다. 없는 귀속을 지어내는 것보다 없다고 말하는 쪽이 맞다.
         """
         stance = stance if stance in STANCES else "support"
         key = normalize_url(url)
         existing_id = self._evidence_by_url.get(key)
         if existing_id:
             rec = self._evidence_by_id[existing_id]
+            self._note_provenance(existing_id, claim_id, stance)
             # ★ stance만은 예외로 승격한다. 확증 검색이 먼저 데려온 문헌을 반증 검색이 다시
             # 데려왔다면 그것은 반증 검색이 정식으로 찾아낸 자료다 — 최초 등록 시점에
             # 고정하면 반박 카드가 "뒷받침 검색에서 나온 약한 증거"로 오라벨된다.
@@ -593,13 +606,52 @@ class Audit:
             "title": title or "",
             "snippet": (snippet or "")[:SNIPPET_MAX_CHARS],
             "stance": stance,
+            "claim_ids": [],
             "retrieved_at": round(self._clock() - self._started_at, 3),
             "extra": {k: v for k, v in (extra or {}).items() if v is not None},
         }
         self.evidence.append(rec)
         self._evidence_by_url[key] = rec["id"]
         self._evidence_by_id[rec["id"]] = rec
+        self._note_provenance(rec["id"], claim_id, stance)
         return rec
+
+    # ── 증거의 출처 귀속 ────────────────────────────────────────────────
+    def _note_provenance(self, evidence_id: str, claim_id: str | None, stance: str) -> None:
+        """이 자료를 데려온 (클레임, 방향)을 누적한다. 귀속 없는 경로는 기록하지 않는다."""
+        if not claim_id:
+            return
+        self._provenance.setdefault(evidence_id, set()).add((claim_id, stance))
+        if claim_id != EXPLORATORY_CLAIM_ID:
+            rec = self._evidence_by_id.get(evidence_id)
+            if rec is not None and claim_id not in rec["claim_ids"]:
+                rec["claim_ids"].append(claim_id)
+
+    def evidence_owners(self, evidence_id: str) -> list[str]:
+        """이 자료를 데려온 검색이 귀속된 클레임들. 비어 있으면 귀속이 없는 자료다."""
+        rec = self._evidence_by_id.get(evidence_id)
+        return list(rec["claim_ids"]) if rec else []
+
+    def evidence_serves_claim(self, evidence_id: str, claim_id: str) -> bool:
+        """이 자료를 그 클레임의 판정 근거로 인용할 수 있는가.
+
+        귀속이 없는 자료(탐색 검색·fetch)는 어느 클레임에도 쓸 수 있다 — 그 자료를
+        데려온 검색이 어느 주장의 일이라고 말한 적이 없기 때문이다. 반대로 **다른
+        클레임의 검색이 데려온 자료**는 이 클레임과 아무 관계가 없다.
+        """
+        owners = self.evidence_owners(evidence_id)
+        return not owners or claim_id in owners
+
+    def evidence_challenges_claim(self, evidence_id: str, claim_id: str) -> bool:
+        """이 자료가 그 클레임의 **반증 방향** 검색에서 나왔는가.
+
+        반박은 반증 방향 증거 위에 서야 한다. 확증 검색이 데려온 자료 하나로 반박까지
+        닫으면, 반증을 한 번도 겨냥하지 않은 런이 시그니처 산출물을 갖게 된다.
+        """
+        for owner, stance in self._provenance.get(evidence_id, ()):  # type: ignore[union-attr]
+            if stance == "challenge" and owner in (claim_id, EXPLORATORY_CLAIM_ID):
+                return True
+        return False
 
     # ── 검색 기록 (발사 시점) ───────────────────────────────────────────
     def check_search(self, claim_id: str, stance: str, query: str) -> dict | None:
@@ -730,10 +782,23 @@ class Audit:
                 seen.add((entry["claim_id"], key))
         return len(seen)
 
-    def evidence_catalog(self, *, limit: int = CATALOG_MAX) -> list[dict]:
+    def evidence_catalog(
+        self, *, limit: int = CATALOG_MAX, claim_id: str | None = None
+    ) -> list[dict]:
+        """인용 후보 목록. `claim_id`를 주면 **그 클레임이 실제로 쓸 수 있는 것만** 남긴다 —
+        쓸 수 없는 id가 섞인 목록은 정정 신호가 아니라 또 하나의 거부로 가는 안내다."""
+        rows = self.evidence
+        if claim_id is not None:
+            rows = [r for r in rows if self.evidence_serves_claim(r["id"], claim_id)]
         return [
-            {"id": r["id"], "url": r["url"], "title": r["title"]}
-            for r in self.evidence[:limit]
+            {
+                "id": r["id"],
+                "url": r["url"],
+                "title": r["title"],
+                "stance": r["stance"],
+                "claim_ids": list(r["claim_ids"]),
+            }
+            for r in rows[:limit]
         ]
 
     def _resolve_evidence(self, ids: Iterable[str]) -> tuple[list[str], list[str]]:
@@ -1102,7 +1167,20 @@ class Audit:
                 f"원장에 없는 evidence_id: {', '.join(unknown_ids)}. "
                 "available_evidence에서 골라 다시 호출하라."
                 + ("" if self.evidence else " 아직 원장이 비어 있다 — 먼저 검색을 호출하라."),
-                available_evidence=self.evidence_catalog(),
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
+                evidence_total=len(self.evidence),
+            )
+        foreign = [e for e in known_ids if not self.evidence_serves_claim(e, claim_id)]
+        if foreign:
+            # 원장 구조는 출처 날조를 막는다. 관련성은 여기서 막는다 — 다른 클레임의 검색이
+            # 데려온 자료 하나로 이 클레임의 판정을 닫는 것은 감사가 아니다.
+            owners = {e: self.evidence_owners(e) for e in foreign}
+            detail = ", ".join(f"{e}({'·'.join(owners[e])})" for e in foreign)
+            return _fail(
+                f"{detail}는 다른 클레임의 검색이 데려온 증거다 — {claim_id}의 판정 근거로 "
+                f"인용할 수 없다. {claim_id}로 검색을 쏘고 그 결과의 id를 인용하라.",
+                foreign_evidence=owners,
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
                 evidence_total=len(self.evidence),
             )
         if outcome == "pass" and not known_ids:
@@ -1110,7 +1188,7 @@ class Audit:
                 "긍정 판정(pass)은 evidence_ids 최소 1개가 필수다 — 확인에 쓴 증거 없이 "
                 "\"확인했다\"는 성립하지 않는다. 증거가 없으면 fail 또는 undecidable이다."
                 + ("" if self.evidence else " 아직 원장이 비어 있다 — 먼저 검색을 호출하라."),
-                available_evidence=self.evidence_catalog(),
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
                 evidence_total=len(self.evidence),
             )
         if outcome == "fail" and axis in (2, 3) and not known_ids:
@@ -1122,9 +1200,23 @@ class Audit:
                 "접근하지 못했으면 undecidable, 출처 자체를 못 찾았으면 축1 fail로 기록하라 — "
                 "본 것 없이 내리는 부정 판정은 감사가 아니다."
                 + ("" if self.evidence else " 아직 원장이 비어 있다 — 먼저 검색을 호출하라."),
-                available_evidence=self.evidence_catalog(),
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
                 evidence_total=len(self.evidence),
             )
+        if axis == 3 and outcome in ("pass", "fail"):
+            # 축3은 "반대·한정 자료를 찾아봤다"는 사건이다. 확증 검색이 데려온 자료로
+            # 그것을 닫으면 반증을 한 번도 겨냥하지 않은 런이 시그니처 산출물을 갖는다.
+            if not any(self.evidence_challenges_claim(e, claim_id) for e in known_ids):
+                what = "찾아낸 반대·한정 자료" if outcome == "fail" else "검토한 반증 검색 결과"
+                return _fail(
+                    f"축3 {outcome}은 {claim_id}의 **반증(challenge) 검색**이 데려온 증거를 "
+                    f"최소 1건 인용해야 한다 — {what}가 확증 검색에서 나온 것뿐이면 "
+                    "반증을 겨냥한 적이 없는 것이다. 반박·한정 자료를 겨냥한 질의로 "
+                    f"stance=\"challenge\" 검색을 {claim_id}에 쏜 뒤 그 결과의 id를 인용하라. "
+                    "반증 검색이 아무것도 못 물어 왔으면 undecidable이 정직한 판정이다.",
+                    available_evidence=self.evidence_catalog(claim_id=claim_id),
+                    cited_stances={e: self._evidence_by_id[e]["stance"] for e in known_ids},
+                )
         if not (evidence or "").strip():
             return _fail(
                 "evidence(판정 근거 한 문장)가 비어 있다 — 이 문장은 시청자가 읽는 글이다. "
@@ -1239,10 +1331,29 @@ class Audit:
         if unknown or not known:
             return _fail(
                 f"원장에 없는 evidence_id '{evidence_id}'다 — 누락 증거는 실재하는 자료여야 한다.",
-                available_evidence=self.evidence_catalog(),
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
                 evidence_total=len(self.evidence),
             )
         eid = known[0]
+        if not self.evidence_serves_claim(eid, claim_id):
+            owners = self.evidence_owners(eid)
+            return _fail(
+                f"{eid}는 {'·'.join(owners)}의 검색이 데려온 증거다 — {claim_id}의 반박 자료로 "
+                f"쓸 수 없다. {claim_id}에 반증 검색을 쏘고 그 결과에서 골라라.",
+                foreign_evidence={eid: owners},
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
+            )
+        if not self.evidence_challenges_claim(eid, claim_id):
+            # 반박은 반증 방향 증거 위에 서야 한다. 확증 검색이 우연히 물어 온 자료로
+            # 반박 카드를 세우면, 반증을 한 번도 겨냥하지 않은 런이 시그니처 산출물을 갖는다.
+            return _fail(
+                f"{eid}는 {claim_id}의 반증(challenge) 검색이 데려온 자료가 아니다 — "
+                "반박은 반증 방향 증거 위에 서야 한다. 반박·한정 자료를 겨냥한 질의로 "
+                f"stance=\"challenge\" 검색을 {claim_id}에 쏘고 그 결과에서 골라라 "
+                "(limitations · contrary · no effect · systematic review 류).",
+                evidence_stance=self._evidence_by_id[eid]["stance"],
+                available_evidence=self.evidence_catalog(claim_id=claim_id),
+            )
         for o in self.omissions:
             if o["claim_id"] == claim_id and o["evidence_id"] == eid:
                 return _fail(
@@ -1262,14 +1373,6 @@ class Audit:
             "summary": summary,
         }
         self.omissions.append(omission)
-        warning = None
-        if rec["stance"] != "challenge":
-            # 확증 검색에서 우연히 나온 반대 자료도 실재하는 자료다 — 막지 않는다.
-            # 다만 반증 검색이 데려온 것과 같은 무게로 세지는 않는다.
-            warning = (
-                f"{eid}는 확증(support) 검색에서 나온 자료다 — 반박 자료로 쓸 수는 있지만 "
-                "반증 검색이 찾아낸 것과 같지 않다. 이 클레임의 반증 검색을 따로 발사하라."
-            )
         return {
             "ok": True,
             "error": None,
@@ -1277,9 +1380,11 @@ class Audit:
                 "recorded": True,
                 "omission": omission,
                 "omission_count": len(self.omissions),
+                # 여기 닿았다는 것은 이 자료가 이 클레임의 반증 검색에서 나왔다는 뜻이다 —
+                # 확증 검색이 데려온 자료는 위에서 거부된다.
                 "evidence_stance": rec["stance"],
-                "stance_mismatch": rec["stance"] != "challenge",
-                "warning": warning,
+                "stance_mismatch": False,
+                "warning": None,
             },
         }
 
