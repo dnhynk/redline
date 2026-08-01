@@ -97,6 +97,31 @@
   --shadow-lift: 0 2px 6px rgba(20, 22, 26, 0.08), 0 10px 24px -10px rgba(20, 22, 26, 0.16),
     0 36px 84px -30px rgba(20, 22, 26, 0.45);
 
+  /* 곡선과 시간은 여기에만 적는다. 규칙에 손으로 쓴 ms·cubic-bezier 는 없다. */
+  --ease-ink: ease-out;
+  --ease-pen: cubic-bezier(0.55, 0.06, 0.25, 1);
+  --ease-settle: cubic-bezier(0.2, 0.7, 0.3, 1);
+  /* 단계가 넘어가는 순간에만 쓴다. 280ms 는 이 화면에서 가장 긴 시간이고 원고와
+     반박은 가장 큰 면이라, 내장 곡선으로는 넘어가는 것이 물러 보인다. 앞에서
+     대부분을 끝내고 길게 눕는 곡선이라 새 단계가 일찍 읽힌다. 수치를 그리는
+     막대에는 쓰지 않는다 — 양을 나타내는 것이 제 값을 넘어 보이면 안 된다. */
+  --ease-stage: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --dur-press: 160ms;
+  --dur-tint: 180ms;
+  --dur-settle: 200ms;
+  --dur-card: 240ms;
+  --dur-stage: 280ms;
+  --dur-reduced: 120ms;
+
+  /* 움직이는 거리·배율. 모션을 줄이면 이 값들만 0 이 되고 전환 자체는 남는다. */
+  --stage-scale: 0.985;
+  --stage-lift: -2px;
+  --press-scale: 0.97;
+  --settle-rise: -6px;
+  --mark-draw-from: 0%;
+  --mark-wave-from: 100%;
+
   --wave: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 4.5 Q2.5 0.9 5 4.5 T10 4.5' fill='none' stroke='%239A6300' stroke-width='1.8'/></svg>");
 }
 
@@ -200,7 +225,7 @@ a {
   cursor: pointer;
   border-radius: 2px;
   padding: 3px 2px;
-  transition: color 180ms ease-out;
+  transition: color var(--dur-tint) var(--ease-ink);
 }
 .stage-rail li::before {
   content: "";
@@ -209,7 +234,8 @@ a {
   border-radius: 50%;
   border: 1px solid var(--rule);
   background: transparent;
-  transition: background-color 180ms ease-out, border-color 180ms ease-out;
+  transition: background-color var(--dur-tint) var(--ease-ink),
+    border-color var(--dur-tint) var(--ease-ink);
 }
 .stage-rail li.reached {
   color: var(--ink);
@@ -241,7 +267,7 @@ a {
   height: 8px;
   border-radius: 50%;
   background: var(--rule);
-  transition: background-color 180ms ease-out;
+  transition: background-color var(--dur-tint) var(--ease-ink);
 }
 .conn.is-live::before {
   background: var(--v-supported-line);
@@ -389,10 +415,19 @@ a {
   background: var(--ink);
   border: 1px solid var(--ink);
   border-radius: 0;
-  transition: background-color 180ms ease-out;
+  transition: background-color var(--dur-tint) var(--ease-ink),
+    transform var(--dur-press) var(--ease-ink);
 }
-.btn-ink:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .btn-ink:hover:not(:disabled) {
+    background: #000;
+  }
+}
+/* 화면에서 가장 주목받는 클릭이다. 누르는 순간에 응답한다 — 떼는 순간이 아니라.
+   색은 두 경로에 다 남고, 크기는 모션을 줄이면 토큰이 1 이 되어 저절로 빠진다. */
+.btn-ink:active:not(:disabled) {
   background: #000;
+  transform: scale(var(--press-scale));
 }
 .btn-ink:disabled {
   opacity: 0.55;
@@ -474,23 +509,68 @@ a {
   background: transparent;
   border: 1px solid var(--rule);
 }
-.btn-quiet:hover {
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .btn-quiet:hover {
+    border-color: var(--ink);
+  }
+}
+
+/* --- 단계 전환의 그림자 --------------------------------------------------
+   그림자 자체를 전환하면 화면에서 가장 큰 두 면이 280ms 동안 매 프레임 다시
+   칠해진다. 그것도 하필 가장 눈에 띄는 순간에. 쉬는 그림자와 들어 올린 그림자를
+   의사 요소 두 겹으로 깔아 두고 불투명도만 교차시킨다 — 보이는 결과는 같다.
+   inset 이 음수인 것은 의사 요소를 테두리 상자까지 넓혀 원래 그림자와
+   같은 자리에서 시작시키기 위한 것이다. */
+
+.galley,
+.rebut {
+  position: relative;
+  box-shadow: none;
+}
+.galley::before,
+.galley::after,
+.rebut::before,
+.rebut::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity var(--dur-stage) var(--ease-stage);
+}
+.rebut::before,
+.rebut::after {
+  top: -4px;
+}
+.galley::before,
+.rebut::before {
+  box-shadow: var(--shadow-sheet);
+}
+.galley::after,
+.rebut::after {
+  box-shadow: var(--shadow-lift);
+  opacity: 0;
+}
+.galley.is-focus::before,
+.galley.is-receded::before,
+.rebut.is-focus::before {
+  opacity: 0;
+}
+.galley.is-focus::after,
+.rebut.is-focus::after {
+  opacity: 1;
 }
 
 /* --- 단계 1~3: 원고 + 여백 ---------------------------------------------- */
 
 .galley {
   padding: 30px 34px 0;
-  transition: opacity 280ms ease-out, transform 280ms ease-out, box-shadow 280ms ease-out;
-}
-.galley.is-focus {
-  box-shadow: var(--shadow-lift);
+  transition: opacity var(--dur-stage) var(--ease-stage),
+    transform var(--dur-stage) var(--ease-stage);
 }
 .galley.is-receded {
   opacity: 0.42;
-  transform: scale(0.985);
-  box-shadow: none;
+  transform: scale(var(--stage-scale));
 }
 
 .section-head {
@@ -704,20 +784,20 @@ a {
 }
 
 .claim-mark.draw[data-mark="unsupported"] {
-  animation: mark-draw-4 280ms cubic-bezier(0.55, 0.06, 0.25, 1) both;
+  animation: mark-draw-4 var(--dur-stage) var(--ease-pen) both;
 }
 .claim-mark.draw[data-mark="supported"],
 .claim-mark.draw[data-mark="no_source"],
 .claim-mark.draw[data-mark="undecidable"] {
-  animation: mark-draw-2 280ms cubic-bezier(0.55, 0.06, 0.25, 1) both;
+  animation: mark-draw-2 var(--dur-stage) var(--ease-pen) both;
 }
 .claim-mark.draw[data-mark="overstated"] {
-  animation: wavy-in 280ms cubic-bezier(0.55, 0.06, 0.25, 1) both;
+  animation: wavy-in var(--dur-stage) var(--ease-pen) both;
 }
 
 @keyframes mark-draw-4 {
   from {
-    background-size: 0% 4px;
+    background-size: var(--mark-draw-from) 4px;
   }
   to {
     background-size: 100% 4px;
@@ -725,7 +805,7 @@ a {
 }
 @keyframes mark-draw-2 {
   from {
-    background-size: 0% 2px;
+    background-size: var(--mark-draw-from) 2px;
   }
   to {
     background-size: 100% 2px;
@@ -733,7 +813,7 @@ a {
 }
 @keyframes wavy-in {
   from {
-    background-size: 100% 6px, 10px 6px;
+    background-size: var(--mark-wave-from) 6px, 10px 6px;
   }
   to {
     background-size: 0% 6px, 10px 6px;
@@ -742,7 +822,7 @@ a {
 
 /* 판정이 내려앉는 순간 문장 행 전체에 잉크가 스민다 */
 .s-row.land {
-  animation: verdict-land 280ms ease-out both;
+  animation: verdict-land var(--dur-stage) var(--ease-ink) both;
 }
 @keyframes verdict-land {
   from {
@@ -762,12 +842,12 @@ a {
   align-items: start;
 }
 .mark.settle {
-  animation: mark-settle 200ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: mark-settle var(--dur-settle) var(--ease-settle) both;
 }
 @keyframes mark-settle {
   from {
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateY(var(--settle-rise));
   }
   to {
     opacity: 1;
@@ -818,7 +898,7 @@ a {
   transform: scaleX(0);
   transform-origin: left center;
   background: var(--rule);
-  transition: transform 280ms ease-out;
+  transition: transform var(--dur-stage) var(--ease-ink);
 }
 .mark-pct {
   flex: none;
@@ -869,9 +949,11 @@ a {
 .chip.more {
   flex: none;
 }
-.chip:hover {
-  color: var(--ink);
-  text-decoration-color: var(--rule);
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover {
+    color: var(--ink);
+    text-decoration-color: var(--rule);
+  }
 }
 .chip.more {
   text-decoration: none;
@@ -916,8 +998,10 @@ a {
   text-decoration-color: var(--edge);
   text-underline-offset: 3px;
 }
-.fold-note button:hover {
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .fold-note button:hover {
+    color: var(--ink);
+  }
 }
 
 .empty {
@@ -967,7 +1051,7 @@ a {
   color: var(--v-unsupported-label);
 }
 .metric.settle {
-  animation: mark-settle 200ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: mark-settle var(--dur-settle) var(--ease-settle) both;
 }
 .tally-sub {
   font-size: 12px;
@@ -994,7 +1078,7 @@ a {
   background: var(--ink);
   transform: scaleX(0);
   transform-origin: left center;
-  transition: transform 280ms ease-out;
+  transition: transform var(--dur-stage) var(--ease-ink);
 }
 .axis-cell.on::before {
   transform: scaleX(1);
@@ -1015,11 +1099,11 @@ a {
   margin-top: 34px;
   padding: 30px 36px 34px;
   border-top: 4px solid var(--rebut-line);
-  transition: opacity 280ms ease-out, transform 280ms ease-out, box-shadow 280ms ease-out;
+  transition: opacity var(--dur-stage) var(--ease-stage),
+    transform var(--dur-stage) var(--ease-stage);
 }
 .rebut.is-focus {
-  box-shadow: var(--shadow-lift);
-  transform: translateY(-2px);
+  transform: translateY(var(--stage-lift));
 }
 .rebut .section-head {
   padding-bottom: 16px;
@@ -1045,12 +1129,12 @@ a {
   text-decoration: none;
 }
 .rebut-card.arrive {
-  animation: card-arrive 240ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: card-arrive var(--dur-card) var(--ease-settle) both;
 }
 @keyframes card-arrive {
   from {
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateY(var(--settle-rise));
   }
   to {
     opacity: 1;
@@ -1697,7 +1781,9 @@ body.has-banner .lanes {
   display: grid;
   place-items: center;
   font-style: normal;
-  transition: background-color 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out;
+  transition: background-color var(--dur-settle) var(--ease-ink),
+    border-color var(--dur-settle) var(--ease-ink),
+    color var(--dur-settle) var(--ease-ink);
 }
 .axis-node.on {
   color: var(--p-fg);
@@ -1793,7 +1879,7 @@ body.has-banner .lanes {
   transform: scaleX(0);
   transform-origin: left center;
   background: var(--p-muted);
-  transition: transform 280ms ease-out;
+  transition: transform var(--dur-stage) var(--ease-ink);
 }
 .state-card[data-mark="unsupported"] .state-meter span {
   background: var(--p-red);
@@ -1838,8 +1924,10 @@ body.has-banner .lanes {
 .state-chips .chip[data-stance="challenge"] {
   text-decoration-color: var(--p-challenge);
 }
-.state-chips .chip:hover {
-  color: var(--p-fg);
+@media (hover: hover) and (pointer: fine) {
+  .state-chips .chip:hover {
+    color: var(--p-fg);
+  }
 }
 .lane-empty {
   padding: 20px 0;
@@ -1847,22 +1935,54 @@ body.has-banner .lanes {
   color: var(--p-muted);
 }
 
-/* --- 움직임을 원하지 않는 사람에게는 전부 끈다 -------------------------- */
+/* --- 움직임은 줄이고, 이해를 돕는 것은 남긴다 ---------------------------
+   전부 끄면 무엇이 언제 바뀌었는지 말해 주던 신호까지 사라진다. 자리를 옮기고
+   크기를 바꾸는 것만 끈다 — 이동 토큰을 0 으로 되돌리면 획은 제 길이로 있고
+   부호는 뜨지 않으며, 남는 것은 120ms 교차 페이드와 색 전환뿐이다.
+   전환이 사라지는 게 아니라 짧아지므로, 시작한 애니메이션은 그대로 끝난다.
+
+   아래 두 블록은 같은 규칙이어야 한다. 하나는 기기 설정을, 하나는 화면 안의
+   강제 스위치를 받는다. */
 
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --stage-scale: 1;
+    --stage-lift: 0px;
+    --press-scale: 1;
+    --settle-rise: 0px;
+    --mark-draw-from: 100%;
+    --mark-wave-from: 0%;
+  }
   *,
   *::before,
   *::after {
-    animation: none !important;
-    transition: none !important;
+    animation-duration: var(--dur-reduced) !important;
+    animation-delay: 0ms !important;
+    transition-property: opacity, background-color, border-color, color,
+      text-decoration-color !important;
+    transition-duration: var(--dur-reduced) !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+html.force-reduced {
+  --stage-scale: 1;
+  --stage-lift: 0px;
+  --press-scale: 1;
+  --settle-rise: 0px;
+  --mark-draw-from: 100%;
+  --mark-wave-from: 0%;
 }
 html.force-reduced *,
 html.force-reduced *::before,
 html.force-reduced *::after {
-  animation: none !important;
-  transition: none !important;
+  animation-duration: var(--dur-reduced) !important;
+  animation-delay: 0ms !important;
+  transition-property: opacity, background-color, border-color, color,
+    text-decoration-color !important;
+  transition-duration: var(--dur-reduced) !important;
+  transition-delay: 0ms !important;
   scroll-behavior: auto !important;
 }
 

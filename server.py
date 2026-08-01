@@ -23,8 +23,9 @@ import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Iterable
 
-from fastapi import FastAPI, HTTPException, WebSocket
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 # 타임박스 프로파일. 사용자 소유 상수 — 이 두 값 밖의 값을 만들지 않는다.
@@ -33,6 +34,17 @@ PROFILES: dict[str, float] = {"demo": 110.0, "surprise": 90.0}
 # 프로파일별 클레임 상한. 짧은 박스에서 상한 12는 여유가 1~6초라 위험하고,
 # 상한 9는 누락 산출물이 같으면서 10초 빠르다 — 측정으로 정한 값.
 CLAIM_CAPS: dict[str, int] = {"demo": 12, "surprise": 9}
+
+# 감사기가 실제로 읽을 수 있는 최대치. core 는 문장 80개까지만 모델에 보이고
+# (HOST_SENTENCES_MAX) 문장마다 160자에서 자른다 (HOST_SENTENCE_CHARS).
+# 그 곱이 여기 값이다. 이 너머의 글자는 봉투에 실려 화면에 줄로 오르지만
+# 판정 대상이 될 수 없다 — 감사하지 않을 것을 받아 두고 감사하는 척하지 않는다.
+# 이 유도가 깨지면 test_server.py 의 대조 테스트가 먼저 운다.
+TEXT_MAX_CHARS = 80 * 160
+
+# 본문 바이트 상한. 위 글자 수가 한글이면 UTF-8 3바이트, JSON \uXXXX 이스케이프면
+# 6바이트까지 늘어난다. 넉넉히 8배 + 여유를 두고, 그보다 큰 본문은 읽지도 않는다.
+BODY_MAX_BYTES = TEXT_MAX_CHARS * 8 + 4096
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 FIXTURE_DIR = UI_DIR / "fixtures"
@@ -245,6 +257,27 @@ def create_app(
     app.state.hub = hub
     run_lock = asyncio.Lock()
 
+    @app.exception_handler(RequestValidationError)
+    async def _rejected_shape(_request: Request, _exc: RequestValidationError) -> JSONResponse:
+        """본문 모양이 틀렸을 때. pydantic 영문 원문을 화면에 올리지 않는다.
+
+        화면은 detail 을 그대로 읽어 사용자에게 보여 준다. 그러니 여기서 나가는
+        것은 언제나 한국어 한 문장이어야 한다 — 무엇이 틀렸는지가 아니라
+        무엇을 보내야 하는지를 말한다.
+        """
+        return JSONResponse(status_code=422, content={"detail": "감사할 텍스트를 글자로 보내 주세요."})
+
+    @app.middleware("http")
+    async def _cap_body(request: Request, call_next):
+        """읽기 전에 막는다. 상한을 넘는 본문은 메모리에 올리지도 않는다."""
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > BODY_MAX_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"보낸 내용이 너무 큽니다 — {TEXT_MAX_CHARS:,}자까지 감사합니다."},
+            )
+        return await call_next(request)
+
     async def drive(text: str) -> None:
         started = time.time()
         try:
@@ -300,6 +333,15 @@ def create_app(
         text = (req.text or "").strip()
         if not text:
             raise HTTPException(status_code=422, detail="감사할 텍스트를 입력해 주세요.")
+        if len(text) > TEXT_MAX_CHARS:
+            # 자르지 않는다. 자르면 화면은 다 감사한 것처럼 보이고 뒤쪽은 조용히 사라진다.
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"입력이 {TEXT_MAX_CHARS:,}자를 넘었습니다 (지금 {len(text):,}자) — "
+                    "감사기가 읽을 수 있는 만큼만 받습니다. 나눠서 넣어 주세요."
+                ),
+            )
         async with run_lock:
             if hub.active:
                 raise HTTPException(

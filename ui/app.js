@@ -242,7 +242,9 @@
     audit: null,
     status: null,
     timebox: 90,
-    mock: false,
+    replay: false,
+    fixtureSearch: false,
+    sourceMode: undefined,
     stage: 0,
     following: false,
     burstUntil: 0,
@@ -318,7 +320,8 @@
     if (event.kind === "config") {
       var cfg = event.payload || {};
       if (cfg.timebox_s) state.timebox = cfg.timebox_s;
-      setMock(!!cfg.mock);
+      state.replay = !!cfg.mock;
+      paintSource();
       noteHistoryGap(cfg);
       paintBudget();
       return;
@@ -331,10 +334,10 @@
 
     if (event.kind === "audit") {
       state.audit = event.payload || {};
-      if (state.audit.source_mode === "mock") setMock(true);
+      if (state.audit.source_mode === "mock") noteFixtureSearch();
     } else if (event.kind === "status") {
       state.status = event.payload || {};
-      if (state.status.source_mode === "mock") setMock(true);
+      if (state.status.source_mode === "mock") noteFixtureSearch();
       if (typeof state.status.elapsed_s === "number") {
         state.elapsed = state.status.elapsed_s;
         state.elapsedWall = Date.now();
@@ -372,12 +375,30 @@
     host.insertBefore(el("p", "ev-gap", text), host.firstChild);
   }
 
-  function setMock(on) {
-    if (state.mock === on) return;
-    state.mock = on;
+  // 실패 모드가 둘이고 서로 다른 말이다.
+  //   replay  — 서버가 저장된 이벤트를 튼다. 입력한 글은 아예 읽히지 않는다.
+  //   fixture — 감사는 입력한 글을 실제로 하고, 검색 결과만 고정 픽스처다.
+  // 둘을 한 문구로 묶으면 뒤쪽 경우에 "감사도 가짜"라고 잘못 말하게 된다.
+  var SOURCE_NOTE = {
+    replay: "저장된 이벤트를 재생하는 중입니다 — 입력한 글과 무관한 고정 시나리오입니다",
+    fixture: "검색 결과가 고정 픽스처입니다 — 입력한 글은 실제로 감사하지만 근거는 실제 검색이 아닙니다"
+  };
+
+  function noteFixtureSearch() {
+    state.fixtureSearch = true;
+    paintSource();
+  }
+
+  function paintSource() {
+    var mode = state.replay ? "replay" : state.fixtureSearch ? "fixture" : null;
+    if (state.sourceMode === mode) return;
+    state.sourceMode = mode;
     var banner = $("#source-banner");
-    if (banner) banner.hidden = !on;
-    document.body.classList.toggle("has-banner", on);
+    if (banner) {
+      banner.hidden = !mode;
+      if (mode) banner.textContent = SOURCE_NOTE[mode];
+    }
+    document.body.classList.toggle("has-banner", !!mode);
   }
 
   function resetRun(run) {
@@ -400,6 +421,10 @@
     state.elapsed = 0;
     state.elapsedWall = 0;
     state.done = false;
+    // 검색이 픽스처였다는 것은 그 런의 사실이다. 다음 런은 실검색일 수 있다.
+    // 서버가 재생 중이라는 것은 접속의 사실이라 런 경계에서 지우지 않는다.
+    state.fixtureSearch = false;
+    paintSource();
     deferred = [];
     if (isMain) {
       $("#sentences").textContent = "";
@@ -1698,10 +1723,12 @@
       });
   }
 
+  // 서버는 거부 사유를 한국어 한 문장으로 준다. 그 밖의 모양이면 원문을 화면에
+  // 올리지 않고 갈음한다 — 화면에 영문 오류 원문이 오르는 일은 없어야 한다.
   function detailOf(res) {
     var detail = res.body && res.body.detail;
-    if (Array.isArray(detail)) detail = detail.map(function (d) { return d.msg; }).join(" · ");
-    return (detail || "요청이 거부됐습니다.") + " (HTTP " + res.status + ")";
+    if (typeof detail !== "string" || !detail) detail = "요청이 거부됐습니다.";
+    return detail + " (HTTP " + res.status + ")";
   }
 
   // 런이 끝나면 버튼을 되살리고, 완주 뒤에만 감사하지 않은 문장을 접는다
