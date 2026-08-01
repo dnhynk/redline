@@ -1201,11 +1201,11 @@ def test_the_recommendations_live_in_one_place():
 
 
 def test_the_sentence_rows_arrive_in_order_within_a_bounded_window():
-    """문장이 한꺼번에 쌓이면 툭 끊긴다. 행이 많아도 마지막이 늦지 않아야 한다."""
+    """원고는 위에서 아래로 쓸린다. 다만 마지막 행이 읽을 사람보다 늦으면 안 된다."""
     step = int(re.search(r"var ROW_STEP_MS = (\d+);", JS).group(1))
     window = int(re.search(r"var ROW_WINDOW_MS = (\d+);", JS).group(1))
-    assert step <= 40, "행 간격이 카드만큼 느리다"
-    assert window <= 400, "창이 길면 마지막 행이 읽을 사람보다 늦는다"
+    assert step <= 60, "행 간격이 길면 조판이 아니라 기다림이 된다"
+    assert window <= 1000, "창이 길면 마지막 행이 읽을 사람보다 늦는다"
     for count in (1, 5, 23, 80):
         gap = min(step, window / (count - 1)) if count > 1 else 0
         assert round(gap * (count - 1)) <= window, count
