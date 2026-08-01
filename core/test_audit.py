@@ -536,6 +536,49 @@ def test_completion_report_gates_on_pending_and_axis3():
     assert audit.completion_report()["complete"] is True
 
 
+def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
+    """축1·2를 통과한 클레임 count건 중 axis3_on건에만 축3을 수행한 상태를 만든다."""
+    audit = Audit(" ".join(f"주장 {i}번이 여기 있다." for i in range(count)))
+    audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
+    for i in range(count):
+        _claim(audit, i, f"주장 {i}번이 여기 있다")
+        cid = f"C{i + 1}"
+        audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
+        audit.update_verdict(claim_id=cid, axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
+        if i < axis3_on:
+            audit.update_verdict(
+                claim_id=cid, axis=3, outcome="pass", evidence="반증 검토", evidence_ids=["E1"]
+            )
+    return audit
+
+
+def test_axis3_collapse_is_not_complete():
+    """축3이 12건에서 1건으로 무너진 런을 완주라고 부르면, 안 한 것을 한 것처럼 보이게 된다."""
+    collapsed = _audit_with_survivors(12, 1)
+    report = collapsed.completion_report()
+    assert report["complete"] is False
+    assert (report["axis3_done"], report["axis3_expected"], report["axis3_required"]) == (1, 12, 6)
+    assert "축3" in report["missing_actions"][0]
+
+    assert _audit_with_survivors(12, 6).completion_report()["complete"] is True
+    # 하한 max(1, …) — 생존 클레임이 1건이면 1건으로 충족된다.
+    assert _audit_with_survivors(1, 1).completion_report()["complete"] is True
+    assert _audit_with_survivors(1, 0).completion_report()["complete"] is False
+
+
+def test_skipped_axis3_does_not_count_as_executed():
+    audit = _audit_with_survivors(2, 0)
+    audit.update_verdict(claim_id="C1", axis=3, outcome="skip", evidence="시간 없음", evidence_ids=[])
+    report = audit.completion_report()
+    assert report["axis3_done"] == 0 and report["complete"] is False
+
+
+def test_recorded_omission_counts_as_axis3_execution():
+    audit = _audit_with_survivors(2, 0)
+    audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
+    assert audit.completion_report()["axis3_done"] == 1
+
+
 def test_value_claim_pending_is_not_partial_audit():
     audit = _audit_two_sentences()
     _claim(audit, 0, "커피는 각성 효과가 있다", claim_type="normative", auditable=False)

@@ -426,6 +426,73 @@ async def test_complete_requires_the_completion_gate():
     assert status["audit"]["claims"][0]["verdict"] == "overstated"
 
 
+THREE_CLAIM_TEXT = "첫 주장이 여기 있다. 둘째 주장이 여기 있다. 셋째 주장이 여기 있다."
+
+
+def _verdict_call(cid: str, axis: int, outcome: str = "pass") -> ResponseFunctionToolCall:
+    return _tool_call(
+        "update_verdict",
+        {
+            "claim_id": cid,
+            "axis": axis,
+            "outcome": outcome,
+            "evidence": f"{cid} 축{axis} 근거",
+            "evidence_ids": ["E1"],
+            "verdict": None,
+        },
+        f"{cid}a{axis}",
+    )
+
+
+def _three_claim_turns(axis3_claims: list[str]) -> list[list]:
+    claims = [
+        _tool_call(
+            "record_claim",
+            {
+                "index": i,
+                "text": text,
+                "claim_type": "statistical",
+                "auditable": True,
+                "cited_source": None,
+            },
+            f"c{i}",
+        )
+        for i, text in enumerate(["첫 주장이 여기 있다", "둘째 주장이 여기 있다", "셋째 주장이 여기 있다"])
+    ]
+    ids = ["C1", "C2", "C3"]
+    return [
+        [CLASSIFY],
+        [SEARCH],
+        claims,
+        [_verdict_call(cid, 1) for cid in ids],
+        [_verdict_call(cid, 2) for cid in ids],
+        [_verdict_call(cid, 3) for cid in axis3_claims],
+        [_message("### 최종 보고")],
+    ]
+
+
+async def _run_three_claim(axis3_claims: list[str]) -> dict:
+    model = FakeModel(_three_claim_turns(axis3_claims))
+    last = None
+    async for event in run_audit(THREE_CLAIM_TEXT, model=model, timebox_s=20):
+        last = event
+    return last["payload"]
+
+
+@pytest.mark.asyncio
+async def test_axis3_collapse_is_not_complete():
+    """축3이 한두 건으로 쪼그라든 런은 완주가 아니다 — 반박 섹션이 빈 채로 '감사 완료'가 뜨면 안 된다."""
+    collapsed = await _run_three_claim(["C1"])
+    assert collapsed["reason"] == "incomplete"
+    assert collapsed["partial"] is True
+    assert (collapsed["axis3_done"], collapsed["axis3_expected"]) == (1, 3)
+    assert "축3" in " ".join(collapsed["completion"]["missing_actions"])
+
+    healthy = await _run_three_claim(["C1", "C2"])
+    assert healthy["reason"] == "complete"
+    assert (healthy["axis3_done"], healthy["axis3_expected"]) == (2, 3)
+
+
 @pytest.mark.asyncio
 async def test_network_cap_refuses_the_call_but_not_the_run():
     model = FakeModel([[CLASSIFY], [SEARCH, SEARCH], [CLAIM], [AXIS1], [_message("끝")]])

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import time
 import unicodedata
+from math import ceil
 from typing import Any, Callable, Iterable, Sequence, TypedDict
 from urllib.parse import urlsplit, urlunsplit
 
@@ -27,6 +28,11 @@ DEFAULT_MAX_CLAIMS = 12
 # 기록 툴 소프트 상한 — 정상 런의 기록 호출은 클레임당 3축 + 분류 + 누락 몇 건이라
 # 상한의 1/3에도 닿지 않는다. 폭주(같은 판정 무한 재호출)만 막는 백스톱이다.
 MAX_RECORD_CALLS = 150
+
+# 살아남은 클레임 중 축3(완전성)을 실제로 수행해야 하는 최소 비율.
+# "최소 1회"였을 때 12건 중 1건만 하고도 완주로 기록되는 런이 나왔다 — 축3은 이 제품의
+# 시그니처 산출물이라, 통째로 생략된 런을 완주라고 부르면 안 한 것을 한 것처럼 보이게 된다.
+AXIS3_MIN_FRACTION = 0.5
 
 # 문장 종류 — `sentences`와 같은 길이의 병렬 배열 `sentence_kinds`의 어휘.
 SENTENCE_KINDS = (
@@ -863,6 +869,25 @@ class Audit:
             out.setdefault(str(c["index"]), []).append(c["id"])
         return out
 
+    def axis3_progress(self) -> tuple[int, int, int]:
+        """(수행, 기대, 최소 요구) — 축1을 통과하고 살아남은 클레임이 축3의 대상이다."""
+        targets = [c for c in self.claims if c["auditable"]]
+        expected = [
+            c
+            for c in targets
+            if any(r["axis"] == 1 and r["outcome"] in ("pass", "undecidable") for r in c["axis_results"])
+            and not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
+        ]
+        with_omission = {o["claim_id"] for o in self.omissions}
+        done = sum(
+            1
+            for c in expected
+            if c["id"] in with_omission
+            or any(r["axis"] == 3 and r["outcome"] != "skip" for r in c["axis_results"])
+        )
+        required = ceil(len(expected) * AXIS3_MIN_FRACTION) if expected else 0
+        return done, len(expected), max(1, required) if expected else 0
+
     def completion_report(self) -> dict:
         """완주 조건 판정 — `reason="complete"`의 유일한 근거.
 
@@ -870,30 +895,28 @@ class Audit:
         """
         targets = [c for c in self.claims if c["auditable"]]
         pending = [c["id"] for c in targets if c["verdict"] == "pending"]
-        survivors = [
-            c
-            for c in targets
-            if any(r["axis"] == 1 and r["outcome"] in ("pass", "undecidable") for r in c["axis_results"])
-            and not any(r["axis"] == 1 and r["outcome"] == "fail" for r in c["axis_results"])
-        ]
-        axis3_done = bool(self.omissions) or any(
-            r["axis"] == 3 for c in targets for r in c["axis_results"]
-        )
+        axis3_done, axis3_expected, axis3_required = self.axis3_progress()
         missing: list[str] = []
         if self.status != "non_auditable":
             if not targets:
                 missing.append("감사 대상 클레임이 하나도 등록되지 않았다")
             if pending:
                 missing.append(f"미확정 클레임 {', '.join(pending)}")
-            if survivors and not axis3_done:
-                missing.append("축3(완전성)이 한 번도 실행되지 않았다")
+            if axis3_expected and axis3_done < axis3_required:
+                missing.append(
+                    f"축3(완전성)을 {axis3_done}/{axis3_expected} 클레임에만 실행했다"
+                    f"(최소 {axis3_required})"
+                )
         return {
             "complete": not missing,
             "missing_actions": missing,
             "claims_total": len(self.claims),
             "auditable_claims": len(targets),
             "pending_claims": pending,
-            "axis3_executed": axis3_done,
+            "axis3_executed": axis3_done > 0,
+            "axis3_done": axis3_done,
+            "axis3_expected": axis3_expected,
+            "axis3_required": axis3_required,
             "omission_count": len(self.omissions),
         }
 
