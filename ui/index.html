@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REDLINE — 문장마다 출처를 확인합니다</title>
+<link rel="preload" as="font" type="font/woff2" href="/ui/fonts/PretendardVariable.subset.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/ui/fonts/NotoSerifKR-Regular.subset.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/ui/fonts/SourceSerif4Variable-latin.woff2" crossorigin>
+<link rel="stylesheet" href="/ui/app.css?v=__V__">
+</head>
+<body class="page-main">
+
+<header class="topbar">
+  <a class="wordmark" href="/">RED<span class="wm-b">LINE</span></a>
+  <ul class="stage-rail" id="stage-rail">
+    <li data-stage="1" data-target="#galley">원고</li>
+    <li data-stage="2" data-target="#galley">확인</li>
+    <li data-stage="3" data-target="#galley">판정</li>
+    <li data-stage="4" data-target="#omissions-section">반박 근거</li>
+    <li data-stage="5" data-target="#terminal-summary">보고</li>
+  </ul>
+  <span class="conn" id="connection-label">연결 중</span>
+  <a class="projector-link" href="/raw" target="_blank" rel="noopener">프로젝터 화면 ↗</a>
+</header>
+
+<main class="shell">
+
+  <!-- 단계 0 — 입력 -->
+  <section id="intake">
+    <div class="intake-grid">
+      <div>
+        <h1 class="hero-title">AI가 써준 이 글,<br><span class="hl">믿어도 될까요?</span></h1>
+        <p class="hero-sub">문장마다 출처를 실제로 확인하고,<br>이 글에 대한 반박까지 찾아드립니다.</p>
+
+        <figure class="specimen">
+          <figcaption class="specimen-title">결과는 이렇게 표시됩니다</figcaption>
+          <div class="specimen-row">
+            <p class="specimen-text">한 연구에 따르면 <span class="claim-mark" data-mark="unsupported">진단 오류를 80% 줄였다</span>고 합니다.</p>
+            <p class="specimen-label" style="color:var(--v-unsupported-label)">뒷받침 안 됨</p>
+          </div>
+          <div class="specimen-row">
+            <p class="specimen-text"><span class="claim-mark" data-mark="overstated">모든 연령대에서 예외 없이</span> 효과가 있었습니다.</p>
+            <p class="specimen-label" style="color:var(--v-overstated-label)">지나친 단정</p>
+          </div>
+          <div class="specimen-row">
+            <p class="specimen-text"><span class="claim-mark" data-mark="no_source">2024년 스탠퍼드 장수 연구</span>가 증명했습니다.</p>
+            <p class="specimen-label" style="color:var(--muted)">출처 못 찾음
+              <span class="specimen-note">틀렸다가 아니라, 찾지 못했다는 뜻</span>
+            </p>
+          </div>
+        </figure>
+      </div>
+
+      <form class="form-card sheet" id="run-form">
+        <label class="form-label" for="input-text">감사할 텍스트 — AI가 생성한 글을 붙여넣어 보세요</label>
+        <textarea id="input-text" name="text" rows="9" spellcheck="false">AI 기반 건강 상담은 의사 진료보다 항상 정확합니다. 한 연구에 따르면 진단 오류를 80% 줄였습니다. 모든 연령대에서 부작용 없이 효과가 입증되었습니다. 원격 상담은 대면 진료를 완전히 대체할 수 있습니다. 따라서 병원 방문은 더 이상 필요하지 않습니다.</textarea>
+        <div class="form-foot">
+          <p class="form-hint">예시가 들어 있습니다 — 지우고 직접 넣어보세요.</p>
+          <button class="btn-ink" id="run-button" type="submit">감사 시작 →</button>
+        </div>
+        <p class="form-error" id="form-error" role="alert" hidden></p>
+      </form>
+    </div>
+
+    <section class="process" id="intake-process">
+      <div class="process-grid">
+        <div class="process-item">
+          <span class="process-num">1</span>
+          <div>
+            <h3>논문·웹 출처 확인</h3>
+            <p>문장에서 확인이 필요한 주장을 골라, 그 출처가 실재하는지 학술 논문과 웹에서 실제로 검색합니다.</p>
+          </div>
+        </div>
+        <div class="process-item">
+          <span class="process-num">2</span>
+          <div>
+            <h3>내용 확인</h3>
+            <p>찾은 문서를 열어 그 주장을 정말 뒷받침하는지 내용을 읽고 판정합니다.</p>
+          </div>
+        </div>
+        <div class="process-item">
+          <span class="process-num">3</span>
+          <div>
+            <h3>반박 찾기</h3>
+            <p>판정을 통과한 주장에 대해서도, 이 글에 대한 반박을 따로 찾습니다.</p>
+          </div>
+        </div>
+      </div>
+      <p class="process-meta">모든 판정에는 실제로 받은 검색 결과 링크가 붙습니다 · 웹·학술 검색은 Liner 검색 API로 실행됩니다 · 진행 전 과정은 <a href="/raw" target="_blank" rel="noopener">프로젝터 화면</a>에서 그대로 볼 수 있습니다</p>
+    </section>
+  </section>
+
+  <div class="intake-collapsed" id="intake-collapsed" hidden>
+    <span>입력이 접혀 있습니다 — 아래 원고가 감사 대상입니다.</span>
+    <button class="btn-quiet" id="intake-open" type="button">다시 입력</button>
+  </div>
+
+  <!-- 단계 1~3 — 원고 + 여백 -->
+  <section class="galley sheet" id="galley">
+    <div class="section-head">
+      <h2>문장별 판정</h2>
+      <ul class="legend">
+        <li><i class="swatch" data-mark="unsupported"></i>뒷받침 안 됨</li>
+        <li><i class="swatch" data-mark="overstated"></i>지나친 단정</li>
+        <li><i class="swatch" data-mark="no_source"></i>출처 못 찾음</li>
+        <li><i class="swatch" data-mark="supported"></i>뒷받침됨</li>
+      </ul>
+      <span class="badge" id="phase-badge">대기</span>
+    </div>
+
+    <div class="sentences" id="sentences"></div>
+    <p class="empty" id="galley-empty">감사를 시작하면 글이 문장 단위로 여기에 오르고, 각 문장의 판정이 옆 여백에 표시됩니다.</p>
+
+    <div class="tally">
+      <div class="tally-cell">
+        <h3>뒷받침 안 됨</h3>
+        <b class="metric danger tnum" id="unsupported-rate">— <span class="sep">/</span> —</b>
+        <p class="tally-sub">뒷받침 안 됨 + 지나친 단정 · <span id="no-source-count">출처 못 찾음 0건</span></p>
+      </div>
+      <div class="tally-cell">
+        <h3>감사 커버리지</h3>
+        <b class="metric tnum" id="coverage">— <span class="sep">/</span> —</b>
+        <p class="tally-sub"><span id="claim-count">등록 클레임 0건</span> · 판정까지 간 문장 / 전체 문장</p>
+      </div>
+      <div class="tally-cell">
+        <h3>검사 단계</h3>
+        <div class="axis-bar" id="axis">
+          <i class="axis-cell"></i><i class="axis-cell"></i><i class="axis-cell"></i>
+        </div>
+        <p class="tally-sub">논문·웹 출처 확인 → 내용 확인 → 반박 찾기</p>
+      </div>
+      <p class="tally-note">여백의 % = 확보한 지지 근거의 양 · 참일 확률이 아닙니다 · <span id="evidence-summary">실제 받은 검색 결과 0건 · 판정에 인용 0건</span></p>
+    </div>
+  </section>
+
+  <!-- 단계 4 — 이 글에 대한 반박 -->
+  <section class="rebut sheet" id="omissions-section">
+    <div class="section-head">
+      <h2>이 글에 대한 반박</h2>
+      <p class="rebut-sub">틀린 곳이 없어도 봅니다 — 판정을 통과한 주장까지 반박 근거를 따로 찾습니다</p>
+    </div>
+    <div class="rebut-grid" id="omissions"></div>
+    <p class="rebut-empty" id="omissions-empty">
+      <span class="ring">3</span>
+      <span>세 번째 검사에서 이 글에 대한 반박을 찾습니다 — 판정을 통과한 주장까지. 찾은 반박은 실제 문서 링크와 함께 여기에 표시됩니다.</span>
+    </p>
+  </section>
+
+  <!-- 단계 5 — 최종 보고 -->
+  <section class="terminal" id="terminal-summary" hidden>
+    <div class="terminal-head">
+      <div>
+        <h2 id="terminal-title">감사 완료</h2>
+        <p id="terminal-reason"></p>
+        <ul id="missing-actions" hidden></ul>
+      </div>
+      <div class="terminal-coverage" id="terminal-coverage" hidden>
+        <h3>감사 커버리지</h3>
+        <b class="metric tnum">— <span class="sep">/</span> —</b>
+      </div>
+    </div>
+    <p class="report-label">최종 보고</p>
+    <div class="report" id="final-report"></div>
+  </section>
+
+</main>
+
+<button class="follow-run" id="follow-run" type="button" hidden>진행 따라가기 ↓</button>
+<div class="source-banner" id="source-banner" hidden>모의 데이터 재생 — 입력 텍스트와 무관한 고정 시나리오입니다 · 실제 검색 아님</div>
+
+<script src="/ui/app.js?v=__V__"></script>
+</body>
+</html>
