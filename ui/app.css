@@ -80,7 +80,7 @@
   --f-sans: "Pretendard", "Inter", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
   --f-mono: "JetBrains Mono", "D2Coding", "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  --t-manuscript: 20px;
+  --t-manuscript: 18px;
   --t-number: 13px;
   --t-verdict: 15px;
   --t-chip: 13px;
@@ -782,9 +782,9 @@ a {
 }
 .s-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 66ch) var(--margin-col);
-  gap: 24px;
-  padding: 14px 0 16px;
+  grid-template-columns: 38px minmax(0, 66ch) var(--margin-col);
+  gap: 20px;
+  padding: 10px 0 12px;
   border-top: 1px solid var(--hair);
 }
 .s-row:first-child {
@@ -801,21 +801,21 @@ a {
 .s-text {
   font-family: var(--f-serif);
   font-size: var(--t-manuscript);
-  line-height: 1.65;  text-wrap: pretty;
+  line-height: 1.55;  text-wrap: pretty;
 }
 .s-margin {
   border-left: 1px solid var(--rule);
   padding-left: 20px;
-  min-height: 34px;
+  min-height: 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 /* 구조 줄 — 번호칸도 여백칸도 주지 않는다 */
 .s-row.is-structural {
-  grid-template-columns: 44px minmax(0, 66ch) var(--margin-col);
-  padding: 22px 0 2px;
+  grid-template-columns: 38px minmax(0, 66ch) var(--margin-col);
+  padding: 16px 0 2px;
   border-top: 0;
 }
 .s-row.is-structural .s-num,
@@ -1002,7 +1002,7 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 9px;
+  margin-top: 7px;
   height: 16px;
 }
 .bar-track {
@@ -1041,7 +1041,7 @@ a {
   grid-column: 2;
   height: 42px;
   overflow: hidden;
-  margin-top: 9px;
+  margin-top: 7px;
   display: flex;
   flex-direction: column;
   gap: 4px;
