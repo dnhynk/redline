@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -384,6 +385,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     import uvicorn
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+    os.environ.setdefault("OPENAI_AGENTS_DISABLE_TRACING", "1")
 
     args = build_parser().parse_args(argv)
     mock = bool(args.mock or args.mock_file)
