@@ -412,6 +412,12 @@ a {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
+/* 예시는 넣어 두는 것이 아니라 비쳐 보이는 것이다 — 지울 필요 없이 쓰기 시작하면 사라진다.
+   본문과 같은 세리프로 두어 붙여넣었을 때의 모습이 그대로 예고된다. */
+#input-text::placeholder {
+  color: var(--muted);
+  opacity: 0.42;
+}
 /* 글자 수는 빈 입력창의 안내이자 상한 고지다 — 읽는 데 방해되지 않게 연하게 둔다. */
 .input-wrap {
   position: relative;
