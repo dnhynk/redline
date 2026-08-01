@@ -179,7 +179,7 @@ h2 {
   letter-spacing: 0.02em;
   color: var(--rule);
   padding: 0 calc(0.3 * var(--u)) 0 calc(0.45 * var(--u));
-  vertical-align: calc(0.9 * var(--u));
+  vertical-align: baseline;
 }
 
 .rule-note {
@@ -411,6 +411,7 @@ h2 {
 .kicker {
   font-family: var(--f-serif);
   font-size: calc(2.5 * var(--u));
+  font-style: italic;
   line-height: 1.4;
   padding-top: calc(1.5 * var(--u));
   border-top: 1px solid var(--rule);
@@ -518,7 +519,7 @@ h2 {
   font-weight: 500;
   letter-spacing: 0.03em;
   color: var(--muted);
-  padding-left: calc(0.8 * var(--u));
+  padding-left: calc(1.2 * var(--u));
 }
 .proof-nums {
   display: flex;
@@ -726,8 +727,6 @@ h2 {
   font-family: var(--f-serif);
   font-size: calc(2.6 * var(--u));
   line-height: 1.35;
-  /* 오른쪽 아래 조종 버튼이 앉을 자리를 띠 바깥에 비워 둔다 */
-  margin-right: calc(15 * var(--u));
 }
 .live b {
   box-shadow: inset 0 calc(-0.34 * var(--u)) 0 var(--v-unsupported-line);
