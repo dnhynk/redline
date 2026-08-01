@@ -410,10 +410,19 @@ a {
   background: var(--ink);
   border: 1px solid var(--ink);
   border-radius: 0;
-  transition: background-color var(--dur-tint) var(--ease-ink);
+  transition: background-color var(--dur-tint) var(--ease-ink),
+    transform var(--dur-press) var(--ease-ink);
 }
-.btn-ink:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .btn-ink:hover:not(:disabled) {
+    background: #000;
+  }
+}
+/* 화면에서 가장 주목받는 클릭이다. 누르는 순간에 응답한다 — 떼는 순간이 아니라.
+   색은 두 경로에 다 남고, 크기는 모션을 줄이면 토큰이 1 이 되어 저절로 빠진다. */
+.btn-ink:active:not(:disabled) {
   background: #000;
+  transform: scale(var(--press-scale));
 }
 .btn-ink:disabled {
   opacity: 0.55;
@@ -495,8 +504,10 @@ a {
   background: transparent;
   border: 1px solid var(--rule);
 }
-.btn-quiet:hover {
-  border-color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .btn-quiet:hover {
+    border-color: var(--ink);
+  }
 }
 
 /* --- 단계 전환의 그림자 --------------------------------------------------
@@ -932,9 +943,11 @@ a {
 .chip.more {
   flex: none;
 }
-.chip:hover {
-  color: var(--ink);
-  text-decoration-color: var(--rule);
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover {
+    color: var(--ink);
+    text-decoration-color: var(--rule);
+  }
 }
 .chip.more {
   text-decoration: none;
@@ -979,8 +992,10 @@ a {
   text-decoration-color: var(--edge);
   text-underline-offset: 3px;
 }
-.fold-note button:hover {
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .fold-note button:hover {
+    color: var(--ink);
+  }
 }
 
 .empty {
@@ -1902,8 +1917,10 @@ body.has-banner .lanes {
 .state-chips .chip[data-stance="challenge"] {
   text-decoration-color: var(--p-challenge);
 }
-.state-chips .chip:hover {
-  color: var(--p-fg);
+@media (hover: hover) and (pointer: fine) {
+  .state-chips .chip:hover {
+    color: var(--p-fg);
+  }
 }
 .lane-empty {
   padding: 20px 0;
