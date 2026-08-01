@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REDLINE — 발표</title>
+<link rel="stylesheet" href="/ui/slides.css?v=__V__">
+</head>
+<body>
+
+<main id="deck" aria-live="polite">
+
+<!-- 1 ------------------------------------------------------------------ -->
+<section class="slide slide-title" data-slide="1" aria-label="1장 REDLINE">
+  <div class="stack">
+    <h1 class="wordmark">RED<span class="wm-block" aria-hidden="true"></span>LINE</h1>
+    <p class="lede">
+      AI가 쓴 글에서 <em>뒷받침되지 않은 문장</em>에 빨간 줄을 긋고,<br>
+      그 글이 <em>언급하지 않은 반대 증거</em>를 찾아옵니다
+    </p>
+  </div>
+  <p class="byline">김동현 <b>·</b> AGENT:24 <b>·</b> Liner API 트랙</p>
+</section>
+
+<!-- 2 ------------------------------------------------------------------ -->
+<section class="slide" data-slide="2" aria-label="2장 문제">
+  <h2>지금 AI 답변을 검증하는 방법</h2>
+
+  <p class="binary">
+    <span>문단 전체를 <b>믿는다</b></span>
+    <span class="binary-gap" aria-hidden="true"></span>
+    <span>문단 전체를 <b>안 믿는다</b></span>
+  </p>
+
+  <p class="rule-note">그런데 한 문단 안에서 문장들은 이렇게 갈린다</p>
+
+  <ul class="specimen">
+    <li>
+      <span class="s-text mark-supported">전기간 코호트에서 위험비 0.82로 보고됐다</span>
+      <span class="s-verdict v-supported">뒷받침됨</span>
+    </li>
+    <li>
+      <span class="s-text mark-unsupported">2024 Stanford 대사노화 시험이 이를 입증했다</span>
+      <span class="s-verdict v-unsupported">뒷받침 안 됨</span>
+    </li>
+    <li>
+      <span class="s-text mark-overstated">따라서 이 방법은 노화를 되돌린다</span>
+      <span class="s-verdict v-overstated">지나친 단정</span>
+    </li>
+    <li>
+      <span class="s-text">그러므로 모두가 시도해 볼 만하다</span>
+      <span class="s-verdict v-non_auditable">의견·권고</span>
+    </li>
+  </ul>
+
+  <p class="kicker">네 개가 한 문단 안에 있으면 <b>문단 단위 판단은 반드시 틀린다.</b></p>
+  <p class="who">리서치 · 과제 · 기사 초안을 AI로 쓰는 사람</p>
+</section>
+
+<!-- 3 ------------------------------------------------------------------ -->
+<section class="slide" data-slide="3" aria-label="3장 축 셋">
+  <h2>한 문장에 대해 세 번 묻는다</h2>
+
+  <ol class="axes">
+    <li><span class="ax-n">축 1</span><span class="ax-k">존재</span><span class="ax-q">그 출처가 실재하는가</span></li>
+    <li><span class="ax-n">축 2</span><span class="ax-k">충실</span><span class="ax-q">원문이 정말 그렇게 말하는가</span></li>
+    <li class="is-key"><span class="ax-n">축 3</span><span class="ax-k">완전</span><span class="ax-q">이 글이 <b>말하지 않은</b> 반대 증거는</span></li>
+  </ol>
+
+  <div class="proof">
+    <p class="proof-head">잘 쓴 글 3문장 <span class="proof-meta">demo · 41.2초 · 완주</span></p>
+    <div class="proof-nums">
+      <div class="num">
+        <b class="n n-zero">0</b>
+        <span class="n-label">빨간 줄</span>
+      </div>
+      <div class="num">
+        <b class="n n-rebut">3</b>
+        <span class="n-label">글이 언급하지 않은 반대 증거</span>
+      </div>
+    </div>
+    <p class="proof-foot">틀린 것을 찾는 도구가 아니라 <b>빠진 것까지 찾는 도구</b>다.</p>
+  </div>
+</section>
+
+<!-- 4 ------------------------------------------------------------------ -->
+<section class="slide slide-order" data-slide="4" aria-label="4장 왜 이 순서인가">
+  <h2>왜 이 순서인가</h2>
+
+  <ol class="pipe">
+    <li><i>0</i>분류</li>
+    <li><i>1</i>클레임 선정</li>
+    <li class="is-key"><i>2</i>확증·반증 동시</li>
+    <li><i>3</i>존재</li>
+    <li><i>4</i>충실도</li>
+    <li><i>5</i>판정 확정</li>
+    <li><i>6</i>완전성</li>
+    <li><i>7</i>종결</li>
+  </ol>
+
+  <p class="rule-note">이 순서를 정당화하는 근거는 하나가 아니라 <b>넷</b>이다</p>
+
+  <ol class="whys">
+    <li><span class="w-n">①</span><span class="w-k">비용</span><span class="w-t">검색 무제한 → 학술 검색 초당 2건 → 원문 수집</span></li>
+    <li><span class="w-n">②</span><span class="w-k">정보량</span><span class="w-t">가장 크게 자르는 검사가 가장 싸다</span></li>
+    <li><span class="w-n">③</span><span class="w-k">관측</span><span class="w-t">단계마다 화면에 뜨는 이벤트가 다르다</span></li>
+    <li><span class="w-n">④</span><span class="w-k">집행</span><span class="w-t">지시가 아니라 구조로 강제한다</span></li>
+  </ol>
+
+  <div class="evidence">
+    <p class="ev-line"><b>첫 호출은 검색이 아니라 분류다</b> — 구조로 강제</p>
+    <p class="ev-line">
+      <b>확증과 반증을 함께 쏜다</b>
+      <span class="ev-key">확증 : 반증</span>
+      <span class="ratio"><span>3:3</span><span>4:4</span><span>3:4</span><span>9:9</span></span>
+    </p>
+    <p class="ev-line"><b>19문장도 90초 예산 안에서 완주</b> — 69.3초</p>
+  </div>
+</section>
+
+<!-- 5 ------------------------------------------------------------------ -->
+<section class="slide" data-slide="5" aria-label="5장 못 하는 것">
+  <h2>못 하는 것을 화면이 먼저 말한다</h2>
+
+  <dl class="limits">
+    <div><dt>시간이 모자라면</dt><dd>완주가 아니라 <b>부분 감사 + 커버리지</b></dd></div>
+    <div><dt>원문을 못 읽으면</dt><dd><b>확인 불가</b> — 주장을 깎지 않는다</dd></div>
+    <div><dt>검색이 못 찾으면</dt><dd><b>출처 못 찾음</b> — 회색 점선이지 빨강이 아니다</dd></div>
+    <div><dt>저장된 기록을 틀면</dt><dd>화면 <b>경고 배너</b> + 실행 기록에 모드</dd></div>
+  </dl>
+
+  <p class="live">
+    지금부터 3분, <b>라이브</b>입니다.<br>
+    <span class="live-sub">오른쪽 화면은 가공하지 않은 tool_call · tool_result</span>
+  </p>
+</section>
+
+</main>
+
+<!-- 조종 ---------------------------------------------------------------- -->
+<nav class="hud" aria-label="슬라이드 이동">
+  <button type="button" id="prev" aria-label="이전 장">←</button>
+  <p class="count"><b id="cur">1</b><span aria-hidden="true">/</span><span id="total">5</span></p>
+  <button type="button" id="next" aria-label="다음 장">→</button>
+</nav>
+<div class="progress" aria-hidden="true"><span id="bar"></span></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var slides = [].slice.call(document.querySelectorAll(".slide"));
+  var total = slides.length;
+  var bar = document.getElementById("bar");
+  var cur = document.getElementById("cur");
+  var prev = document.getElementById("prev");
+  var next = document.getElementById("next");
+  var at = 0;
+
+  document.getElementById("total").textContent = String(total);
+
+  function clamp(n) {
+    return n < 0 ? 0 : n > total - 1 ? total - 1 : n;
+  }
+
+  // 주소의 #n 은 정본이 아니라 기록이다. 새로 고쳐도 있던 장으로 돌아온다.
+  function fromHash() {
+    var n = parseInt(String(location.hash).replace(/[^0-9]/g, ""), 10);
+    return isNaN(n) ? 0 : clamp(n - 1);
+  }
+
+  function show(n, animate) {
+    n = clamp(n);
+    at = n;
+    for (var i = 0; i < total; i++) {
+      var on = i === n;
+      slides[i].classList.toggle("is-on", on);
+      slides[i].setAttribute("aria-hidden", on ? "false" : "true");
+      if (!on) slides[i].classList.remove("is-enter");
+    }
+    if (animate) fireOnce(slides[n], "is-enter");
+    cur.textContent = String(n + 1);
+    bar.style.transform = "scaleX(" + (n + 1) / total + ")";
+    prev.disabled = n === 0;
+    next.disabled = n === total - 1;
+    var want = "#" + (n + 1);
+    if (location.hash !== want) history.replaceState(null, "", want);
+  }
+
+  // 일회성 클래스는 애니메이션이 끝나면 뗀다. 안 끝났으면 붙이지도 않는다.
+  function fireOnce(node, cls) {
+    node.classList.add(cls);
+    if (typeof node.getAnimations !== "function" || !node.getAnimations().length) {
+      node.classList.remove(cls);
+    }
+  }
+  document.addEventListener(
+    "animationend",
+    function (e) {
+      if (e.target && e.target.classList) e.target.classList.remove("is-enter");
+    },
+    true
+  );
+
+  function go(step) {
+    var to = clamp(at + step);
+    if (to !== at) show(to, true);
+  }
+
+  // 넘기는 길을 넓게 열어 둔다 — 발표용 리모컨은 PageUp/PageDown 을 보낸다.
+  var FORWARD = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, " ": 1, Spacebar: 1, Enter: 1, n: 1, j: 1 };
+  var BACK = { ArrowLeft: 1, ArrowUp: 1, PageUp: 1, Backspace: 1, p: 1, k: 1 };
+
+  window.addEventListener(
+    "keydown",
+    function (e) {
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      var k = e.key;
+      if (k === "Home") { show(0, true); e.preventDefault(); return; }
+      if (k === "End") { show(total - 1, true); e.preventDefault(); return; }
+      if (k >= "1" && k <= "9" && Number(k) <= total) { show(Number(k) - 1, true); e.preventDefault(); return; }
+      if ((k === " " || k === "Spacebar") && e.shiftKey) { go(-1); e.preventDefault(); return; }
+      if (FORWARD[k]) { go(1); e.preventDefault(); return; }
+      if (BACK[k]) { go(-1); e.preventDefault(); return; }
+    },
+    true
+  );
+
+  next.addEventListener("click", function () { go(1); });
+  prev.addEventListener("click", function () { go(-1); });
+
+  // 화면 아무 데나 눌러도 넘어간다. 조종 장치 위는 빼고.
+  document.addEventListener("click", function (e) {
+    if (e.target.closest(".hud")) return;
+    go(1);
+  });
+
+  window.addEventListener("hashchange", function () { show(fromHash(), true); });
+
+  show(fromHash(), false);
+})();
+</script>
+</body>
+</html>
