@@ -36,7 +36,8 @@ MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
     "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
     "terminal-summary", "terminal-title", "terminal-reason", "terminal-coverage", "missing-actions",
-    "final-report", "terminal-note", "follow-run", "source-banner", "intake", "intake-process",
+    "final-report", "terminal-note", "error-detail", "follow-run", "source-banner", "intake",
+    "intake-process",
     "intake-collapsed",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",
 ]
@@ -483,7 +484,7 @@ FIXTURES = sorted((UI / "fixtures").glob("*.jsonl"))
 
 def test_fixtures_exist():
     assert {p.stem for p in FIXTURES} == {
-        "complete", "timebox", "incomplete", "non_auditable", "error", "structured",
+        "complete", "timebox", "incomplete", "non_auditable", "error", "no_start", "structured",
     }
 
 
@@ -695,3 +696,177 @@ def test_the_axis3_shortfall_can_stand_in_for_a_missing_reason():
     block = JS.split("function missingActions(")[1].split("\n  }")[0]
     assert "axis3_done" in block and "axis3_expected" in block
     assert "반박 찾기를 " in block
+
+
+# --------------------------------------------------------------------------
+# 시작조차 못 한 런을 완주한 감사처럼 그리지 않는다
+# --------------------------------------------------------------------------
+
+
+def test_a_crashed_run_shows_a_fixed_sentence_not_the_providers_words():
+    assert 'if (status.reason === "error") reason = "감사를 시작하지 못했습니다.";' in JS
+    assert "status.error" not in JS.split("setText($(\"#terminal-reason\"), reason);")[0].split(
+        "var reason = map.reason;"
+    )[-1], "제공자 원문이 사유 자리에 그대로 들어간다"
+    # 원문은 접힌 상세 안에만 산다
+    detail = JS.split("function paintErrorDetail(")[1].split("\n  }")[0]
+    assert 'el("summary", null, "기술 상세")' in detail
+    assert 'id="error-detail"' in INDEX and "<details" in INDEX
+
+
+def test_a_crashed_run_publishes_no_audit_numbers():
+    assert "function crashed()" in JS
+    block = JS.split("if (crashed()) {")[1].split("} else {")[0]
+    assert 'setDash($("#unsupported-rate"))' in block
+    assert 'setDash($("#coverage"))' in block
+    assert "감사가 중단돼 집계를 내지 않았습니다" in block
+    # 중단 런의 최종 보고(수치 줄)는 싣지 않는다
+    assert 'status.reason === "error" ? "" : status.final_report' in JS
+
+
+def test_the_no_start_fixture_reproduces_the_crash_before_anything_ran():
+    events = load_jsonl(UI / "fixtures" / "no_start.jsonl")
+    assert len(events) == 1, "시작도 못 한 런은 종결 이벤트 하나뿐이다"
+    payload = events[0]["payload"]
+    assert payload["reason"] == "error" and payload["done"] is True
+    assert payload["error"], "원문 오류가 봉투에 실려 있어야 화면 처리가 검증된다"
+    assert payload["audit"]["claims"] == [] and payload["audit"]["evidence_total"] == 0
+
+
+# --------------------------------------------------------------------------
+# 완주 문구가 데이터를 앞서지 않는다
+# --------------------------------------------------------------------------
+
+
+def test_the_confident_zero_rebuttal_sentence_needs_evidence_behind_it():
+    block = JS.split("function emptyRebuttalCopy(")[1].split("\n  }")[0]
+    assert "challengeSearches(status)" in block and "evidenceReceived(audit)" in block
+    confident = "반박까지 찾아봤지만 나오지 않았습니다"
+    assert confident in block
+    head, tail = block.split(confident)
+    assert "if (!fired)" in head and "if (!received)" in head, "근거 확인 없이 단정한다"
+    assert "0건은 탐색 결과가 아닙니다" in head, "근거가 없을 때의 중립 문구가 없다"
+
+
+def test_the_challenge_count_is_read_from_the_terminal_envelope():
+    block = JS.split("function challengeSearches(")[1].split("\n  }")[0]
+    for key in ("search_counts", "challenge_queries"):
+        assert key in block
+
+
+def test_fixtures_carry_the_challenge_accounting_the_screen_reads():
+    for path in FIXTURES:
+        terminal = load_jsonl(path)[-1]["payload"]
+        completion = terminal.get("completion") or {}
+        assert "search_counts" in completion, f"{path.stem}: 반증 검색 회계 없음"
+        assert set(completion["search_counts"]) == {"support", "challenge"}
+        assert isinstance(terminal.get("challenge_queries"), int)
+
+
+# --------------------------------------------------------------------------
+# 종결 봉투의 audit 이 정본이다
+# --------------------------------------------------------------------------
+
+
+def test_the_terminal_audit_overwrites_the_stream_snapshot():
+    block = JS.split('} else if (event.kind === "status") {')[1].split("\n    }")[0]
+    assert "if (state.status.audit) state.audit = state.status.audit;" in block
+
+
+def test_the_fixture_terminal_carries_the_full_audit():
+    for path in FIXTURES:
+        audit = load_jsonl(path)[-1]["payload"]["audit"]
+        assert "input_text" in audit, f"{path.stem}: 종결 audit 이 정본(기본형 전체)이 아니다"
+
+
+# --------------------------------------------------------------------------
+# 픽스처가 현재 빌드 스키마다
+# --------------------------------------------------------------------------
+
+LIVE_CAPTURE = UI / "mock_events.jsonl"
+
+
+def _terminal(path: Path) -> dict:
+    for event in reversed(load_jsonl(path)):
+        if event["kind"] == "status" and event["payload"].get("done"):
+            return event["payload"]
+    raise AssertionError(f"{path} 에 종결 이벤트가 없다")
+
+
+@pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.stem)
+def test_fixture_matches_the_shape_the_build_emits(path):
+    """폴백이 제품이 더 이상 내지 않는 스키마로 검증되면 안 된다."""
+    build = _terminal(LIVE_CAPTURE)
+    mine = _terminal(path)
+    assert set(mine) == set(build), "종결 봉투 키가 빌드와 다르다"
+    assert set(mine["audit"]) == set(build["audit"]), "audit 키가 빌드와 다르다"
+    if mine["audit"]["claims"]:
+        assert set(mine["audit"]["claims"][0]) == set(build["audit"]["claims"][0])
+        assert "base_confidence" in mine["audit"]["claims"][0]
+        assert "prior" not in mine["audit"]["claims"][0]
+
+
+def test_the_mock_fallback_plays_the_current_build():
+    assert server.DEFAULT_FIXTURE == LIVE_CAPTURE
+
+
+# --------------------------------------------------------------------------
+# 릴레이 대역폭 — 히스토리 상한과 그 사실의 공개
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_history_stops_growing_without_a_bound():
+    hub = Hub(timebox_s=90.0, client_queue_max=2048, mock=False, history_max=50)
+    await hub.start_run("r1")
+    for n in range(200):
+        await hub.publish({"kind": "audit", "t": float(n), "payload": {"n": n}})
+    assert len(hub.history) == 50
+    assert hub.history_dropped == 150
+    assert hub.history[0]["seq"] == 151
+
+
+@pytest.mark.asyncio
+async def test_a_late_joiner_is_told_what_it_missed():
+    hub = Hub(timebox_s=90.0, client_queue_max=2048, mock=False, history_max=10)
+    await hub.start_run("r1")
+    for n in range(40):
+        await hub.publish({"kind": "audit", "t": float(n), "payload": {"n": n}})
+    config = hub.config_event()["payload"]
+    assert config["history_dropped"] == 30
+    assert config["history_from"] == 31, "어디서부터 보고 있는지 화면이 알아야 한다"
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_run_forgets_the_previous_truncation():
+    hub = Hub(timebox_s=90.0, client_queue_max=2048, mock=False, history_max=5)
+    await hub.start_run("r1")
+    for n in range(20):
+        await hub.publish({"kind": "audit", "t": float(n), "payload": {"n": n}})
+    await hub.start_run("r2")
+    config = hub.config_event()["payload"]
+    assert config["history_dropped"] == 0 and config["history_from"] == 1
+
+
+def test_the_screen_says_the_replay_is_missing_its_head():
+    block = JS.split("function noteHistoryGap(")[1].split("\n  }")[0]
+    assert "history_dropped" in block and "history_from" in block
+    assert "재생되지 않았습니다" in block
+    assert ".ev-gap" in CSS
+
+
+def test_the_default_history_bound_is_generous_enough_for_a_run():
+    assert re.search(r"history_max: int = (\d+)", server.__doc__ or "") is None
+    bound = int(re.search(r"history_max: int = (\d+)", (ROOT / "server.py").read_text(encoding="utf-8")).group(1))
+    assert bound >= len(load_jsonl(LIVE_CAPTURE)), "실 런 한 번이 상한에 걸리면 안 된다"
+
+
+# --------------------------------------------------------------------------
+# 두 번째 런의 경과 시간
+# --------------------------------------------------------------------------
+
+
+def test_the_second_run_does_not_inherit_the_first_runs_clock():
+    block = JS.split("function resetRun(")[1].split("\n  }")[0]
+    assert "state.elapsed = 0;" in block
+    assert "state.elapsedWall = 0;" in block, "직전 런 종료 이후 흐른 시간이 그대로 표시된다"
