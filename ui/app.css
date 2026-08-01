@@ -606,7 +606,7 @@ a {
   color: var(--muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--dur-tint) var(--ease-ink);
+  transition: color var(--dur-press) var(--ease-ink);
 }
 /* 활성 표시는 실선 한 줄이다. 두께가 바뀌면 라벨이 흔들리므로 의사 요소로 깐다. */
 .tab::after {
@@ -618,7 +618,7 @@ a {
   height: 2px;
   background: var(--ink);
   opacity: 0;
-  transition: opacity var(--dur-tint) var(--ease-ink);
+  transition: opacity var(--dur-press) var(--ease-ink);
 }
 .tab[aria-selected="true"] {
   color: var(--ink);
