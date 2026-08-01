@@ -98,12 +98,16 @@
     color: var(--v-unsupported-label);
   }
 
+  /* 시트는 원고라 왼쪽 정렬이고, 질문과 워드마크는 가운데다 — 다른 규칙이다.
+     컨테이너의 justify-items 로는 안 된다. 그건 그리드 아이템만 가운데 놓고,
+     아이템 폭은 그 안의 .sheet(58vw)가 정하므로 글자는 왼쪽에 붙는다. */
   .ask {
     font-family: var(--f-sans);
     font-weight: 600;
     font-size: 1.7vw;
     color: var(--ink);
     margin-top: 2.6vw;
+    text-align: center;
     opacity: 0;
   }
   .scene.live .ask { animation: rise 400ms var(--ease-out, ease-out) 2950ms both; }
@@ -114,6 +118,7 @@
     font-size: 2.8vw;
     letter-spacing: -0.14vw;
     margin-top: 1.2vw;
+    text-align: center;
     opacity: 0;
   }
   .wordmark b { color: var(--v-unsupported-line); font-weight: 900; }
