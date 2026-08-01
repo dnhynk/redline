@@ -1445,3 +1445,28 @@ def test_non_auditable_classification_sets_status():
     )
     assert audit.status == "non_auditable"
     assert audit.completion_report()["complete"] is True
+
+
+def test_a_bold_label_bullet_is_a_heading_not_a_sentence():
+    """챗봇 답변의 `* **항목 이름**` 은 라벨이지 주장이 아니다.
+
+    문장으로 세면 커버리지 분모가 부풀고, 감사할 수 없는 줄이 판정을 기다리는
+    상태로 화면에 남는다.
+    """
+    from core.audit import split_sentences_with_kinds, STRUCTURAL_KINDS
+
+    lines = [
+        "오메가3는 널리 쓰인다.",
+        "",
+        "* **중성지방 수치 개선**",
+        "* **근거:** 임상에서 수치가 낮아졌다.",
+        "* 생선을 자주 먹으면 덜 필요하다.",
+    ]
+    sentences, kinds = split_sentences_with_kinds(chr(10).join(lines))
+    by_text = dict(zip(sentences, kinds))
+    assert by_text["* **중성지방 수치 개선**"] == "heading"
+    # 종결부호로 끝나는 줄은 굵은 글씨가 앞에 있어도 문장이다
+    assert by_text["**근거:** 임상에서 수치가 낮아졌다."] == "list_item"
+    assert by_text["생선을 자주 먹으면 덜 필요하다."] == "list_item"
+    claimable = [k for k in kinds if k not in STRUCTURAL_KINDS]
+    assert len(claimable) == 3

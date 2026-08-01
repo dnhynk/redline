@@ -39,8 +39,10 @@
   var CARD_STEP_MS = 120;
   var CARD_WINDOW_MS = 360;
   // 문장 행은 카드보다 잦고 수가 많다 — 간격을 좁게, 창은 카드와 같게 묶는다
-  var ROW_STEP_MS = 26;
-  var ROW_WINDOW_MS = 360;
+  // 원고는 한꺼번에 떨어지지 않고 위에서 아래로 쓸린다. 360ms 는 사실상 동시라
+  // 화면이 툭 끊겨 보였다 — 조판되는 것처럼 읽히는 길이로 늘렸다.
+  var ROW_STEP_MS = 46;
+  var ROW_WINDOW_MS = 900;
   var MARKED = { supported: 1, unsupported: 1, overstated: 1, no_source: 1, undecidable: 1 };
   var STRUCTURAL_KINDS = { heading: 1, table_header: 1, code_fence: 1, divider: 1 };
   var AXIS_NAME = ["감사 준비", "논문·웹 출처 확인", "내용 확인", "반박 찾기"];

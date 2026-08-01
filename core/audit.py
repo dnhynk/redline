@@ -283,8 +283,10 @@ def split_sentences_with_kinds(text: str) -> tuple[list[str], list[str]]:
             kind = "quote"
             payload = _QUOTE_RE.sub("", line, count=1).strip()
         elif _BULLET_RE.match(line):
-            kind = "list_item"
             payload = _BULLET_RE.sub("", line, count=1).strip()
+            # 글머리를 떼고 굵은 라벨만 남으면 그것은 문장이 아니라 소제목이다.
+            # 문장으로 세면 분모가 부풀고, 감사할 수 없는 줄이 판정을 기다리게 된다.
+            kind = "heading" if _is_bold_heading(payload) else "list_item"
         else:
             kind = "prose"
 

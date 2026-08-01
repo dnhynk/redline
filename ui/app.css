@@ -1387,10 +1387,7 @@ a {
   padding: 0 26px;
   border-left: 1px solid var(--hair);
 }
-/* 세 칸의 마지막 줄이 같은 선에 앉는다 — 한 칸만 떠 있으면 표가 기운 것처럼 읽힌다 */
-.tally-cell > :last-child {
-  margin-top: auto;
-}
+
 .tally-cell:first-child {
   padding-left: 0;
   border-left: 0;
@@ -1442,13 +1439,14 @@ a {
 .axis-legend {
   display: flex;
   gap: 6px;
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
 }
 .axis-legend li {
   flex: 1;
   min-width: 0;
+  text-align: center;
 }
 .axis-cell::before {
   content: "";
