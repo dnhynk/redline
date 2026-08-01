@@ -717,6 +717,18 @@ async def test_stance_reaches_the_ledger_through_a_run():
     assert outputs[2]["data"]["stance"] == "challenge"
 
 
+def test_progress_status_carries_the_network_cap():
+    ctx = _ctx(max_tool_calls=30)
+    from core.agent import _progress_status
+
+    status = _progress_status(ctx)
+    assert status["max_tool_calls"] == 30
+    assert status["tool_calls"] == 0
+    # 기존 키는 그대로다 — 덧셈만 했다.
+    for key in ("phase", "elapsed_s", "claims", "tool_calls_refused", "axis", "source_mode", "done", "reason"):
+        assert key in status
+
+
 def test_search_price_direction_is_not_inverted():
     from core.model_tools import SEARCH_PRICE_PER_1K_USD
 

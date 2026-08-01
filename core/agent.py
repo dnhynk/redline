@@ -124,6 +124,7 @@ def _progress_status(ctx: AuditContext) -> dict:
         "elapsed_s": round(ctx.elapsed_s(), 2),
         "claims": len(ctx.audit.claims),
         "tool_calls": ctx.tool_calls_used,
+        "max_tool_calls": ctx.max_tool_calls,
         "tool_calls_refused": ctx.tool_calls_refused,
         "axis": ctx.axis_reached,
         "source_mode": ctx.audit.source_mode,
