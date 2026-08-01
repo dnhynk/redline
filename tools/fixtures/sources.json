@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "_what_this_is": "Offline body-text fixtures for source extraction. Keyed by exact url. The bodies are written here; they are not verbatim copies of the pages at those addresses. The run records source_mode=mock so this can never be presented as measured text.",
+  "_fabricated_hosts": "Hosts listed under fabricated_hosts always fail with not_found. They belong to the sources this scenario's paragraph invents, and no search rule ever returns them — reaching one means the address was made up, and a made-up address must not resolve to text.",
+
+  "fabricated_hosts": [
+    "harvard-global-hydration.org",
+    "www.harvard-global-hydration.org",
+    "sleepfoundation-miracle.org",
+    "www.sleepfoundation-miracle.org",
+    "miraclecoffee-report.com",
+    "krsleep-miracle.or.kr",
+    "stanford-metabolic-longevity.org"
+  ],
+
+  "sources": {
+    "https://www.bmj.com/content/bmj/359/bmj.j5024.full.pdf": {
+      "title": "Coffee consumption and health: umbrella review of meta-analyses of multiple health outcomes",
+      "is_pdf": true,
+      "text": "Abstract\n\nObjective To evaluate the existing evidence for associations between coffee consumption and multiple health outcomes.\n\nDesign Umbrella review of the evidence across meta-analyses of observational and interventional studies of coffee consumption and any health outcome.\n\nResults 201 meta-analyses of observational research with 67 unique health outcomes and 17 meta-analyses of interventional research with nine unique outcomes were included. Coffee consumption was more often associated with benefit than harm for a range of health outcomes across exposures including high versus low, any versus none, and one extra cup a day. There was evidence of a non-linear association between consumption and some outcomes, with summary estimates indicating largest relative risk reduction at intakes of three to four cups a day versus none, including all cause mortality (relative risk 0.83, 95% confidence interval 0.83 to 0.88).\n\nHarms Harmful associations were largely nullified by appropriate adjustment for smoking, except in pregnancy, where high versus low or any versus no consumption was associated with low birth weight, pregnancy loss, and preterm birth in the first and second trimesters. There was also an association between coffee drinking and risk of fracture in women but not in men.\n\nConclusions Coffee consumption seems generally safe within usual levels of intake, with summary estimates indicating the largest risk reduction for various health outcomes at three to four cups a day. Importantly, existing evidence is observational and of lower quality, and the associations reported could be confounded. Robust randomised controlled trials are needed to understand whether the observed associations are causal."
+    },
+    "https://www.nejm.org/doi/pdf/10.1056/NEJMoa1112010?articleTools=true": {
+      "title": "Association of Coffee Drinking with Total and Cause-Specific Mortality",
+      "is_pdf": true,
+      "text": "Background Coffee is one of the most widely consumed beverages, but the association between coffee consumption and the risk of death remains unclear.\n\nMethods We examined the association of coffee drinking with subsequent total and cause-specific mortality among 229,119 men and 173,141 women in the National Institutes of Health-AARP Diet and Health Study who were 50 to 71 years of age at baseline. Participants with cancer, heart disease, and stroke were excluded. Coffee consumption was assessed once at baseline.\n\nResults During 5,148,760 person-years of follow-up between 1995 and 2008, a total of 33,731 men and 18,784 women died. In age-adjusted models, the risk of death was increased among coffee drinkers. However, coffee drinkers were also more likely to smoke, and after adjustment for tobacco-smoking status and other potential confounders, there was a significant inverse association between coffee consumption and mortality.\n\nConclusions In this large prospective study, coffee consumption was inversely associated with total and cause-specific mortality. Whether this was a causal or associational finding cannot be determined from our data."
+    },
+    "https://www.nejm.org/doi/full/10.1056/NEJMoa1112010": {
+      "title": "Association of Coffee Drinking with Total and Cause-Specific Mortality",
+      "is_pdf": false,
+      "text": "In this large prospective study of 402,260 adults, coffee consumption was inversely associated with total mortality after adjustment for tobacco-smoking status and other potential confounders. The unadjusted analysis had shown the opposite direction, because coffee drinkers in this cohort were substantially more likely to smoke. The investigators state explicitly that the study is observational and that whether the association is causal cannot be determined from these data."
+    },
+    "https://www.bmj.com/content/356/bmj.i6583": {
+      "title": "Vitamin D supplementation to prevent acute respiratory tract infections: systematic review and meta-analysis of individual participant data",
+      "is_pdf": false,
+      "text": "Objective To assess the overall effect of vitamin D supplementation on risk of acute respiratory tract infection, and to identify factors modifying this effect.\n\nDesign Systematic review and meta-analysis of individual participant data from 25 randomised controlled trials, 11,321 participants aged 0 to 95 years.\n\nResults Vitamin D supplementation reduced the risk of acute respiratory tract infection among all participants (adjusted odds ratio 0.88, 95% confidence interval 0.81 to 0.96). In subgroup analysis the protective effect was concentrated in a specific group: participants receiving daily or weekly vitamin D without additional bolus doses experienced benefit, and among those participants the effect was much stronger in people with baseline circulating 25-hydroxyvitamin D levels below 25 nmol/L (adjusted odds ratio 0.30, 95% confidence interval 0.17 to 0.53) than in people with baseline levels of 25 nmol/L or higher (adjusted odds ratio 0.75, 95% confidence interval 0.60 to 0.95). Bolus dosing regimens produced no significant benefit.\n\nInterpretation The population that benefited most was profoundly vitamin D deficient at baseline. These results do not support a recommendation of vitamin D supplementation to prevent respiratory infection in people who are already replete, and the authors call for further trials before general-population recommendations are made."
+    },
+    "https://jamanetwork.com/journals/jama/fullarticle/1356320": {
+      "title": "Effect of Vitamin D3 Supplementation on Upper Respiratory Tract Infections in Healthy Adults: The VIDARIS Randomized Controlled Trial",
+      "is_pdf": false,
+      "text": "Objective To investigate the effect of vitamin D3 supplementation on the incidence and severity of upper respiratory tract infections in healthy adults.\n\nDesign, Setting, and Participants Randomised, double-blind, placebo-controlled trial of 322 healthy adults conducted between February 2010 and November 2011.\n\nResults The mean number of upper respiratory tract infection episodes per participant was 3.7 in the vitamin D group and 3.8 in the placebo group (risk ratio 0.97, 95% confidence interval 0.85 to 1.11). There were no statistically significant differences in the number of days of missed work, the severity of episodes, or the duration of symptoms.\n\nConclusion In this trial of healthy adults, monthly administration of high-dose vitamin D3 did not reduce the incidence or severity of upper respiratory tract infections."
+    },
+    "https://doi.org/10.1007/s00394-014-0720-1": {
+      "title": "Green tea catechins and blood pressure: a systematic review and meta-analysis of randomised controlled trials",
+      "is_pdf": false,
+      "text": "Purpose To examine the effect of green tea consumption on blood pressure in adults.\n\nMethods Systematic review and meta-analysis of randomised controlled trials identified in electronic databases, with random effects pooling of mean differences.\n\nResults Green tea consumption produced a significant reduction in systolic blood pressure of 1.98 mmHg (95% confidence interval -2.94 to -1.01) and in diastolic blood pressure of 1.92 mmHg (95% confidence interval -3.17 to -0.68) compared with control. The reduction was consistent in direction across trials, though the magnitude varied and statistical heterogeneity was moderate to high.\n\nConclusion Green tea consumption lowers blood pressure in adults by a small but statistically significant amount. The size of the effect is modest and the clinical relevance for an individual with normal blood pressure is limited."
+    },
+    "https://journals.physiology.org/doi/10.1152/ajpregu.00365.2002": {
+      "title": "\"Drink at least eight glasses of water a day.\" Really? Is there scientific evidence for \"8 x 8\"?",
+      "is_pdf": false,
+      "text": "Despite the pervasiveness of this seemingly ubiquitous recommendation, a thorough search of the literature turned up no scientific studies in support of 8 x 8. Rather, the recommendation appears to have arisen from a misreading of a 1945 nutrition board statement, which noted that most of the required water is contained in prepared foods. Published surveys of nutrient intake in healthy adults show that a large fraction of participants habitually drink less than the recommended amount and remain in good health with normal serum osmolality. No evidence was found that additional water intake reverses established kidney damage; the reviewed literature addresses ordinary hydration in healthy adults, not the treatment of renal disease."
+    },
+    "https://jamanetwork.com/journals/jamainternalmedicine/articlepdf/2686145/jamainternal_loftfield_2018_oi_180037.pdf": {
+      "title": "Association of Coffee Drinking With Mortality by Genetic Variation in Caffeine Metabolism: Findings From the UK Biobank",
+      "is_pdf": true,
+      "text": "Importance Prior prospective cohort studies have reported inverse associations between coffee drinking and mortality. Whether the association differs by genetically determined caffeine metabolism is unknown.\n\nResults Among 498,134 participants, coffee drinking was inversely associated with mortality, including among participants drinking eight or more cups per day and among those with genetic polymorphisms indicating slower or faster caffeine metabolism. The inverse association was not modified by caffeine metabolism genotype.\n\nConclusions and Relevance The absence of effect modification by caffeine metabolism genotype argues against a simple causal pathway running through caffeine, and leaves residual confounding by unmeasured lifestyle factors as an explanation that these data cannot exclude."
+    },
+    "https://pubmed.ncbi.nlm.nih.gov/24235903/": {
+      "title": "Caffeine effects on sleep taken 0, 3, or 6 hours before going to bed",
+      "is_pdf": false,
+      "text": "Study objectives To determine the magnitude of reduction in sleep caused by caffeine administered at three times of day relative to bedtime.\n\nMethods Double-blind, placebo-controlled, within-subject design. Twelve normal sleepers ingested 400 mg of caffeine or a matching placebo at 0, 3, and 6 hours before habitual bedtime.\n\nResults All three caffeine doses produced significant disruption of sleep relative to placebo, as measured by both diary and objective sleep monitor. Caffeine taken six hours before bedtime reduced total sleep time by more than one hour. Slow wave sleep was reduced in every caffeine condition. No condition produced an improvement in sleep on any measure.\n\nConclusions Caffeine taken even six hours before bedtime has a significant disruptive effect on sleep."
+    }
+  },
+
+  "fallback": {
+    "_why": "A url with no fixture entry must return text rather than an error. When every unregistered url fails, the fidelity axis can never do anything but report 'access denied', which is a measurement artefact rather than a finding. Fabricated hosts are the deliberate exception.",
+    "title": "{host} — {slug}",
+    "text": "This record is a general reference page retrieved from {host}. It describes the topic in broad terms and reviews the published literature at a summary level. It reports that findings in this area vary between studies and that estimates depend on the population studied, the dose examined and the length of follow-up. It does not state a numeric result for any single claim and it does not endorse or refute any particular assertion.\n\nMethodological note: the page describes observational and interventional evidence together and cautions that association does not establish causation. Readers looking for a specific figure are directed to the underlying publications."
+  }
+}

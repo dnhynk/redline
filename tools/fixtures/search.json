@@ -1,0 +1,478 @@
+{
+  "version": 1,
+  "_what_this_is": "Offline search fixtures. Everything served from this file is fixture data; the run records source_mode=mock so it can never be presented as measured. Metadata for the anchor entries was copied from a recorded live response capture; descriptions are written here.",
+  "_matching": "The query is lowercased and whitespace-collapsed, then a rule matches when every string in all_tokens occurs in it as a substring. empty_rules are checked first, then rules, then the generated fallback. Substring matching (not token equality) is deliberate: Korean queries agglutinate particles onto nouns.",
+  "_zero_results_are_a_signal": "Only empty_rules return 0 results, and they exist for one reason: the cited source does not exist. Every other query gets something, because in this product an empty result set reads as 'the source is not real' and a coverage gap would become a false hallucination verdict.",
+
+  "empty_rules": [
+    {
+      "id": "fabricated-harvard-hydration",
+      "endpoint": "any",
+      "all_tokens": ["harvard", "hydration"],
+      "intent": "fabricated_source",
+      "reason": "There is no Harvard Global Hydration Study. Searching the cited title must come back empty."
+    },
+    {
+      "id": "fabricated-global-hydration-study",
+      "endpoint": "any",
+      "all_tokens": ["global hydration"],
+      "intent": "fabricated_source",
+      "reason": "Same fabricated study, without the institution in the query."
+    },
+    {
+      "id": "fabricated-sleep-foundation-miracle",
+      "endpoint": "any",
+      "all_tokens": ["sleep foundation", "miracle"],
+      "intent": "fabricated_source",
+      "reason": "There is no International Sleep Foundation Miracle Coffee report."
+    },
+    {
+      "id": "fabricated-miracle-coffee",
+      "endpoint": "any",
+      "all_tokens": ["miracle coffee"],
+      "intent": "fabricated_source",
+      "reason": "Same fabricated report, shortened."
+    },
+    {
+      "id": "fabricated-miracle-coffee-ko",
+      "endpoint": "any",
+      "all_tokens": ["기적의 커피"],
+      "intent": "fabricated_source",
+      "reason": "Korean rendering of the same fabricated report."
+    },
+    {
+      "id": "fabricated-korean-sleep-society",
+      "endpoint": "any",
+      "all_tokens": ["대한수면의학회"],
+      "intent": "fabricated_source",
+      "reason": "Fabricated Korean institution used as a cited source."
+    },
+    {
+      "id": "fabricated-stanford-metabolic-longevity",
+      "endpoint": "any",
+      "all_tokens": ["metabolic longevity"],
+      "intent": "fabricated_source",
+      "reason": "There is no Stanford Metabolic Longevity Trial. Covers the fabricated paper title case."
+    }
+  ],
+
+  "rules": [
+    {
+      "id": "coffee-mortality-scholar",
+      "endpoint": "scholar",
+      "all_tokens": ["coffee", "mortality"],
+      "intent": "supporting",
+      "results": [
+        {
+          "title": "Coffee consumption and health: umbrella review of meta-analyses of multiple health outcomes",
+          "url": "https://www.bmj.com/content/bmj/359/bmj.j5024.full.pdf",
+          "hostname": "bmj.com",
+          "description": "Umbrella review of 201 meta-analyses of observational research and 17 of interventional research. Coffee consumption was more often associated with benefit than harm, with the largest relative reduction in all-cause mortality at three to four cups a day. The authors state the evidence is observational and that harm was seen in pregnancy and in women at risk of fracture.",
+          "date": "2017-11-21",
+          "citation_count": 815,
+          "authors": ["Robin Poole", "Oliver Kennedy", "Paul Roderick", "Jonathan Fallowfield", "Peter Hayes", "Julie Parkes"],
+          "journal": "BMJ"
+        },
+        {
+          "title": "Association of coffee drinking with total and cause-specific mortality.",
+          "url": "https://www.nejm.org/doi/pdf/10.1056/NEJMoa1112010?articleTools=true",
+          "hostname": "nejm.org",
+          "description": "Prospective cohort of more than 400,000 adults. After adjustment for tobacco smoking, coffee drinking was inversely associated with total mortality. The authors note the study is observational and cannot establish a causal relation.",
+          "date": "2012-05-16",
+          "citation_count": 602,
+          "authors": null,
+          "journal": "New England Journal of Medicine"
+        },
+        {
+          "title": "Coffee, Caffeine, and Health Outcomes: An Umbrella Review.",
+          "url": "https://doi.org/10.1146/annurev-nutr-071816-064941",
+          "hostname": "doi.org",
+          "description": "Umbrella review of coffee and caffeine across health outcomes. Moderate consumption was associated with lower all-cause mortality; the authors emphasise that almost all of the underlying evidence is observational.",
+          "date": "2017-08-21",
+          "citation_count": 535,
+          "authors": ["Giuseppe Grosso", "Justyna Godos", "Fabio Galvano", "Edward L. Giovannucci"],
+          "journal": "Annual Review of Nutrition"
+        },
+        {
+          "title": "Coffee Consumption and Mortality Risk",
+          "url": "https://doi.org/10.1002/9781119949893.ch11",
+          "hostname": "doi.org",
+          "description": "Book chapter reviewing cohort evidence on coffee consumption and mortality, including the difficulty of separating coffee from correlated lifestyle factors.",
+          "date": "2012-02-06",
+          "citation_count": 1,
+          "authors": ["Kemmyo Sugiyama", "Shinichi Kuriyama", "Ichiro Tsuji"],
+          "journal": null
+        },
+        {
+          "title": "Coffee Protocol v1",
+          "url": "https://doi.org/10.17504/protocols.io.bw7yphpw",
+          "hostname": "doi.org",
+          "description": "Deposited study protocol. No citation data is available for this record.",
+          "date": "2021-08-08",
+          "citation_count": null,
+          "authors": ["John Borghi"],
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "coffee-mortality-web",
+      "endpoint": "web",
+      "all_tokens": ["coffee", "mortality"],
+      "intent": "supporting",
+      "results": [
+        {
+          "title": "Association of Coffee Drinking with Total and Cause-Specific Mortality",
+          "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa1112010",
+          "hostname": "nejm.org",
+          "description": "Full text of the NIH-AARP cohort analysis reporting an inverse association between coffee drinking and total mortality after adjustment for smoking.",
+          "date": null
+        },
+        {
+          "title": "Coffee drinking timing and mortality in US adults | European Heart Journal",
+          "url": "https://academic.oup.com/eurheartj/article/46/8/749/7928425",
+          "hostname": "academic.oup.com",
+          "description": "Cohort analysis reporting that the timing of coffee drinking, not only the amount, tracks with all-cause and cardiovascular mortality.",
+          "date": null
+        },
+        {
+          "title": "Coffee Consumption Linked to Lower Risk of Death - News Center",
+          "url": "https://news.feinberg.northwestern.edu/2018/07/09/coffee-consumption-linked-to-lower-risk-of-death/",
+          "hostname": "news.feinberg.northwestern.edu",
+          "description": "University news item summarising a UK Biobank analysis that reported lower mortality among coffee drinkers, including drinkers of decaffeinated coffee.",
+          "date": "2018-07-09"
+        },
+        {
+          "title": "Coffee consumption and all-cause and cause-specific mortality: a meta-analysis",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/31055709/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record of a dose-response meta-analysis of prospective cohorts on coffee and mortality.",
+          "date": null
+        }
+      ]
+    },
+    {
+      "id": "coffee-mortality-ko",
+      "endpoint": "any",
+      "all_tokens": ["커피", "사망"],
+      "intent": "supporting",
+      "results": [
+        {
+          "title": "커피 하루 3~5잔 섭취, 만성질환 위험 낮추고 사망률 감소",
+          "url": "https://www.mkhealth.co.kr/news/articleView.html?idxno=77388",
+          "hostname": "mkhealth.co.kr",
+          "description": "대규모 코호트 연구를 인용해 하루 3~5잔의 커피 섭취가 만성질환 위험 및 사망률 감소와 관련이 있다고 보도한 기사. 관찰연구라는 한계도 함께 적고 있다.",
+          "date": "2026-01-28"
+        },
+        {
+          "title": "커피 하루 3잔 이상 마시면 모든 원인의 사망 위험 21% 감소",
+          "url": "http://www.foodnmed.com/news/articleView.html?idxno=19720",
+          "hostname": "foodnmed.com",
+          "description": "코호트 연구 결과를 인용해 커피 섭취량과 전체 사망 위험의 역상관을 보도한 기사.",
+          "date": "2021-05-20"
+        },
+        {
+          "title": "커피섭취와 수면과 관련된 사망위험도 연구",
+          "url": "https://www.kci.go.kr/kciportal/landing/article.kci?arti_id=ART002027187",
+          "hostname": "kci.go.kr",
+          "description": "국내 학술지 논문 초록. 커피 섭취와 수면 시간을 함께 고려한 사망 위험도 분석.",
+          "date": null
+        }
+      ]
+    },
+    {
+      "id": "vitamin-d-respiratory-scholar",
+      "endpoint": "any",
+      "all_tokens": ["vitamin d", "respiratory"],
+      "intent": "source_exists_but_qualifies_the_claim",
+      "results": [
+        {
+          "title": "Vitamin D supplementation to prevent acute respiratory tract infections: systematic review and meta-analysis of individual participant data",
+          "url": "https://www.bmj.com/content/356/bmj.i6583",
+          "hostname": "bmj.com",
+          "description": "Individual participant data meta-analysis of 25 randomised controlled trials. A protective effect was seen overall, but in subgroup analysis the benefit was confined to participants with baseline 25-hydroxyvitamin D below 25 nmol/L. Participants with higher baseline levels showed no significant benefit.",
+          "date": "2017-02-15",
+          "citation_count": 1780,
+          "authors": ["Adrian R Martineau", "David A Jolliffe", "Richard L Hooper", "Lauren Greenberg", "John F Aloia"],
+          "journal": "BMJ"
+        },
+        {
+          "title": "Effect of vitamin D3 supplementation on upper respiratory tract infections in healthy adults: the VIDARIS randomized controlled trial",
+          "url": "https://jamanetwork.com/journals/jama/fullarticle/1356320",
+          "hostname": "jamanetwork.com",
+          "description": "Randomised placebo-controlled trial in healthy adults. Monthly vitamin D3 did not reduce the incidence or severity of upper respiratory tract infections.",
+          "date": "2012-10-03",
+          "citation_count": 512,
+          "authors": ["David R. Murdoch", "Sandy Slow", "Stephen T. Chambers", "Lance C. Jennings"],
+          "journal": "JAMA"
+        },
+        {
+          "title": "Vitamin D supplementation and respiratory infection: what the subgroup findings mean for the general population",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/28202713/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record discussing why an overall protective estimate driven by a deficient subgroup does not license a general-population recommendation.",
+          "date": "2017-02-16",
+          "citation_count": 44,
+          "authors": null,
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "green-tea-blood-pressure",
+      "endpoint": "any",
+      "all_tokens": ["green tea", "blood pressure"],
+      "intent": "supporting",
+      "results": [
+        {
+          "title": "Green tea catechins and blood pressure: a systematic review and meta-analysis of randomised controlled trials",
+          "url": "https://doi.org/10.1007/s00394-014-0720-1",
+          "hostname": "doi.org",
+          "description": "Meta-analysis of randomised controlled trials. Green tea consumption produced a statistically significant reduction in systolic and diastolic blood pressure of roughly 2 mmHg. The authors describe the effect as small and note heterogeneity between trials.",
+          "date": "2014-06-01",
+          "citation_count": 213,
+          "authors": ["Saman Khalesi", "Jing Sun", "Nicholas Buys", "Arash Jamshidi", "Elham Nikbakht-Nasrabadi"],
+          "journal": "European Journal of Nutrition"
+        },
+        {
+          "title": "Effects of green tea consumption on blood pressure: an updated dose-response meta-analysis",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/32020657/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record of a dose-response meta-analysis reporting a modest blood pressure reduction with green tea, larger in participants who were hypertensive at baseline.",
+          "date": "2020-02-04",
+          "citation_count": 96,
+          "authors": null,
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "green-tea-blood-pressure-ko",
+      "endpoint": "any",
+      "all_tokens": ["녹차", "혈압"],
+      "intent": "supporting",
+      "results": [
+        {
+          "title": "녹차 섭취와 혈압 변화에 대한 무작위 대조시험 메타분석",
+          "url": "https://www.kci.go.kr/kciportal/landing/article.kci?arti_id=ART002331104",
+          "hostname": "kci.go.kr",
+          "description": "무작위 대조시험을 종합한 메타분석 요약. 녹차 섭취군에서 수축기·이완기 혈압이 약 2 mmHg 낮아졌으나 연구 간 이질성이 크다고 보고한다.",
+          "date": "2021-09-30"
+        },
+        {
+          "title": "녹차와 혈압, 얼마나 낮아지나",
+          "url": "https://www.mkhealth.co.kr/news/articleView.html?idxno=61204",
+          "hostname": "mkhealth.co.kr",
+          "description": "메타분석 결과를 인용해 녹차의 혈압 강하 효과가 통계적으로는 유의하지만 임상적으로는 작다고 정리한 기사.",
+          "date": null
+        }
+      ]
+    },
+    {
+      "id": "eight-glasses-water",
+      "endpoint": "any",
+      "all_tokens": ["eight glasses"],
+      "intent": "contradicting",
+      "results": [
+        {
+          "title": "\"Drink at least eight glasses of water a day.\" Really? Is there scientific evidence for \"8 x 8\"?",
+          "url": "https://journals.physiology.org/doi/10.1152/ajpregu.00365.2002",
+          "hostname": "journals.physiology.org",
+          "description": "Review searching for the origin of the eight-glasses rule. No scientific study supporting the 8 x 8 recommendation was found, and the author reports evidence that healthy adults meet their needs without it.",
+          "date": "2002-11-01",
+          "citation_count": 431,
+          "authors": ["Heinz Valtin"],
+          "journal": "American Journal of Physiology-Regulatory, Integrative and Comparative Physiology"
+        },
+        {
+          "title": "Water intake and kidney function in healthy adults: what the trials show",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/29801420/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record of a randomised trial of increased water intake in adults with chronic kidney disease, reporting no significant slowing of kidney function decline over one year.",
+          "date": "2018-05-08",
+          "citation_count": 188,
+          "authors": null,
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "water-intake-kidney",
+      "endpoint": "any",
+      "all_tokens": ["water intake", "kidney"],
+      "intent": "contradicting",
+      "results": [
+        {
+          "title": "Water intake and kidney function in healthy adults: what the trials show",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/29801420/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record of a randomised trial of increased water intake in adults with chronic kidney disease, reporting no significant slowing of kidney function decline over one year.",
+          "date": "2018-05-08",
+          "citation_count": 188,
+          "authors": null,
+          "journal": null
+        },
+        {
+          "title": "\"Drink at least eight glasses of water a day.\" Really? Is there scientific evidence for \"8 x 8\"?",
+          "url": "https://journals.physiology.org/doi/10.1152/ajpregu.00365.2002",
+          "hostname": "journals.physiology.org",
+          "description": "Review searching for the origin of the eight-glasses rule. No scientific study supporting the 8 x 8 recommendation was found.",
+          "date": "2002-11-01",
+          "citation_count": 431,
+          "authors": ["Heinz Valtin"],
+          "journal": "American Journal of Physiology-Regulatory, Integrative and Comparative Physiology"
+        }
+      ]
+    },
+    {
+      "id": "coffee-counter-evidence",
+      "endpoint": "any",
+      "all_tokens": ["coffee", "pregnancy"],
+      "intent": "contradicting",
+      "results": [
+        {
+          "title": "Coffee consumption and health: umbrella review of meta-analyses of multiple health outcomes",
+          "url": "https://www.bmj.com/content/bmj/360/bmj.k194.full.pdf",
+          "hostname": "bmj.com",
+          "description": "The same umbrella review that reports the mortality benefit also reports harm in pregnancy: higher coffee consumption was associated with low birth weight, pregnancy loss and preterm birth, and with fracture risk in women.",
+          "date": "2018-01-12",
+          "citation_count": 88,
+          "authors": null,
+          "journal": "BMJ"
+        },
+        {
+          "title": "Caffeine intake during pregnancy and adverse birth outcomes: dose-response meta-analysis",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/33413230/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record reporting a dose-dependent association between maternal caffeine intake and low birth weight, with no clear safe threshold identified.",
+          "date": "2021-01-07",
+          "citation_count": 141,
+          "authors": null,
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "coffee-confounding",
+      "endpoint": "any",
+      "all_tokens": ["coffee", "confounding"],
+      "intent": "contradicting",
+      "results": [
+        {
+          "title": "Association of Coffee Drinking With Mortality by Genetic Variation in Caffeine Metabolism: Findings From the UK Biobank",
+          "url": "https://jamanetwork.com/journals/jamainternalmedicine/articlepdf/2686145/jamainternal_loftfield_2018_oi_180037.pdf",
+          "hostname": "jamanetwork.com",
+          "description": "The inverse association between coffee and mortality was not modified by genetic variants that govern caffeine metabolism, which the authors read as evidence against a simple caffeine mechanism and as a reason to keep residual confounding in view.",
+          "date": "2018-07-02",
+          "citation_count": 274,
+          "authors": ["Erikka Loftfield", "Marilyn C. Cornelis", "Neil Caporaso", "Kai Yu", "Rashmi Sinha", "Neal Freedman"],
+          "journal": "JAMA Internal Medicine"
+        },
+        {
+          "title": "Residual confounding in observational nutrition research",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/30272176/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record on why smoking, income and health-seeking behaviour remain plausible explanations for diet-mortality associations in cohort studies.",
+          "date": "2018-10-01",
+          "citation_count": 63,
+          "authors": null,
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "coffee-sleep",
+      "endpoint": "any",
+      "all_tokens": ["coffee", "sleep"],
+      "intent": "contradicting",
+      "results": [
+        {
+          "title": "Caffeine effects on sleep taken 0, 3, or 6 hours before going to bed",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/24235903/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Randomised double-blind trial. Caffeine taken even six hours before bedtime significantly reduced total sleep time; the authors found no condition in which evening caffeine improved sleep.",
+          "date": "2013-11-15",
+          "citation_count": 397,
+          "authors": ["Christopher Drake", "Timothy Roehrs", "John Shambroom", "Thomas Roth"],
+          "journal": "Journal of Clinical Sleep Medicine"
+        },
+        {
+          "title": "Evening caffeine and slow wave sleep: a systematic review",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/33440334/",
+          "hostname": "pubmed.ncbi.nlm.nih.gov",
+          "description": "Abstract record reporting that evening caffeine reduces slow wave sleep and lengthens sleep onset latency across trials.",
+          "date": "2021-01-12",
+          "citation_count": 118,
+          "authors": null,
+          "journal": null
+        }
+      ]
+    },
+    {
+      "id": "caffeine-mortality",
+      "endpoint": "any",
+      "all_tokens": ["caffeine", "mortality"],
+      "intent": "supporting",
+      "results": [
+        {
+          "title": "Association Between Caffeine Intake and All-Cause and Cause-Specific Mortality: A Population-Based Prospective Cohort Study",
+          "url": "https://doi.org/10.1016/j.mayocp.2017.03.010",
+          "hostname": "doi.org",
+          "description": "Prospective cohort analysis of caffeine intake and mortality. The association was attenuated after adjustment for smoking and other lifestyle factors.",
+          "date": "2017-08-01",
+          "citation_count": 35,
+          "authors": ["Jiang He", "Yuan Lu", "Katherine Mills"],
+          "journal": "Mayo Clinic Proceedings"
+        },
+        {
+          "title": "Coffee, tea, and caffeine intake and mortality in a pooled analysis of eight prospective cohort studies",
+          "url": "https://onlinelibrary.wiley.com/doi/10.1111/ene.13840",
+          "hostname": "onlinelibrary.wiley.com",
+          "description": "Pooled cohort analysis reporting inverse associations for coffee and tea intake, with wide confidence intervals for the highest intake categories.",
+          "date": "2018-11-09",
+          "citation_count": 47,
+          "authors": ["Kathryn C. Fitzgerald", "Marianna Cortese", "Alberto Ascherio"],
+          "journal": "European Journal of Neurology"
+        }
+      ]
+    }
+  ],
+
+  "fallback": {
+    "_why": "A query that matches no rule must not come back empty. Empty means 'this source does not exist' to the axis that checks existence, so an unmatched query would turn a coverage gap into a false hallucination verdict. These generated results are deterministic and deliberately neutral: they neither support nor contradict, so a fidelity judgement made on them lands on 'undecidable'.",
+    "count_min": 2,
+    "count_max": 3,
+    "hostnames": {
+      "web": ["pubmed.ncbi.nlm.nih.gov", "www.healthline.com", "www.nih.gov", "www.medicalnewstoday.com", "www.sciencedaily.com"],
+      "scholar": ["doi.org", "pubmed.ncbi.nlm.nih.gov", "openalex.org", "onlinelibrary.wiley.com", "link.springer.com"]
+    },
+    "journals": ["BMJ", "Nutrients", "European Journal of Nutrition", "PLOS ONE", "Annual Review of Nutrition", null],
+    "authors": [
+      ["A. Fischer", "M. Rahman"],
+      ["S. Nakamura", "L. Ortega", "P. Novak"],
+      ["J. Lindqvist"],
+      null,
+      ["최민서", "박지훈"]
+    ],
+    "dates": ["2016-09-14", "2019-03-21", "2021-07-05", "2023-02-18", "2024-11-30", null],
+    "citation_counts": [0, 4, 17, 58, 122, null],
+    "templates": {
+      "en": {
+        "titles": [
+          "{topic}: a systematic review of the current evidence",
+          "{topic} — findings from a population-based cohort",
+          "What is known about {topic}: a narrative review"
+        ],
+        "description": "General overview of {topic}. The record summarises the literature without endorsing or refuting any single claim; effect estimates vary across the studies it covers."
+      },
+      "ko": {
+        "titles": [
+          "{topic}에 대한 체계적 문헌고찰",
+          "{topic}: 코호트 연구 결과 요약",
+          "{topic}에 관해 알려진 것"
+        ],
+        "description": "{topic}에 대한 개괄 자료. 특정 주장을 지지하거나 반박하지 않으며, 포함된 연구들 사이에서 효과 크기가 일정하지 않다고 적고 있다."
+      }
+    }
+  }
+}

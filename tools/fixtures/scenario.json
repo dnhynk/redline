@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "id": "health-paragraph-5-claims",
+  "_what_this_is": "The offline walkthrough the other layers develop against and the demo falls back to. It records which paragraph the fixtures were built for, which route through the three axes they make possible, and which query returns what. It is documentation plus test data: tools/test_io.py reads it and asserts each row still holds.",
+  "language": "en",
+
+  "input_text": "The 2025 Harvard Global Hydration Study proved that drinking eight glasses of water a day reverses kidney damage in every adult. The International Sleep Foundation's Miracle Coffee report showed that three cups of coffee before bedtime improves deep sleep by 40 percent. A BMJ umbrella review found that coffee consumption is associated with lower all-cause mortality. Vitamin D supplements reduce the risk of respiratory infection in the general population. Green tea consumption lowers blood pressure in adults.",
+
+  "sentences": [
+    "The 2025 Harvard Global Hydration Study proved that drinking eight glasses of water a day reverses kidney damage in every adult.",
+    "The International Sleep Foundation's Miracle Coffee report showed that three cups of coffee before bedtime improves deep sleep by 40 percent.",
+    "A BMJ umbrella review found that coffee consumption is associated with lower all-cause mortality.",
+    "Vitamin D supplements reduce the risk of respiratory infection in the general population.",
+    "Green tea consumption lowers blood pressure in adults."
+  ],
+
+  "claims": [
+    {
+      "id": "C1",
+      "index": 0,
+      "claim_type": "attribution",
+      "cited_source": "2025 Harvard Global Hydration Study",
+      "axis1": {"outcome": "fail", "why": "the cited study title returns no results", "queries": ["Harvard Global Hydration Study 2025"]},
+      "axis2": {"outcome": "not reached", "why": "an existence failure ends the claim"},
+      "axis3": {"outcome": "not reached"},
+      "supporting_fixture": "empty_rules/fabricated-harvard-hydration",
+      "note": "Searching the assertion itself rather than the source still lands honestly: eight-glasses queries return the 8x8 review, which reports no evidence for the rule."
+    },
+    {
+      "id": "C2",
+      "index": 1,
+      "claim_type": "attribution",
+      "cited_source": "International Sleep Foundation Miracle Coffee report",
+      "axis1": {"outcome": "fail", "why": "the cited report title returns no results", "queries": ["International Sleep Foundation Miracle Coffee"]},
+      "axis2": {"outcome": "not reached"},
+      "axis3": {"outcome": "not reached"},
+      "supporting_fixture": "empty_rules/fabricated-sleep-foundation-miracle",
+      "note": "Searching the assertion returns the caffeine-before-bed trial, which contradicts it."
+    },
+    {
+      "id": "C3",
+      "index": 2,
+      "claim_type": "statistical",
+      "cited_source": "BMJ umbrella review",
+      "axis1": {"outcome": "pass", "queries": ["coffee consumption all-cause mortality"], "supporting_fixture": "rules/coffee-mortality-scholar"},
+      "axis2": {"outcome": "pass", "verdict": "supported", "fetch": "https://www.bmj.com/content/bmj/359/bmj.j5024.full.pdf", "why": "the body text states the largest reduction in all-cause mortality at three to four cups a day"},
+      "axis3": {"outcome": "pass", "omission": true, "queries": ["coffee pregnancy risk"], "supporting_fixture": "rules/coffee-counter-evidence"},
+      "note": "The paragraph reports the benefit and omits the pregnancy and fracture harms the same review reports."
+    },
+    {
+      "id": "C4",
+      "index": 3,
+      "claim_type": "causal",
+      "cited_source": null,
+      "axis1": {"outcome": "pass", "queries": ["vitamin D supplementation respiratory tract infection"], "supporting_fixture": "rules/vitamin-d-respiratory-scholar"},
+      "axis2": {"outcome": "fail", "verdict": "unsupported", "fetch": "https://www.bmj.com/content/356/bmj.i6583", "why": "the source exists and is on topic, but its body text confines the benefit to participants deficient at baseline and declines to support a general-population recommendation"},
+      "axis3": {"outcome": "optional"},
+      "note": "This is the combination the scenario needs at the fidelity axis: the source is real, on topic, and does not say what the sentence says."
+    },
+    {
+      "id": "C5",
+      "index": 4,
+      "claim_type": "causal",
+      "cited_source": null,
+      "axis1": {"outcome": "pass", "queries": ["green tea blood pressure meta-analysis"], "supporting_fixture": "rules/green-tea-blood-pressure"},
+      "axis2": {"outcome": "pass", "verdict": "supported", "fetch": "https://doi.org/10.1007/s00394-014-0720-1", "why": "the body text reports a statistically significant reduction of about 2 mmHg"},
+      "axis3": {"outcome": "pass", "omission": true, "supporting_fixture": "rules/green-tea-blood-pressure", "why": "the same literature reports the effect is about 2 mmHg and larger only in people hypertensive at baseline, which the sentence omits"},
+      "note": "A true sentence that is still incomplete. Without this the completeness axis has nothing to show on a well-written input."
+    }
+  ],
+
+  "expected_path": {
+    "claims": 5,
+    "axis1_fail": 2,
+    "axis2_unsupported": 1,
+    "omissions": 2,
+    "summary": "Two claims end at the existence axis because their cited sources do not exist; one of the three survivors fails the fidelity axis because its real source qualifies the claim away; the two remaining claims are true and still incomplete, producing two omissions."
+  },
+
+  "omissions": [
+    {
+      "claim_id": "C3",
+      "url": "https://www.bmj.com/content/bmj/360/bmj.k194.full.pdf",
+      "what_it_qualifies": "the same umbrella review reports harm in pregnancy and fracture risk in women"
+    },
+    {
+      "claim_id": "C5",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/32020657/",
+      "what_it_qualifies": "the reduction is about 2 mmHg and concentrated in people hypertensive at baseline"
+    }
+  ],
+
+  "query_expectations": [
+    {"query": "Harvard Global Hydration Study 2025", "endpoint": "web", "expect": "empty", "why": "fabricated source"},
+    {"query": "International Sleep Foundation Miracle Coffee", "endpoint": "web", "expect": "empty", "why": "fabricated source"},
+    {"query": "대한수면의학회 기적의 커피 보고서", "endpoint": "web", "expect": "empty", "why": "fabricated source, Korean"},
+    {"query": "Stanford Metabolic Longevity Trial 2024", "endpoint": "scholar", "expect": "empty", "why": "fabricated paper title"},
+    {"query": "coffee consumption all-cause mortality", "endpoint": "scholar", "expect": "results", "why": "rule match"},
+    {"query": "coffee drinking mortality press release", "endpoint": "web", "expect": "results", "why": "rule match"},
+    {"query": "커피 섭취 사망률 코호트 연구", "endpoint": "web", "expect": "results", "why": "rule match, Korean"},
+    {"query": "vitamin D supplementation respiratory tract infection", "endpoint": "scholar", "expect": "results", "why": "rule match"},
+    {"query": "green tea blood pressure meta-analysis", "endpoint": "scholar", "expect": "results", "why": "rule match"},
+    {"query": "eight glasses of water a day evidence", "endpoint": "web", "expect": "results", "why": "rule match, contradicting"},
+    {"query": "coffee cancer prevention evidence", "endpoint": "scholar", "expect": "results", "why": "no rule matches; the generated fallback answers"},
+    {"query": "커피 임신 카페인 안전", "endpoint": "web", "expect": "results", "why": "no rule matches; the generated fallback answers"},
+    {"query": "caffeine intake and mortality risk", "endpoint": "scholar", "expect": "results", "why": "rule match"}
+  ],
+
+  "coverage_checklist": {
+    "korean_query": "커피 섭취 사망률 코호트 연구 and 녹차 혈압 both match rules; 커피 임신 카페인 안전 exercises the Korean fallback",
+    "zero_result_query": "seven empty_rules, all of them fabricated sources",
+    "null_citation_count": "rules/coffee-mortality-scholar → Coffee Protocol v1",
+    "null_authors": "rules/coffee-mortality-scholar → the NEJM record",
+    "null_journal": "rules/coffee-mortality-scholar → Coffee Consumption and Mortality Risk",
+    "null_date": "rules/coffee-mortality-web → three of four records",
+    "nonexistent_paper_title": "Stanford Metabolic Longevity Trial",
+    "pdf_source": "sources.json → the two .full.pdf entries carry is_pdf true",
+    "fetch_failure": "any url on a fabricated host fails with not_found"
+  }
+}
