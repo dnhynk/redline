@@ -1183,10 +1183,16 @@
     shown = Math.max(0, Math.min(shown, state.timebox));
     var frac = state.timebox > 0 ? shown / state.timebox : 0;
     if (state.done) frac = 1;
-    var fill = $("#sb-fill");
-    if (fill) fill.style.transform = "scaleX(" + frac.toFixed(4) + ")";
-    var gauge = $("#sb-gauge");
-    if (gauge) gauge.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
+    // 상태 이벤트와 타이머가 같은 구간에서 겹쳐 들어온다. 눈에 보이는 만큼
+    // 값이 움직였을 때만 쓴다 — 같은 값을 다시 써서 전환을 또 돌릴 이유가 없다.
+    var tick = String(Math.round(frac * 1000));
+    if (band.dataset.tick !== tick) {
+      band.dataset.tick = tick;
+      var fill = $("#sb-fill");
+      if (fill) fill.style.transform = "scaleX(" + frac.toFixed(4) + ")";
+      var gauge = $("#sb-gauge");
+      if (gauge) gauge.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
+    }
     setText($("#sb-elapsed"), String(Math.round(shown)));
     setText($("#sb-timebox"), String(Math.round(state.timebox)));
 
@@ -1606,9 +1612,10 @@
     panel.classList.remove("is-entering");
   }
 
-  // 단계 1~3 은 문장, 4 는 반박, 5(종결)는 최종 보고.
+  // 단계 1~3 은 문장, 4 는 반박. 종결에서는 탭을 옮기지 않는다 —
+  // 결과는 위 띠가 이미 말하고 있고, 읽던 자리를 그 순간에 뺏지 않는다.
   function tabForStage(stage) {
-    return stage >= 5 ? 3 : stage >= 4 ? 1 : 0;
+    return stage >= 4 ? 1 : 0;
   }
 
   // 대기 화면은 검사 과정 밴드로 마감된다 — 무대는 런이 시작될 때 올라온다
@@ -1638,7 +1645,8 @@
   // 자동 따라가기가 탭을 옮긴다. 이탈한 사용자의 탭은 뺏지 않는다 —
   // 여기 오는 것은 state.following 이 참일 때뿐이다.
   function goToStage(stage) {
-    if (stage < 1) return;
+    // 종결은 탭을 건드리지 않는다. 여기서 패널을 숨기면 돌던 여백 부호가 끊긴다.
+    if (stage < 1 || stage >= 5) return;
     selectTab(tabForStage(stage));
     scrollToTabs(stage);
   }

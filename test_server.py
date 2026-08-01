@@ -769,8 +769,11 @@ def test_the_tabs_are_sheets_not_pills():
 def test_a_resting_tab_reads_as_something_you_can_press():
     """처음 쓰는 사람은 누를 수 있는지 알아야 한다."""
     rest = _balanced(CSS, CSS.index("{", CSS.index("\n.tab {")))
-    assert "border:" in rest and "cursor: pointer" in rest, "쉬는 탭에 테두리가 없다"
-    assert "background:" in rest, "쉬는 탭이 바탕 없이 글자만이다"
+    assert "cursor: pointer" in rest
+    border = re.search(r"border:\s*([^;]+);", rest)
+    assert border and border.group(1).strip() not in ("0", "none"), "쉬는 탭에 테두리가 없다"
+    bg = re.search(r"background(?:-color)?:\s*([^;]+);", rest)
+    assert bg and bg.group(1).strip() not in ("none", "transparent"), "쉬는 탭이 바탕 없이 글자만이다"
     assert ".tab:focus-visible" in CSS
     assert ':not([aria-selected="true"]):hover' in CSS, "hover 반응이 없다"
     assert ':not([aria-selected="true"]):active' in CSS, "누름 반응이 없다"
@@ -852,6 +855,37 @@ def test_the_recommendations_live_in_one_place():
     assert "fixbox" not in JS, "최종 보고가 추천 절을 아직 그린다"
     assert "return { report: html, fixes: fixes };" in block
     assert "paintFixes" in JS and "#fix-list" in JS
+
+
+def test_the_sentence_rows_arrive_in_order_within_a_bounded_window():
+    """문장이 한꺼번에 쌓이면 툭 끊긴다. 행이 많아도 마지막이 늦지 않아야 한다."""
+    step = int(re.search(r"var ROW_STEP_MS = (\d+);", JS).group(1))
+    window = int(re.search(r"var ROW_WINDOW_MS = (\d+);", JS).group(1))
+    assert step <= 40, "행 간격이 카드만큼 느리다"
+    assert window <= 400, "창이 길면 마지막 행이 읽을 사람보다 늦는다"
+    for count in (1, 5, 23, 80):
+        gap = min(step, window / (count - 1)) if count > 1 else 0
+        assert round(gap * (count - 1)) <= window, count
+    block = JS.split("function ensureRows(")[1].split("\n  }")[0]
+    assert "ROW_STEP_MS" in block and "fireOnce" in block
+
+
+def test_the_run_never_takes_the_tab_at_the_end():
+    """종결에서 패널을 숨기면 돌던 여백 부호가 끊긴다. 결과는 위 띠가 이미 말한다."""
+    block = JS.split("function goToStage(")[1].split("\n  }")[0]
+    assert "stage >= 5" in block and "return" in block, "종결에서도 탭을 옮긴다"
+    stages = JS.split("function tabForStage(")[1].split("\n  }")[0]
+    assert "3" not in stages, "종결 탭으로 자동 전환한다"
+
+
+def test_the_follow_button_is_gone():
+    """탭이 생기면서 존재 이유가 사라졌다 — 보고 싶은 탭을 그냥 누르면 된다."""
+    for name, text in (("index", INDEX), ("css", CSS), ("js", JS)):
+        assert "follow-run" not in text, f"{name} 에 따라가기 버튼이 남아 있다"
+        assert "진행 따라가기" not in text, name
+    # 자동 전환을 멈추는 동작 자체는 남는다
+    block = JS.split("function detach(")[1].split("\n  }")[0]
+    assert "state.following = false" in block
 
 
 def test_the_stage_rail_moves_tabs_not_the_scrollbar():
