@@ -56,6 +56,14 @@ SENTENCE_KINDS = (
 STRUCTURAL_KINDS = frozenset({"heading", "table_header", "code_fence", "divider"})
 
 CLAIM_TYPES = ("statistical", "causal", "attribution", "definitional", "normative")
+INPUT_KINDS = (
+    "ai_answer",
+    "research_report",
+    "academic_paragraph",
+    "news_or_blog",
+    "opinion_or_creative",
+    "unknown",
+)
 OUTCOMES = ("pass", "fail", "skip", "undecidable")
 AXES = (1, 2, 3)
 VERDICTS = (
@@ -100,7 +108,10 @@ MIN_ANCHOR_CHARS = 3
 CATALOG_MAX = 20
 
 # 화면의 %가 무엇인지 — 반환값에 그대로 실어 모델·시청자가 오독하지 않게 한다.
-SCORE_MEANS = "확보한 지지 근거의 양(진실 확률 아님)"
+# ★ 이 수는 축별 outcome이 정해진 폭만큼 움직이는 **단계 점수**다. 인용 증거가 1건이든
+# 10건이든 같은 outcome이면 같은 폭으로 움직인다 — 그러니 "근거의 양"이라고 부르면 안 된다.
+# 실제 근거의 양은 `evidence_count`·`fetched_source_count`로 따로 센다.
+SCORE_MEANS = "호스트 규칙이 정한 단계 점수 — 축별 판정이 정해진 폭만큼 움직인다. 진실 확률도, 근거 개수도 아니다"
 
 
 # ── 자료구조 ─────────────────────────────────────────────────────────────────
@@ -161,6 +172,9 @@ _QUOTE_RE = re.compile(r"^\s{0,3}>+\s?")
 _BULLET_RE = re.compile(
     r"^\s*(?:[-*+•‣·]|\d{1,2}[.)]|\(\d{1,2}\)|[a-zA-Z][.)])\s+"
 )
+# ISO 639-1 두 글자(+선택 지역 태그). 형식 검증은 호스트 몫이다 — strict 스키마는
+# pattern·minLength 같은 키워드를 지원하지 않아 모델 스키마에 넣을 수 없다.
+_LANG_RE = re.compile(r"^[A-Za-z]{2}(?:[-_][A-Za-z0-9]{2,8})?$")
 _TERMINAL_PUNCT = ".!?。！？…"
 _SENT_SPLIT_RE = re.compile(r"(?<=[.!?。！？…])[\"'”’」』)\]]*\s+")
 
@@ -702,28 +716,74 @@ class Audit:
         sentence_count: int,
         rationale: str,
     ) -> dict:
+        if input_kind not in INPUT_KINDS:
+            return _fail(
+                f"input_kind '{input_kind}'은 허용되지 않는다.", allowed_input_kinds=list(INPUT_KINDS)
+            )
+        if not _LANG_RE.match((lang or "").strip()):
+            return _fail(
+                f"lang '{lang}'은 ISO 639-1 형식이 아니다 — 'ko'·'en'처럼 두 글자로 적어라.",
+                example=["ko", "en", "ja"],
+            )
+        if int(sentence_count) < 0:
+            return _fail(f"sentence_count는 0 이상이어야 한다(받은 값 {sentence_count}).")
+        if not (rationale or "").strip():
+            return _fail("rationale이 비어 있다 — 이 분류의 근거를 한 문장으로 적어라.")
+
+        decision = {"input_kind": input_kind, "lang": lang.strip(), "auditable": bool(auditable)}
+        previous = self.classification
+        if previous is not None:
+            already = {k: previous[k] for k in decision}
+            if already == decision:
+                # 같은 분류를 다시 보낸 것은 무해하다 — 상태를 바꾸지 않고 그대로 확인해 준다.
+                return self._classification_reply(
+                    warning="이미 같은 분류가 기록돼 있다 — 상태는 바뀌지 않았다.", recorded=False
+                )
+            if self.claims:
+                return _fail(
+                    "클레임이 이미 등록된 뒤에는 분류를 바꿀 수 없다 — 등록된 클레임의 전제가 "
+                    "무너진다. 개별 주장의 성격은 record_claim의 claim_type으로 말하라.",
+                    recorded_classification=already,
+                    claims_recorded=len(self.claims),
+                )
+            if already["auditable"] != decision["auditable"]:
+                return _fail(
+                    "감사 가능 여부를 뒤집을 수 없다 — 첫 결정이 화면의 첫 이벤트로 이미 나갔다.",
+                    recorded_classification=already,
+                )
+
         self.classification = {
-            "input_kind": input_kind,
-            "lang": lang,
-            "auditable": bool(auditable),
+            **decision,
             "sentence_count_model": int(sentence_count),
             "sentence_count_host": len(self.sentences),
             "rationale": rationale,
         }
         if not auditable:
             self.status = "non_auditable"
-        claimable = self.claimable_indices()
         warning = None
         if int(sentence_count) != len(self.sentences):
             warning = (
                 f"네가 센 문장 수({sentence_count})와 호스트 분할({len(self.sentences)})이 다르다. "
                 "호스트 좌표가 정본이니 host_sentences의 index를 써라."
             )
+        if input_kind == "opinion_or_creative" and auditable:
+            # 막지는 않는다 — 사설·칼럼에도 검증 가능한 통계가 섞인다. 다만 그 조합을
+            # 골랐다는 사실은 알려준다.
+            note = (
+                "input_kind가 opinion_or_creative인데 감사 가능으로 분류했다 — 사실 주장이 "
+                "실제로 있으면 그대로 진행하고, 가치명제뿐이면 auditable=false가 맞다."
+            )
+            warning = f"{warning} {note}" if warning else note
+        return self._classification_reply(warning=warning)
+
+    def _classification_reply(self, *, warning: str | None, recorded: bool = True) -> dict:
+        claimable = self.claimable_indices()
+        auditable = bool((self.classification or {}).get("auditable"))
         return {
             "ok": True,
             "error": None,
             "data": {
-                "recorded": True,
+                "recorded": recorded,
                 "classification": self.classification,
                 "host_sentences": self.host_sentences(),
                 "host_sentence_count": len(self.sentences),
@@ -754,6 +814,37 @@ class Audit:
                 f"claim_type '{claim_type}'은 허용되지 않는다.",
                 allowed_claim_types=list(CLAIM_TYPES),
             )
+        if claim_type == "normative" and auditable:
+            return _fail(
+                "normative(가치·당위 주장)는 참·거짓을 물을 수 없으므로 auditable=false로 등록한다. "
+                "참·거짓을 물을 수 있는 주장이면 claim_type을 사실 유형으로 고쳐라.",
+                allowed_claim_types=[t for t in CLAIM_TYPES if t != "normative"],
+            )
+        duplicate = self._find_duplicate_claim(index, text, claim_type)
+        if duplicate is not None:
+            # 같은 문장·같은 텍스트·같은 유형은 같은 주장이다. 상한을 먹이지 않고 기존 id를
+            # 돌려준다 — 지금까지 이것이 접혔던 것은 호스트 제약이 아니라 모델 행동이었다.
+            return {
+                "ok": True,
+                "error": None,
+                "data": {
+                    "recorded": False,
+                    "duplicate_of": duplicate["id"],
+                    "claim_id": duplicate["id"],
+                    "index": duplicate["index"],
+                    "sentence": self.sentences[duplicate["index"]],
+                    "sentence_kind": self.sentence_kinds[duplicate["index"]],
+                    "auditable": duplicate["auditable"],
+                    "claims_recorded": len(self.claims),
+                    "claims_remaining": max(0, self.max_claims - len(self.claims)),
+                    "expected_next_axis": self.expected_next_axis(duplicate),
+                    "next_action": (
+                        f"이미 {duplicate['id']}로 등록된 주장이다 — 상한은 소모되지 않았다. "
+                        "새로 등록하지 말고 그 id로 판정을 이어가라."
+                    ),
+                    "warning": "같은 주장을 다시 등록하려 했다 — 클레임 예산은 서로 다른 주장에 써라.",
+                },
+            }
         if len(self.claims) >= self.max_claims:
             return _fail(
                 f"클레임 상한 {self.max_claims}개를 이미 채웠다. 새 클레임 대신 등록된 클레임의 판정을 마무리하라.",
@@ -864,6 +955,17 @@ class Audit:
             },
         }
 
+    def _find_duplicate_claim(self, index: int, text: str, claim_type: str) -> Claim | None:
+        key = normalize_for_match(text)
+        for c in self.claims:
+            if (
+                c["index"] == index
+                and c["claim_type"] == claim_type
+                and normalize_for_match(c["text"]) == key
+            ):
+                return c
+        return None
+
     def get_claim(self, claim_id: str) -> Claim | None:
         for c in self.claims:
             if c["id"] == claim_id:
@@ -950,6 +1052,23 @@ class Audit:
                 available_evidence=self.evidence_catalog(),
                 evidence_total=len(self.evidence),
             )
+        if outcome == "fail" and axis in (2, 3) and not known_ids:
+            # 축2 fail은 "출처와 대조했다", 축3 fail은 "반대 자료를 찾았다"는 사건이다 —
+            # 둘 다 본 것이 있어야 성립한다. 부재의 주장은 축1 fail 하나뿐이다.
+            what = "출처와 대조한 근거" if axis == 2 else "찾아낸 반대·한정 자료"
+            return _fail(
+                f"축{axis} fail은 {what}의 evidence_ids가 최소 1개 필요하다. "
+                "접근하지 못했으면 undecidable, 출처 자체를 못 찾았으면 축1 fail로 기록하라 — "
+                "본 것 없이 내리는 부정 판정은 감사가 아니다."
+                + ("" if self.evidence else " 아직 원장이 비어 있다 — 먼저 검색을 호출하라."),
+                available_evidence=self.evidence_catalog(),
+                evidence_total=len(self.evidence),
+            )
+        if not (evidence or "").strip():
+            return _fail(
+                "evidence(판정 근거 한 문장)가 비어 있다 — 이 문장은 시청자가 읽는 글이다. "
+                "무엇을 보고 그렇게 판단했는지 한 문장으로 적어라."
+            )
 
         confidence_before = claim["confidence"]
         raw = axis_delta(axis, outcome)
@@ -1011,8 +1130,11 @@ class Audit:
                 "confidence_before": confidence_before,
                 "confidence_after": claim["confidence"],
                 "delta": round(claim["confidence"] - confidence_before, 6),
-                "evidence_score_before": confidence_before,
-                "evidence_score_after": claim["confidence"],
+                "stage_score_before": confidence_before,
+                "stage_score_after": claim["confidence"],
+                # 실제로 확보한 근거의 양은 점수가 아니라 이 두 수다.
+                "evidence_count": len(self.cited_evidence_ids(claim)),
+                "fetched_source_count": self.fetched_evidence_count(claim),
                 "score_means": SCORE_MEANS,
                 "verdict": claim["verdict"],
                 "axis_chain": [r["axis"] for r in claim["axis_results"]],
@@ -1029,10 +1151,28 @@ class Audit:
         }
 
     def record_omission(self, *, claim_id: str, evidence_id: str, summary: str) -> dict:
-        if self.get_claim(claim_id) is None:
+        claim = self.get_claim(claim_id)
+        if claim is None:
             return _fail(
                 f"모르는 claim_id '{claim_id}'다.",
                 known_claim_ids=[c["id"] for c in self.claims],
+            )
+        if not claim["auditable"]:
+            return _fail(
+                f"{claim_id}은 의견·권고로 등록된 클레임이다 — 사실 판정 대상이 아니므로 "
+                "반박 문헌도 붙지 않는다.",
+                known_claim_ids=[c["id"] for c in self.claims if c["auditable"]],
+            )
+        if any(r["axis"] == 1 and r["outcome"] == "fail" for r in claim["axis_results"]):
+            return _fail(
+                f"{claim_id}은 축1 확인 실패로 종결된 클레임이다 — 출처를 확인하지 못한 주장에 "
+                "'이 글이 언급하지 않은 반대 문헌'을 붙이는 것은 성립하지 않는다.",
+                claim_terminal=True,
+            )
+        if not (summary or "").strip():
+            return _fail(
+                "summary가 비어 있다 — 이 문헌이 무엇을 반박하거나 한정하는지 한 문장으로 적어라. "
+                "그 문장이 반박 패널에 그대로 표시된다."
             )
         known, unknown = self._resolve_evidence([evidence_id])
         if unknown or not known:
@@ -1061,6 +1201,14 @@ class Audit:
             "summary": summary,
         }
         self.omissions.append(omission)
+        warning = None
+        if rec["stance"] != "challenge":
+            # 확증 검색에서 우연히 나온 반대 자료도 실재하는 자료다 — 막지 않는다.
+            # 다만 반증 검색이 데려온 것과 같은 무게로 세지는 않는다.
+            warning = (
+                f"{eid}는 확증(support) 검색에서 나온 자료다 — 반박 자료로 쓸 수는 있지만 "
+                "반증 검색이 찾아낸 것과 같지 않다. 이 클레임의 반증 검색을 따로 발사하라."
+            )
         return {
             "ok": True,
             "error": None,
@@ -1068,7 +1216,9 @@ class Audit:
                 "recorded": True,
                 "omission": omission,
                 "omission_count": len(self.omissions),
-                "warning": None,
+                "evidence_stance": rec["stance"],
+                "stance_mismatch": rec["stance"] != "challenge",
+                "warning": warning,
             },
         }
 
