@@ -1873,6 +1873,15 @@
       var area = $("#input-text");
       if (area) {
         area.addEventListener("input", paintInputCount);
+        // 칸을 누른 순간이 곧 쓰겠다는 뜻이다 — 예시를 치우고 자리를 비워 준다.
+        // 비운 채로 떠나면 다시 비쳐 보인다.
+        var sample = area.getAttribute("placeholder") || "";
+        area.addEventListener("focus", function () {
+          area.setAttribute("placeholder", "");
+        });
+        area.addEventListener("blur", function () {
+          if (!area.value) area.setAttribute("placeholder", sample);
+        });
         paintInputCount();
       }
       $("#intake-open").addEventListener("click", function () {
