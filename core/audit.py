@@ -884,6 +884,7 @@ class Audit:
                     "auditable": duplicate["auditable"],
                     "claims_recorded": len(self.claims),
                     "claims_remaining": max(0, self.max_claims - len(self.claims)),
+                    **self._selection_snapshot(),
                     "expected_next_axis": self.expected_next_axis(duplicate),
                     "next_action": (
                         f"이미 {duplicate['id']}로 등록된 주장이다 — 상한은 소모되지 않았다. "
@@ -989,6 +990,7 @@ class Audit:
                 "claims_at_index": at_index,
                 "claims_recorded": len(self.claims),
                 "claims_remaining": max(0, self.max_claims - len(self.claims)),
+                **self._selection_snapshot(),
                 "budget_per_claim": budget_per_claim,
                 "normalized_args": normalized_args,
                 "expected_next_axis": 1 if claim["auditable"] else None,
@@ -1000,6 +1002,18 @@ class Audit:
                 "note": note,
                 "warning": warning,
             },
+        }
+
+    def _selection_snapshot(self) -> dict:
+        """아직 무엇인지도 말하지 않은 문장이 몇 개 남았는가 — 기록 툴 반환에 실린다.
+
+        완주 게이트가 검사하는 것을 모델이 진행 중에 볼 수 있어야 한다. 종결 status 는
+        모델이 보지 못하므로, 이 수치가 없으면 게이트는 사후에만 존재하는 규칙이 된다.
+        """
+        left = self.unclassified_indices()
+        return {
+            "sentences_unclassified": len(left),
+            "unclassified_indices": left[:CANDIDATE_MAX],
         }
 
     def _find_duplicate_claim(self, index: int, text: str, claim_type: str) -> Claim | None:
@@ -1292,6 +1306,38 @@ class Audit:
         touched = {c["index"] for c in self.audited_claims()} & claimable
         return len(touched), len(claimable)
 
+    def classified_indices(self) -> set[int]:
+        """모델이 **무엇인지 말한** 감사 가능 문장 index.
+
+        클레임이 앵커된 문장이 여기 들어간다 — `auditable=true`(감사한다)든
+        `auditable=false`(사실 주장이 아니다)든 둘 다 "말했다"이다. 넘긴 것은 판단이지
+        침묵이 아니기 때문이다.
+
+        같은 문장이 원문에 반복되면 등록된 클레임의 앵커가 그 복사본에도 들어맞는다 —
+        그 복사본도 분류된 것으로 센다. 반복은 대표 1건만 등록하라는 것이 이 제품의
+        규율이고(프롬프트 §1), 규율을 지킨 런이 게이트에 걸리면 안 된다.
+        `record_claim`이 여러 문장에 걸치는 조각을 이미 거부하므로, 여러 문장에
+        들어맞는 앵커는 문장 전체를 옮겨 적은 반복뿐이다.
+        """
+        claimable = self.claimable_indices()
+        out = {c["index"] for c in self.claims if c["index"] in claimable}
+        remaining = claimable - out
+        if not remaining:
+            return out
+        needles = [n for n in (normalize_for_match(c["text"]) for c in self.claims) if n]
+        for i in remaining:
+            hay = normalize_for_match(self.sentences[i])
+            if hay and any(anchor_matches(n, hay) for n in needles):
+                out.add(i)
+        return out
+
+    def unclassified_indices(self) -> list[int]:
+        """아직 무엇인지도 말하지 않은 감사 가능 문장."""
+        return sorted(self.claimable_indices() - self.classified_indices())
+
+    def claim_cap_reached(self) -> bool:
+        return len(self.claims) >= self.max_claims
+
     def claims_by_index(self) -> dict[str, list[str]]:
         out: dict[str, list[str]] = {}
         for c in self.claims:
@@ -1362,15 +1408,44 @@ class Audit:
     def completion_report(self) -> dict:
         """완주 조건 판정 — `reason="complete"`의 유일한 근거.
 
-        감사 대상(auditable=true) 클레임만 본다. 가치명제의 pending은 부분 감사가 아니다.
+        판정 진행도만이 아니라 **선정 완전성**도 본다. 이 제품이 파는 문장은
+        "안 한 것을 한 것처럼 보이지 않는다"인데, 감사 가능 문장 4개 중 1개만 골라
+        그 하나를 끝까지 감사한 런에 완주를 주면 그 문장이 정면으로 깨진다 —
+        화면은 커버리지 1/4을 띄우면서 상태는 "감사 완료"가 된다.
+
+        감사 대상(auditable=true) 클레임만 **판정 조건**을 본다. 가치명제의 pending은
+        부분 감사가 아니다.
         """
         targets = [c for c in self.claims if c["auditable"]]
         pending = [c["id"] for c in targets if c["verdict"] == "pending"]
         axis3_done, axis3_expected, axis3_required = self.axis3_progress()
         challenge_queries, challenge_required = self.challenge_progress()
         paired_done, paired_expected, missing_pair = self.pair_progress()
+        unclassified = self.unclassified_indices()
+        cap_reached = self.claim_cap_reached()
+        # 상한에 실제로 걸린 런은 정직하게 그 사유로 끝난다. 상한이 남은 문장을 만든
+        # 것이지 모델이 넘긴 것이 아니므로 완주를 막지 않되, 걸렸다는 사실은 종결 회계에
+        # 그대로 남는다 — 이 두 가지는 함께 가야 한다. 하나만 하면 상한에 걸린 런이
+        # 영영 완주를 못 받거나, 안 본 문장이 조용히 사라진다.
+        limits_hit: list[str] = []
+        notes: list[str] = []
+        if cap_reached:
+            limits_hit.append("claim_cap")
         missing: list[str] = []
         if self.status != "non_auditable":
+            if unclassified and not cap_reached:
+                shown = ", ".join(str(i) for i in unclassified[:8])
+                more = "" if len(unclassified) <= 8 else " …"
+                missing.append(
+                    f"아직 무엇인지도 말하지 않은 문장이 {len(unclassified)}개 남았다"
+                    f"(index {shown}{more}) — 감사할 것은 auditable=true로, 사실 주장이 "
+                    "아닌 것은 auditable=false로 등록하라"
+                )
+            if cap_reached and unclassified:
+                notes.append(
+                    f"클레임 상한 {self.max_claims}개를 채워 문장 {len(unclassified)}개는 "
+                    "분류하지 못했다 — 최종 보고에 그 사실을 적어라."
+                )
             if missing_pair:
                 missing.append(
                     f"확증·반증 한 쌍이 서지 않은 클레임 {', '.join(missing_pair)}"
@@ -1396,11 +1471,18 @@ class Audit:
                     f"결과를 받아온 서로 다른 반증 검색이 {challenge_queries}회뿐이다"
                     f"(최소 {challenge_required}, 발사 {self.challenge_query_count()}회)"
                 )
+        covered, coverable = self.coverage()
         return {
             "complete": not missing,
             "missing_actions": missing,
+            "notes": notes,
+            "limits_hit": limits_hit,
             "claims_total": len(self.claims),
             "auditable_claims": len(targets),
+            "classified_sentences": len(self.classified_indices()),
+            "claimable_sentences": coverable,
+            "unclassified_sentences": unclassified,
+            "claim_cap_reached": cap_reached,
             "pending_claims": pending,
             "axis3_executed": axis3_done > 0,
             "axis3_done": axis3_done,

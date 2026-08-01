@@ -467,11 +467,24 @@ async def test_complete_requires_the_completion_gate():
         {"claim_id": "C1", "evidence_id": "E2", "summary": "섭취율 추정치를 낮게 잡은 자료다"},
         "t7",
     )
+    # 남은 문장을 "사실 주장 아님"으로 등록한다 — 아무 말도 남기지 않은 문장이 있으면
+    # 그 런은 완주가 아니다. 침묵과 판단은 다른 사건이다.
+    passed_over = _tool_call(
+        "record_claim",
+        {
+            "index": 0,
+            "text": "커피는 각성 효과가 있다",
+            "claim_type": "normative",
+            "auditable": False,
+            "cited_source": None,
+        },
+        "t3b",
+    )
     model = FakeModel(
         [
             [CLASSIFY],
             [SEARCH, CHALLENGE],
-            [CLAIM],
+            [CLAIM, passed_over],
             _pair_calls("C1", "성인 카페인 섭취율"),
             [AXIS1],
             [axis2],

@@ -204,6 +204,18 @@ def _claim(audit: Audit, index: int, text: str, **kw):
     return audit.record_claim(**args)
 
 
+def _cover_rest(audit: Audit) -> None:
+    """남은 감사 가능 문장을 '사실 주장 아님'으로 등록한다.
+
+    완주 게이트는 침묵을 완주로 세지 않는다 — 아무 말도 남기지 않은 문장이 있으면
+    그 런은 완주가 아니다. 정직한 런은 모든 문장에 대해 무엇인지 말한다.
+    """
+    for i in audit.unclassified_indices():
+        audit.record_claim(
+            index=i, text=audit.sentences[i], claim_type="normative", auditable=False
+        )
+
+
 def test_out_of_range_index_is_rejected_with_candidates():
     audit = _audit_two_sentences()
     out = _claim(audit, 99, "성인의 62%가 매일 마신다")
@@ -993,6 +1005,7 @@ def test_unsupported_rate_excludes_no_source():
 
 def test_completion_report_gates_on_pending_and_axis3():
     audit = _with_evidence()
+    _cover_rest(audit)
     assert audit.completion_report()["complete"] is False  # 미확정 클레임
     audit.update_verdict(claim_id="C1", axis=1, outcome="pass", evidence="e", evidence_ids=["E1"])
     audit.update_verdict(claim_id="C1", axis=2, outcome="pass", evidence="e", evidence_ids=["E1"])
@@ -1004,6 +1017,112 @@ def test_completion_report_gates_on_pending_and_axis3():
     assert audit.completion_report()["complete"] is False  # 누락 증거가 아직 0건이다
     audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
     assert audit.completion_report()["complete"] is True
+
+
+# ── 선정 완전성 (W2-1) ───────────────────────────────────────────────────────
+FOUR_AUDITABLE = (
+    "재택근무는 평균 생산성을 13% 높인다. "
+    "출퇴근 시간이 사라져 하루 여유가 늘어난다. "
+    "장기적으로는 협업 밀도가 15% 떨어진다. "
+    "결국 제도 설계가 결과를 가른다."
+)
+
+
+def _audit_one_of_four() -> Audit:
+    """감사 가능 문장 4개 중 1개만 골라 그 하나를 끝까지 감사한 런."""
+    audit = Audit(FOUR_AUDITABLE)
+    _claim(audit, 0, "재택근무는 평균 생산성을 13% 높인다")
+    _pair(audit, "C1", "재택근무 생산성")
+    audit.register_evidence(
+        tool="search_web", query="q", url="https://a.test", title="자료", stance="challenge"
+    )
+    for axis in (1, 2):
+        audit.update_verdict(
+            claim_id="C1", axis=axis, outcome="pass", evidence="근거", evidence_ids=["E1"]
+        )
+    audit.update_verdict(
+        claim_id="C1", axis=3, outcome="fail", evidence="반대 자료", evidence_ids=["E1"]
+    )
+    audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
+    return audit
+
+
+def test_covering_one_sentence_in_four_is_not_a_complete_audit():
+    """실측된 구멍 — 커버리지 1/4인데 complete 이 나왔다.
+
+    이 제품이 파는 문장은 "안 한 것을 한 것처럼 보이지 않는다"이다. 판정 진행도만 보는
+    게이트는 고른 하나를 완벽히 감사한 런과 글 전체를 감사한 런을 구분하지 못한다.
+    """
+    audit = _audit_one_of_four()
+    report = audit.completion_report()
+    assert report["complete"] is False
+    assert report["unclassified_sentences"] == [1, 2, 3]
+    assert report["classified_sentences"] == 1 and report["claimable_sentences"] == 4
+    assert "말하지 않은 문장" in report["missing_actions"][0]
+    assert audit.coverage() == (1, 4)
+
+
+def test_saying_a_sentence_is_not_a_claim_counts_as_saying_something():
+    """침묵과 판단은 다르다 — 넘긴 것은 판단이고, 그 판단은 등록으로 남는다."""
+    audit = _audit_one_of_four()
+    _cover_rest(audit)
+    report = audit.completion_report()
+    assert report["complete"] is True
+    assert report["unclassified_sentences"] == []
+    assert report["auditable_claims"] == 1  # 넘긴 셋은 감사 대상이 아니다
+
+
+def test_an_auditable_sentence_must_be_carried_to_a_verdict():
+    """모델이 스스로 감사하겠다고 한 문장은 판정까지 가야 한다."""
+    audit = _audit_one_of_four()
+    _claim(audit, 1, "출퇴근 시간이 사라져 하루 여유가 늘어난다")
+    audit.record_claim(
+        index=2, text=audit.sentences[2], claim_type="normative", auditable=False
+    )
+    audit.record_claim(
+        index=3, text=audit.sentences[3], claim_type="normative", auditable=False
+    )
+    report = audit.completion_report()
+    assert report["unclassified_sentences"] == []  # 전부 무엇인지는 말했다
+    assert report["complete"] is False
+    assert report["pending_claims"] == ["C2"]
+
+
+def test_the_claim_cap_ends_the_run_honestly_instead_of_blocking_it_forever():
+    """상한에 실제로 걸린 런은 그 사유로 정직하게 끝난다.
+
+    상한이 남은 문장을 만든 것이지 모델이 넘긴 것이 아니다 — 완주를 영영 막으면
+    긴 글은 구조적으로 완주할 수 없는 제품이 된다. 대신 걸렸다는 사실이 회계에 남는다.
+    """
+    audit = Audit(FOUR_AUDITABLE, max_claims=1)
+    _claim(audit, 0, "재택근무는 평균 생산성을 13% 높인다")
+    _pair(audit, "C1", "재택근무 생산성")
+    audit.register_evidence(
+        tool="search_web", query="q", url="https://a.test", title="자료", stance="challenge"
+    )
+    for axis in (1, 2):
+        audit.update_verdict(
+            claim_id="C1", axis=axis, outcome="pass", evidence="근거", evidence_ids=["E1"]
+        )
+    audit.update_verdict(
+        claim_id="C1", axis=3, outcome="fail", evidence="반대 자료", evidence_ids=["E1"]
+    )
+    audit.record_omission(claim_id="C1", evidence_id="E1", summary="이 자료가 주장을 한정한다")
+
+    report = audit.completion_report()
+    assert report["complete"] is True
+    assert report["claim_cap_reached"] is True
+    assert report["limits_hit"] == ["claim_cap"]
+    assert report["unclassified_sentences"] == [1, 2, 3]
+    # 걸렸다는 사실이 종결 회계에 남는다 — 조용히 사라지지 않는다.
+    assert any("상한" in note and "3개" in note for note in report["notes"])
+
+
+def test_a_repeated_sentence_is_covered_by_the_claim_that_represents_it():
+    """반복은 대표 1건만 등록하라는 것이 이 제품의 규율이다 — 규율을 지킨 런이 걸리면 안 된다."""
+    audit = Audit("재택근무는 생산성을 높인다. 다른 이야기가 여기 있다. 재택근무는 생산성을 높인다.")
+    _claim(audit, 0, "재택근무는 생산성을 높인다")
+    assert audit.unclassified_indices() == [1]
 
 
 def _audit_with_survivors(count: int, axis3_on: int) -> Audit:
@@ -1122,7 +1241,8 @@ def test_axis1_failed_claims_leave_the_axis3_denominator():
 def test_zero_omissions_is_not_a_complete_audit():
     """시그니처 산출물이 0건인 런을 완주라고 부르면 화면이 '찾아봤지만 없었다'고 단정한다."""
     audit = _with_evidence()
-    _challenge(audit, "커피 각성 효과 반박")
+    _cover_rest(audit)
+    _challenge(audit, "커피 각성 효과 반박", claim_id="C1")
     for axis in (1, 2, 3):
         audit.update_verdict(
             claim_id="C1", axis=axis, outcome="pass", evidence="검토했다", evidence_ids=["E1"]
@@ -1156,6 +1276,7 @@ def test_recorded_omission_counts_as_axis3_execution():
 def test_value_claim_pending_is_not_partial_audit():
     audit = _audit_two_sentences()
     _claim(audit, 0, "커피는 각성 효과가 있다", claim_type="normative", auditable=False)
+    _cover_rest(audit)
     report = audit.completion_report()
     assert report["auditable_claims"] == 0
     assert "감사 대상 클레임" in report["missing_actions"][0]
@@ -1163,7 +1284,8 @@ def test_value_claim_pending_is_not_partial_audit():
 
 def test_axis1_fail_only_run_can_still_complete():
     audit = _with_evidence()
-    _challenge(audit, "커피 각성 효과 반박")
+    _cover_rest(audit)
+    _challenge(audit, "커피 각성 효과 반박", claim_id="C1")
     audit.update_verdict(claim_id="C1", axis=1, outcome="fail", evidence="못 찾음", evidence_ids=[])
     assert audit.completion_report()["complete"] is True
 

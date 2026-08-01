@@ -172,6 +172,11 @@ def fallback_report(
         lines.append("### 이 글에 대한 반박")
         for o in audit.omissions:
             lines.append(f"- {o['title'] or o['url']} — {o['summary']}")
+    for note in completion.get("notes") or []:
+        # 상한에 걸려 못 본 문장 같은 사실은 완주 런에도 남아야 한다 — 사유가 `complete`라고
+        # 해서 안 본 것이 없어지지는 않는다.
+        lines.append("")
+        lines.append(note)
     if reason in PARTIAL_REASONS:
         detail = ", ".join(completion.get("missing_actions") or []) or "시간 예산이 끝났다"
         lines.append("")
@@ -310,6 +315,11 @@ async def run_audit(
     elif reason in ("timebox", "max_turns") and ctx.non_auditable:
         # 분류가 감사 불가로 끝났으면 남은 시간은 잘린 것이 아니다.
         reason = "non_auditable"
+
+    if reason in ("timebox", "max_turns"):
+        # 무엇이 이 런을 잘랐는지는 코어가 알 수 없다 — 시계와 턴은 여기서만 보인다.
+        # 상한 목록을 한곳에 모아 두면 화면과 보고가 "왜 여기서 끝났는가"를 한 번에 읽는다.
+        completion["limits_hit"] = [*completion.get("limits_hit", []), reason]
 
     if reason == "complete":
         audit.status = "complete"
