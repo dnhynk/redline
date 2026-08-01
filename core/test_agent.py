@@ -654,6 +654,66 @@ async def test_run_whose_searches_all_failed_is_not_complete(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_is_refused_after_the_cutoff():
+    """컷오프는 봉투에 싣기만 하는 보고가 아니라 호스트가 집행하는 규칙이다."""
+    from agents.tool_context import ToolContext
+
+    now = [0.0]
+    ctx = _ctx(timebox_s=3.0, clock=lambda: now[0])
+    tool = [t for t in ALL_TOOLS if t.name == "fetch_source"][0]
+    args = json.dumps({"url": "https://a.test/doc", "max_chars": 2000})
+
+    def call_ctx() -> ToolContext:
+        return ToolContext(
+            context=ctx, tool_name="fetch_source", tool_call_id="f1", tool_arguments=args
+        )
+
+    allowed = await tool.on_invoke_tool(call_ctx(), args)
+    assert allowed["ok"] is True and ctx.tool_calls_used == 1
+
+    now[0] = 2.46  # 컷오프 1.8s를 지났다
+    refused = await tool.on_invoke_tool(call_ctx(), args)
+    assert refused["ok"] is False
+    assert "fetch" in refused["error"]
+    assert ctx.tool_calls_used == 1  # 거부된 호출은 예산을 깎지 않는다
+    assert ctx.fetch_calls_used == 1
+    assert ctx.tool_calls_refused == 1
+    assert refused["budget"]["fetch_allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_repeated_identical_records_do_not_spam_the_relay():
+    """같은 판정을 다시 기록한 호출은 상태를 바꾸지 않는다 — 스냅샷을 또 밀어내지 않는다."""
+    repeat = _verdict_call("C1", 1, "undecidable")
+    model = FakeModel([[CLASSIFY], [SEARCH], [CLAIM], [repeat] * 20, [_message("끝")]])
+    events = await _collect(model, timebox_s=20)
+    status = _last_status(events)
+    audit_events = [e for e in events if e["kind"] == "audit"]
+
+    assert status["audit_events_suppressed"] >= 15
+    assert len(audit_events) <= 6  # 분류·클레임·첫 판정 정도만 남는다
+    assert status["audit"]["claims"][0]["axis_results"][0]["outcome"] == "undecidable"
+
+
+@pytest.mark.asyncio
+async def test_error_run_does_not_look_like_a_finished_audit():
+    class BrokenModel(FakeModel):
+        async def stream_response(self, *args, **kwargs):
+            raise RuntimeError("provider exploded: missing credentials")
+            yield  # pragma: no cover - 제너레이터로 만들기 위한 줄
+
+    status = _last_status(await _collect(BrokenModel([]), timebox_s=20))
+    assert status["reason"] == "error"
+    assert status["audit"]["status"] == "error"  # "완결된 부분 결과"로 위장하지 않는다
+    assert status["partial"] is False
+    assert "provider exploded" in status["error"]  # 원문은 재현용으로 남는다
+    assert status["error_display"] and "provider exploded" not in status["error_display"]
+    # 시작도 못 한 런에 감사 수치를 찍지 않는다.
+    assert "커버리지" not in status["final_report"]
+    assert "뒷받침 안 됨" not in status["final_report"]
+
+
+@pytest.mark.asyncio
 async def test_network_cap_refuses_the_call_but_not_the_run():
     model = FakeModel([[CLASSIFY], [SEARCH, SEARCH], [CLAIM], [AXIS1], [_message("끝")]])
     events = await _collect(model, timebox_s=20, max_tool_calls=1)
