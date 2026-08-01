@@ -513,9 +513,16 @@ def test_motion_values_are_named_not_scattered():
              if not re.search(r"\b0m?s\b", d)]
     assert stray == [], f"규칙에 손으로 쓴 시간값: {stray}"
     tokens = _motion_tokens()
-    for name in ("--ease-ink", "--ease-pen", "--ease-settle", "--dur-press", "--dur-tint",
-                 "--dur-settle", "--dur-card", "--dur-stage", "--dur-reduced"):
+    for name in ("--ease-ink", "--ease-pen", "--ease-settle", "--ease-stage", "--dur-press",
+                 "--dur-tint", "--dur-settle", "--dur-card", "--dur-stage", "--dur-reduced"):
         assert name in tokens, name
+
+
+def test_the_quantity_bars_keep_a_plain_curve():
+    """양을 그리는 막대에 앞이 강한 곡선을 쓰면 제 값을 넘어 보인다."""
+    for selector, block in _rules(CSS):
+        if ".bar-fill" in selector or "axis-cell" in selector:
+            assert "--ease-stage" not in block, f"수치 막대에 단계 곡선: {selector.strip()}"
 
 
 def test_nothing_loops_forever():

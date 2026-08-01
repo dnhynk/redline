@@ -101,6 +101,11 @@
   --ease-ink: ease-out;
   --ease-pen: cubic-bezier(0.55, 0.06, 0.25, 1);
   --ease-settle: cubic-bezier(0.2, 0.7, 0.3, 1);
+  /* 단계가 넘어가는 순간에만 쓴다. 280ms 는 이 화면에서 가장 긴 시간이고 원고와
+     반박은 가장 큰 면이라, 내장 곡선으로는 넘어가는 것이 물러 보인다. 앞에서
+     대부분을 끝내고 길게 눕는 곡선이라 새 단계가 일찍 읽힌다. 수치를 그리는
+     막대에는 쓰지 않는다 — 양을 나타내는 것이 제 값을 넘어 보이면 안 된다. */
+  --ease-stage: cubic-bezier(0.23, 1, 0.32, 1);
 
   --dur-press: 160ms;
   --dur-tint: 180ms;
@@ -531,7 +536,7 @@ a {
   inset: -1px;
   z-index: -1;
   pointer-events: none;
-  transition: opacity var(--dur-stage) var(--ease-ink);
+  transition: opacity var(--dur-stage) var(--ease-stage);
 }
 .rebut::before,
 .rebut::after {
@@ -560,7 +565,8 @@ a {
 
 .galley {
   padding: 30px 34px 0;
-  transition: opacity var(--dur-stage) var(--ease-ink), transform var(--dur-stage) var(--ease-ink);
+  transition: opacity var(--dur-stage) var(--ease-stage),
+    transform var(--dur-stage) var(--ease-stage);
 }
 .galley.is-receded {
   opacity: 0.42;
@@ -1093,7 +1099,8 @@ a {
   margin-top: 34px;
   padding: 30px 36px 34px;
   border-top: 4px solid var(--rebut-line);
-  transition: opacity var(--dur-stage) var(--ease-ink), transform var(--dur-stage) var(--ease-ink);
+  transition: opacity var(--dur-stage) var(--ease-stage),
+    transform var(--dur-stage) var(--ease-stage);
 }
 .rebut.is-focus {
   transform: translateY(var(--stage-lift));
