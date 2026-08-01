@@ -36,7 +36,7 @@ MAIN_IDS = [
     "stage-rail", "phase-badge", "galley", "sentences", "unsupported-rate", "no-source-count",
     "coverage", "claim-count", "axis", "evidence-summary", "omissions-section", "omissions",
     "terminal-summary", "terminal-title", "terminal-reason", "terminal-coverage", "missing-actions",
-    "final-report", "terminal-note", "error-detail", "follow-run", "source-banner", "intake",
+    "final-report", "terminal-note", "error-detail", "source-banner", "intake",
     "intake-process",
     "status-band", "sb-gauge", "sb-fill", "sb-elapsed", "sb-timebox",
     "intake-open", "run-form", "input-text", "run-button", "form-error", "connection-label",

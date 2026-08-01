@@ -1712,12 +1712,12 @@
     scrollTimer = null;
   }
 
+  // 사용자가 직접 고르면 자동 전환을 멈춘다. 되돌리는 버튼은 두지 않는다 —
+  // 보고 싶은 탭을 그냥 누르면 된다.
   function detach() {
     if (!state.following) return;
     state.following = false;
     cancelScroll();
-    var button = $("#follow-run");
-    if (button) button.hidden = false;
   }
 
   // ================================================================ 프로젝터
@@ -1979,11 +1979,6 @@
           area.focus();
         }
       });
-      $("#follow-run").addEventListener("click", function () {
-        state.following = true;
-        $("#follow-run").hidden = true;
-          goToStage(state.stage);
-      });
       // 레일은 스크롤이 아니라 탭을 옮긴다 — 숨은 패널로는 스크롤할 수 없다
       $("#stage-rail").addEventListener("click", function (e) {
         var item = e.target.closest("li");
@@ -2067,7 +2062,6 @@
         state.following = true;
         state.burstUntil = 0;
         state.done = false;
-        $("#follow-run").hidden = true;
         $("#intake").hidden = true;
         revealStage();
         paintPreview(text.trim());
@@ -2102,8 +2096,7 @@
       button.textContent = "감사 시작 →";
       setTimeout(function () {
         state.following = false;
-        $("#follow-run").hidden = true;
-          applyFold();
+        applyFold();
       }, 360);
     }
     if (!state.done) lastDone = false;

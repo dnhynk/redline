@@ -1629,43 +1629,9 @@ a {
   font-feature-settings: "tnum" 1;
 }
 
-.fix-from {
-  display: block;
-  font-family: var(--f-sans);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.fix-to {
-  display: block;
-  margin-top: 8px;
-  padding-left: 17px;
-  text-indent: -17px;
-  font-family: var(--f-serif);
-  font-size: 16px;
-  line-height: 1.65;
-  color: var(--ink);
-}
 
 /* --- 떠 있는 요소 -------------------------------------------------------- */
 
-.follow-run {
-  position: fixed;
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%);
-  z-index: 50;
-  padding: 12px 20px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--paper);
-  background: var(--ink);
-  border: 0;
-  box-shadow: var(--shadow-lift);
-}
-body.has-banner .follow-run {
-  bottom: 78px;
-}
 
 .source-banner {
   position: fixed;
