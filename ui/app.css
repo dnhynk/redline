@@ -1182,24 +1182,28 @@ a {
   background-size: 0% 6px, 10px 6px;
 }
 
+/* ★ fill-mode 는 none 이다. both 로 두면 애니메이션이 돌지 못한 경우(패널이 접혀
+   있거나 그리기가 뒤로 밀린 경우) 시작 상태인 폭 0% 에 고정돼 부호가 아예 사라진다.
+   쉬는 상태는 위의 기본 규칙이 이미 '그어진 모습'이므로, 애니메이션은 들어오는
+   동안만 관여하면 된다. */
 .claim-mark.draw[data-mark="unsupported"] {
-  animation: mark-draw-4 var(--dur-stage) var(--ease-pen) both;
+  animation: mark-draw-3 var(--dur-stage) var(--ease-pen);
 }
 .claim-mark.draw[data-mark="supported"],
 .claim-mark.draw[data-mark="no_source"],
 .claim-mark.draw[data-mark="undecidable"] {
-  animation: mark-draw-2 var(--dur-stage) var(--ease-pen) both;
+  animation: mark-draw-2 var(--dur-stage) var(--ease-pen);
 }
 .claim-mark.draw[data-mark="overstated"] {
-  animation: wavy-in var(--dur-stage) var(--ease-pen) both;
+  animation: wavy-in var(--dur-stage) var(--ease-pen);
 }
 
-@keyframes mark-draw-4 {
+@keyframes mark-draw-3 {
   from {
-    background-size: var(--mark-draw-from) 4px;
+    background-size: var(--mark-draw-from) 3px;
   }
   to {
-    background-size: 100% 4px;
+    background-size: 100% 3px;
   }
 }
 @keyframes mark-draw-2 {
