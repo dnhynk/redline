@@ -69,6 +69,11 @@ VERDICTS = (
 # 모델이 제안할 수 있는 값 — "pending"은 호스트 초기값이라 제안 대상이 아니다.
 SUGGESTABLE_VERDICTS = tuple(v for v in VERDICTS if v != "pending")
 
+# 헤드라인 수치 "뒷받침 안 됨 N/M"의 분자. 호스트 지표와 모델 보고서가 같은 정의를 쓰게
+# 하는 단일 출처다. `no_source`는 분자가 아니라 별도 수치다 — 검색이 못 찾은 것을
+# 뒷받침 안 됨으로 집계하면 수치 자체가 과장이 된다.
+UNSUPPORTED_VERDICTS = ("unsupported", "overstated")
+
 EVIDENCE_TOOLS = ("search_web", "search_scholar", "fetch_source")
 
 # `Audit.status`가 가질 수 있는 값. `error`는 **시작하지 못한 런**이다 — 시간이 모자라
@@ -293,7 +298,7 @@ _ALLOWED_SUGGESTIONS: dict[tuple[int, str], frozenset[str]] = {
     (2, "pass"): frozenset({"supported"}),
     (2, "fail"): frozenset({"unsupported", "overstated"}),
     (2, "undecidable"): frozenset({"undecidable"}),
-    (3, "fail"): frozenset({"overstated", "unsupported"}),
+    # (3, "fail")은 비어 있다 — 축3은 판정 열을 만지지 못한다. 아래 decide_verdict 참조.
     (3, "undecidable"): frozenset({"undecidable"}),
 }
 
@@ -345,9 +350,12 @@ def decide_verdict(axis: int, outcome: str, suggested: str | None, current: str)
     if axis == 2:
         return "unsupported"
     if axis == 3:
-        if current == "supported":
-            return "overstated"
-        return "undecidable" if current == "pending" else current
+        # ★ 축3은 판정을 바꾸지 않는다. 축3이 찾는 것은 "이 글이 언급하지 않은 반대·한정
+        # 문헌"이고 그런 문헌은 **참이고 정확히 인용된 문장에도 거의 항상 존재한다**.
+        # 그것을 지나친 단정으로 승격하면 시그니처 산출물이 판정 열을 오염시켜, 전부 참인
+        # 글이 화면에서 대부분 문제 있는 글로 칠해진다. 맥락이 빠졌다는 것과 원문이 증거보다
+        # 세다는 것은 다른 사건이다 — 앞의 것은 반박 패널이 말하고, 뒤의 것은 축2가 말한다.
+        return current
     return current
 
 
@@ -830,6 +838,12 @@ class Audit:
                     f"축1 확인 실패는 항상 no_source로 저장한다 — 제안한 '{verdict}'는 무시했다. "
                     "뒷받침 안 됨 판정이 필요하면 축2에서 출처 대조로 내려라."
                 )
+            elif axis == 3:
+                warning = (
+                    f"축3은 판정을 바꾸지 않는다 — 제안한 '{verdict}'는 무시했다. 반대·한정 문헌은 "
+                    "record_omission으로 반박 목록에 남는다. 원문이 증거보다 세다고 판단했다면 "
+                    "그것은 축2의 일이다 — axis=2로 다시 호출해 정정하라."
+                )
             else:
                 warning = f"제안한 verdict '{verdict}'는 이 축·결과 조합에서 쓰이지 않아 무시했다."
         if replacing:
@@ -922,8 +936,10 @@ class Audit:
         return len(self.audited_claims())
 
     def unsupported_rate(self) -> tuple[int, int]:
+        """(미지지 수, 감사한 클레임 수). 분자 정의는 `UNSUPPORTED_VERDICTS` 한 곳이고
+        프롬프트의 최종 보고 헤드라인도 같은 정의를 쓴다 — 두 수치가 갈라지면 안 된다."""
         audited = self.audited_claims()
-        bad = sum(1 for c in audited if c["verdict"] in ("unsupported", "overstated"))
+        bad = sum(1 for c in audited if c["verdict"] in UNSUPPORTED_VERDICTS)
         return bad, len(audited)
 
     def no_source_count(self) -> int:

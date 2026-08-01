@@ -67,6 +67,7 @@ except Exception:  # ImportError 포함 — io-layer 미병합 상태
         return {
             "ok": True,
             "error": None,
+            "source_mode": "mock",
             "data": {
                 "url": url,
                 "title": f"[stub] {url}",
@@ -108,6 +109,10 @@ except Exception:  # ImportError 포함 — io-layer 미병합 상태
             "ok": True,
             "error": None,
             "data": results,
+            "source_mode": "mock",
+            "result_status": "ok" if results else "empty",
+            "total_count": len(results),
+            "cached": False,
             "request": {"query": query, "lang": lang, "date_range": date_range},
         }
 
@@ -179,7 +184,18 @@ MAX_RESULTS_RANGE = (1, 20)
 MAX_CHARS_RANGE = (500, 20000)
 
 # 실패 봉투의 구조화 정보 — 이 키들을 버리면 모델이 실패에 대응할 근거를 잃는다.
-_IO_PASSTHROUGH = ("error_code", "retryable", "hint", "request")
+_IO_PASSTHROUGH = (
+    "error_code",
+    "retryable",
+    "hint",
+    "request",
+    # provenance — 이것을 버리면 모델은 픽스처 검색을 실검색으로 알고 최종 보고에
+    # 사실 검증처럼 쓴다. 화면만 mock 배너를 달고 보고서 문장은 모른다.
+    "source_mode",
+    "cached",
+    "result_status",
+    "total_count",
+)
 
 DateRange = Literal["past_day", "past_week", "past_month", "past_year"]
 Stance = Literal["support", "challenge"]
@@ -310,6 +326,11 @@ class AuditContext:
         self.record_calls_used += 1
         return True
 
+    def note_source_mode(self, mode: str) -> None:
+        """IO가 보고한 provenance를 런 상태에 반영한다. mock은 live로 되돌아가지 않는다."""
+        if mode == "mock" or self.audit.source_mode not in ("live", "mock"):
+            self.audit.source_mode = mode
+
     def emit_audit(self) -> None:
         """상태가 실제로 바뀌었을 때만 방출한다.
 
@@ -350,6 +371,8 @@ class AuditContext:
             "claims_remaining": claims_remaining,
             "fetch_allowed": self.fetch_allowed(),
             "fetch_cutoff_s": self.fetch_cutoff_s,
+            # 이번 런의 검색·페치가 실데이터인가 픽스처인가. 보고서 문장이 이것을 알아야 한다.
+            "source_mode": self.audit.source_mode,
             # 지금까지 나간 반증 쿼리 수 — **관측치이지 할당량이 아니다.**
             # 필요치(더 쏴야 하는 수)를 여기 실었더니 모델이 정확히 그 수에서 멈췄고
             # 누락 증거가 8.00 → 4.33으로 무너졌다. 하한을 알려주면 하한이 상한이 된다.
@@ -397,6 +420,11 @@ def _reply(
     for key in _IO_PASSTHROUGH:
         if passthrough and key in passthrough:
             envelope[key] = passthrough[key]
+    # IO가 방금 무엇으로 답했는지가 런의 진실이다 — mock이 한 번이라도 섞이면 mock이 이긴다.
+    reported = (passthrough or {}).get("source_mode")
+    if reported in ("live", "mock"):
+        ctx.note_source_mode(reported)
+    envelope.setdefault("source_mode", ctx.audit.source_mode)
     envelope["budget"] = ctx.budget_snapshot()
     return envelope
 

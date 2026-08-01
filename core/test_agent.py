@@ -442,7 +442,8 @@ async def test_complete_requires_the_completion_gate():
     assert status["completion"]["complete"] is True
     assert status["audit"]["status"] == "complete"
     assert status["audit"]["omissions"][0]["url"]  # 호스트가 원장에서 채운 서지 정보
-    assert status["audit"]["claims"][0]["verdict"] == "overstated"
+    # 축3이 반대 문헌을 찾아도 판정은 supported 그대로다 — 반박은 패널이 말한다.
+    assert status["audit"]["claims"][0]["verdict"] == "supported"
 
 
 THREE_CLAIM_TEXT = "첫 주장이 여기 있다. 둘째 주장이 여기 있다. 셋째 주장이 여기 있다."
@@ -651,6 +652,48 @@ async def test_run_whose_searches_all_failed_is_not_complete(monkeypatch):
     assert status["completion"]["challenge_dispatched"] == 1
     assert status["challenge_queries"] == 0  # 회수가 없으면 세지 않는다
     assert status["reason"] == "incomplete"
+
+
+@pytest.mark.asyncio
+async def test_mock_provenance_survives_the_model_boundary():
+    """모델이 픽스처 검색을 실검색으로 알면 최종 보고가 사실 검증처럼 쓰인다."""
+    model = FakeModel([[CLASSIFY], [SEARCH, CHALLENGE], [CLAIM], [_message("### 최종 보고")]])
+    events = await _collect(model, timebox_s=20)
+    outputs = [
+        e["payload"]["item"]["output"]
+        for e in events
+        if e["kind"] == "run_item" and e["payload"]["name"] == "tool_output"
+    ]
+    search_out = outputs[1]
+    assert search_out["source_mode"] == "mock"  # 봉투에 provenance가 있다
+    assert search_out["budget"]["source_mode"] == "mock"  # 예산에도 항상 있다
+    assert search_out["result_status"] in ("ok", "empty")
+    assert "total_count" in search_out
+
+    status = _last_status(events)
+    assert status["audit"]["source_mode"] == "mock"  # 종결 보고 경로도 잃지 않는다
+    assert status["source_mode"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_live_provenance_is_not_overwritten_by_a_later_call():
+    """mock이 한 번이라도 섞이면 mock이 이긴다 — 반대 방향으로는 안 바뀐다."""
+    ctx = _ctx()
+    ctx.audit.source_mode = "unknown"
+    ctx.note_source_mode("live")
+    assert ctx.audit.source_mode == "live"
+    ctx.note_source_mode("mock")
+    assert ctx.audit.source_mode == "mock"
+    ctx.note_source_mode("live")
+    assert ctx.audit.source_mode == "mock"
+
+
+def test_prompt_requires_declaring_fixture_runs():
+    prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    assert "source_mode" in prompt
+    assert "픽스처 기반 데모" in prompt
+    # 축3이 판정 열을 만지지 않는다는 규칙도 프롬프트에 있어야 이중 방어가 된다.
+    assert "축3은 판정을 바꾸지 않는다" in prompt
 
 
 @pytest.mark.asyncio

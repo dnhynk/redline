@@ -469,9 +469,50 @@ def test_late_axis1_does_not_overturn_axis2_except_fail():
     assert derive_claim_verdict(with_fail) == "no_source"
 
 
-def test_axis3_counter_evidence_downgrades_supported_only():
-    assert decide_verdict(3, "fail", None, "supported") == "overstated"
-    assert decide_verdict(3, "fail", None, "unsupported") == "unsupported"
+def test_axis3_never_touches_the_verdict_column():
+    """축3이 찾는 반대·한정 문헌은 참인 문장에도 거의 항상 존재한다 —
+    그것으로 판정을 강등하면 시그니처 산출물이 판정 열을 오염시킨다."""
+    for current in ("supported", "unsupported", "overstated", "undecidable", "no_source"):
+        assert decide_verdict(3, "fail", None, current) == current
+        assert decide_verdict(3, "fail", "overstated", current) == current
+
+
+def test_axis3_success_does_not_contaminate_the_verdict_column():
+    """전부 참이고 정확히 인용된 문단에서 축3이 한정 문헌을 찾아도 미지지가 되면 안 된다."""
+    audit = Audit(" ".join(f"참인 진술 {i}번이 여기 있다." for i in range(4)))
+    audit.register_evidence(tool="search_web", query="q", url="https://a.test", title="자료")
+    _challenge(audit, "반박 자료 검색")
+    _challenge(audit, "다른 각도의 한정 문헌 검색")
+    for i in range(4):
+        _claim(audit, i, f"참인 진술 {i}번이 여기 있다")
+        cid = f"C{i + 1}"
+        audit.update_verdict(claim_id=cid, axis=1, outcome="pass", evidence="존재", evidence_ids=["E1"])
+        audit.update_verdict(claim_id=cid, axis=2, outcome="pass", evidence="대조", evidence_ids=["E1"])
+    # 4건 중 3건에서 축3이 한정 문헌을 찾았다.
+    for cid in ("C1", "C2", "C3"):
+        out = audit.update_verdict(
+            claim_id=cid,
+            axis=3,
+            outcome="fail",
+            evidence="언급되지 않은 한정 문헌을 찾았다",
+            evidence_ids=["E1"],
+            verdict="overstated",
+        )
+        assert out["data"]["verdict"] == "supported"
+        assert "축3은 판정을 바꾸지 않는다" in out["data"]["warning"]
+        audit.record_omission(claim_id=cid, evidence_id="E1", summary="이 자료가 주장을 한정한다")
+
+    assert [c["verdict"] for c in audit.claims] == ["supported"] * 4
+    assert audit.unsupported_rate() == (0, 4)  # 화면 수치와 보고서 첫 줄이 같은 0/4를 말한다
+    assert len(audit.omissions) == 3  # 반박은 판정이 아니라 목록으로 말한다
+    assert audit.completion_report()["complete"] is True
+
+
+def test_headline_numerator_has_one_definition():
+    from core.audit import UNSUPPORTED_VERDICTS
+
+    assert UNSUPPORTED_VERDICTS == ("unsupported", "overstated")
+    assert "no_source" not in UNSUPPORTED_VERDICTS
 
 
 def test_axis_order_violation_is_rejected_with_recovery_path():
