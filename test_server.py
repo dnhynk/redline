@@ -582,6 +582,7 @@ def _reduced_blocks() -> tuple[str, str]:
     media = _balanced(CSS, CSS.index("{", CSS.index("@media (prefers-reduced-motion: reduce)")))
     forced = _balanced(CSS, CSS.index("{", CSS.index("html.force-reduced {")))
     forced += _balanced(CSS, CSS.index("{", CSS.index("html.force-reduced *,")))
+    forced += _balanced(CSS, CSS.index("{", CSS.index("html.force-reduced .tabpanel")))
     return media, forced
 
 
@@ -618,15 +619,20 @@ def test_both_reduced_paths_say_the_same_thing():
     assert norm(media) == norm(forced), "두 reduced 경로가 갈라졌다"
 
 
-def test_the_stage_never_animates_its_shadow():
+def test_the_panels_never_animate_their_shadow():
     """큰 면의 그림자 전환은 가장 눈에 띄는 순간에 가장 비싸다."""
     for selector, block in _rules(CSS):
-        if not re.search(r"\.(galley|rebut)\b", selector):
+        if not re.search(r"\.(galley|rebut|fixes|tabpanel)\b", selector):
             continue
         transition = re.search(r"transition:\s*([^;]+);", block)
         if transition:
             assert "box-shadow" not in transition.group(1), f"그림자를 전환한다: {selector.strip()}"
-    assert ".galley::after" in CSS and ".rebut::after" in CSS, "그림자를 들 의사 요소가 없다"
+        if "::" not in selector:  # 본체는 그림자를 지지 않는다 — 의사 요소가 진다
+            shadow = re.search(r"(?<!-)box-shadow:\s*([^;]+);", re.sub(r"transition[^;]*;", "", block))
+            assert not shadow or shadow.group(1).strip() == "none", (
+                f"패널 본체가 그림자를 직접 진다: {selector.strip()}")
+    # 쉬는 그림자는 의사 요소가 지고 아무도 그것을 전환하지 않는다
+    assert ".galley::before" in CSS and ".rebut::before" in CSS, "그림자를 질 의사 요소가 없다"
 
 
 def test_hover_needs_a_real_pointer():

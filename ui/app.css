@@ -108,6 +108,7 @@
   --ease-stage: cubic-bezier(0.23, 1, 0.32, 1);
 
   --dur-press: 160ms;
+  --dur-tab: 140ms;
   --dur-tint: 180ms;
   --dur-settle: 200ms;
   --dur-card: 240ms;
@@ -550,62 +551,146 @@ a {
   }
 }
 
-/* --- 단계 전환의 그림자 --------------------------------------------------
-   그림자 자체를 전환하면 화면에서 가장 큰 두 면이 280ms 동안 매 프레임 다시
-   칠해진다. 그것도 하필 가장 눈에 띄는 순간에. 쉬는 그림자와 들어 올린 그림자를
-   의사 요소 두 겹으로 깔아 두고 불투명도만 교차시킨다 — 보이는 결과는 같다.
-   inset 이 음수인 것은 의사 요소를 테두리 상자까지 넓혀 원래 그림자와
-   같은 자리에서 시작시키기 위한 것이다. */
+/* --- 패널의 그림자 --------------------------------------------------------
+   그림자를 전환하면 화면에서 가장 큰 면이 매 프레임 다시 칠해진다. 쉬는 그림자를
+   의사 요소에 얹어 두고 건드리지 않는다. inset 이 음수인 것은 의사 요소를 테두리
+   상자까지 넓혀 원래 그림자와 같은 자리에서 시작시키기 위한 것이다. */
 
 .galley,
-.rebut {
+.rebut,
+.fixes {
   position: relative;
   box-shadow: none;
 }
 .galley::before,
-.galley::after,
 .rebut::before,
-.rebut::after {
+.fixes::before {
   content: "";
   position: absolute;
   inset: -1px;
   z-index: -1;
   pointer-events: none;
-  transition: opacity var(--dur-stage) var(--ease-stage);
-}
-.rebut::before,
-.rebut::after {
-  top: -4px;
-}
-.galley::before,
-.rebut::before {
   box-shadow: var(--shadow-sheet);
 }
-.galley::after,
-.rebut::after {
-  box-shadow: var(--shadow-lift);
-  opacity: 0;
+.rebut::before {
+  top: -4px;
 }
-.galley.is-focus::before,
-.galley.is-receded::before,
-.rebut.is-focus::before {
-  opacity: 0;
+
+/* --- 결과 탭 --------------------------------------------------------------
+   알약이 아니라 밑줄이다. 이 화면은 인쇄물이고, 배경을 채운 칩은 여기 문법이
+   아니다. 라벨 옆 건수는 누르기 전에 그 안에 뭐가 있는지 말한다. */
+
+.tabs {
+  margin-bottom: -1px;
 }
-.galley.is-focus::after,
-.rebut.is-focus::after {
+.tablist {
+  display: flex;
+  align-items: flex-end;
+  gap: 30px;
+  border-bottom: 1px solid var(--rule);
+  padding: 0 34px;
+}
+.tab {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 10px 2px 11px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--f-sans);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-tint) var(--ease-ink);
+}
+/* 활성 표시는 실선 한 줄이다. 두께가 바뀌면 라벨이 흔들리므로 의사 요소로 깐다. */
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ink);
+  opacity: 0;
+  transition: opacity var(--dur-tint) var(--ease-ink);
+}
+.tab[aria-selected="true"] {
+  color: var(--ink);
+}
+.tab[aria-selected="true"]::after {
   opacity: 1;
+}
+.tab:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tab:not([aria-selected="true"]):hover {
+    color: var(--ink);
+  }
+}
+.tab-count {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--v-no_source-line);
+  font-variant-numeric: tabular-nums;
+}
+.tab[aria-selected="true"] .tab-count {
+  color: var(--muted);
+}
+/* 비어 있어도 누를 수 있다 — 왜 비었는지는 그 패널만 말할 수 있다 */
+.tab[data-empty="1"] .tab-count {
+  color: var(--rule);
+}
+
+/* 들어오는 패널만 뜬다. 이동은 없다 — 탭은 대등한 형제라 방향이 없고,
+   읽는 중에 글이 움직이면 안 된다. */
+.tabpanel {
+  transition: opacity var(--dur-tab) var(--ease-ink);
+}
+.tabpanel.is-entering {
+  opacity: 0;
+  transition: none;
+}
+
+/* --- 추천 수정안 패널 ---------------------------------------------------- */
+
+.fixes {
+  padding: 26px 34px 30px;
+  border-top: 4px solid var(--fix-line);
+}
+.fixes-sub {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.fix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.fix-list li {
+  padding-left: 18px;
+  border-left: 3px solid var(--fix-line);
+}
+.fixes-empty {
+  padding: 22px 0 6px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--muted);
 }
 
 /* --- 단계 1~3: 원고 + 여백 ---------------------------------------------- */
 
 .galley {
   padding: 30px 34px 0;
-  transition: opacity var(--dur-stage) var(--ease-stage),
-    transform var(--dur-stage) var(--ease-stage);
-}
-.galley.is-receded {
-  opacity: 0.42;
-  transform: scale(var(--stage-scale));
 }
 
 .section-head {
@@ -1134,11 +1219,6 @@ a {
   margin-top: 34px;
   padding: 30px 36px 34px;
   border-top: 4px solid var(--rebut-line);
-  transition: opacity var(--dur-stage) var(--ease-stage),
-    transform var(--dur-stage) var(--ease-stage);
-}
-.rebut.is-focus {
-  transform: translateY(var(--stage-lift));
 }
 .rebut .section-head {
   padding-bottom: 16px;
@@ -1450,30 +1530,6 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
-/* 추천 수정안 — 지적으로 끝나지 않고 고쳐 쓰기로 마무리하는 절 */
-.fixbox {
-  margin: 26px 0 6px;
-  padding: 22px 26px 20px;
-  background: var(--fix-tint);
-  border-left: 5px solid var(--fix-line);
-  box-shadow: var(--shadow-sheet);
-}
-.fixbox > h3 {
-  margin: 0 0 4px;
-  font-size: 18px;
-  color: var(--fix-label);
-}
-.fixbox li {
-  border-left: 0;
-  padding: 18px 0 0 16px;
-  margin-top: 18px;
-  border-top: 1px solid var(--hair);
-}
-.fixbox li:first-of-type {
-  border-top: 0;
-  margin-top: 6px;
-  padding-top: 0;
-}
 .fix-from {
   display: block;
   font-family: var(--f-sans);
@@ -2012,6 +2068,10 @@ body.has-banner .lanes {
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
+  /* 탭 전환은 아예 없앤다 — 패널이 바뀐 것은 탭 밑줄이 이미 말한다 */
+  .tabpanel {
+    transition-duration: 0ms !important;
+  }
 }
 
 html.force-reduced {
@@ -2032,6 +2092,9 @@ html.force-reduced *::after {
   transition-duration: var(--dur-reduced) !important;
   transition-delay: 0ms !important;
   scroll-behavior: auto !important;
+}
+html.force-reduced .tabpanel {
+  transition-duration: 0ms !important;
 }
 
 /* --- 반응형 -------------------------------------------------------------- */
