@@ -40,6 +40,9 @@
   // 0.6초 안에 다 뜬다.
   var CARD_STEP_MS = 120;
   var CARD_WINDOW_MS = 360;
+  // 문장 행은 카드보다 잦고 수가 많다 — 간격을 좁게, 창은 카드와 같게 묶는다
+  var ROW_STEP_MS = 26;
+  var ROW_WINDOW_MS = 360;
   var MARKED = { supported: 1, unsupported: 1, overstated: 1, no_source: 1, undecidable: 1 };
   var STRUCTURAL_KINDS = { heading: 1, table_header: 1, code_fence: 1, divider: 1 };
   var NETWORK_TOOLS = { search_web: 1, search_scholar: 1, fetch_source: 1 };
@@ -457,7 +460,7 @@
       $("#omissions").textContent = "";
       $("#final-report").textContent = "";
       $("#missing-actions").textContent = "";
-      $("#terminal-summary").hidden = true;
+
       $("#omissions-empty").hidden = false;
       $("#galley-empty").hidden = false;
       paintStageRail();
@@ -537,6 +540,7 @@
     var host = $("#sentences");
     host.textContent = "";
     state.rows = [];
+    var fresh = [];
     var number = 0;
     for (var i = 0; i < sentences.length; i++) {
       var kind = kinds[i];
@@ -552,6 +556,7 @@
       var margin = el("div", "s-margin");
       row.appendChild(margin);
       host.appendChild(row);
+      fresh.push(row);
       state.rows.push({
         row: row,
         text: text,
@@ -572,6 +577,13 @@
     });
     host.appendChild(note);
     state.foldNote = note;
+
+    // 행이 많아도 마지막 행이 창 안에서 출발한다
+    var step = fresh.length > 1 ? Math.min(ROW_STEP_MS, ROW_WINDOW_MS / (fresh.length - 1)) : 0;
+    for (var n = 0; n < fresh.length; n++) {
+      if (step) fresh[n].style.animationDelay = Math.round(n * step) + "ms";
+      fireOnce(fresh[n], "arrive");
+    }
   }
 
   function updateRows(audit) {
@@ -1121,28 +1133,86 @@
 
   // ---------------------------------------------------------------- 종결
 
+  // 지금 무슨 일을 하는지 사람 말로. 내부 어휘를 그대로 쓰지 않는다.
+  function workingOn(status) {
+    var audit = state.audit;
+    var axis = status.axis || 0;
+    if (axis >= 3) return "반박을 찾는 중";
+    if (axis === 2) return "내용을 읽는 중";
+    if (axis === 1) return "출처를 찾는 중";
+    if (audit && claimsOf(audit).length) return "확인할 문장을 고르는 중";
+    if (audit && sentencesOf(audit).length) return "확인할 문장을 고르는 중";
+    return "문장을 나누는 중";
+  }
+
   function paintStatus(status) {
     var badge = $("#phase-badge");
     if (!status.done) {
       var axis = status.axis || 0;
-      badge.textContent = axis ? AXIS_NAME[axis] + " 진행 중" : "감사 준비 중";
-      badge.removeAttribute("data-outcome");
+      if (badge) {
+        badge.textContent = axis ? AXIS_NAME[axis] + " 진행 중" : "감사 준비 중";
+        badge.removeAttribute("data-outcome");
+      }
+      setText($("#terminal-title"), workingOn(status));
+      var note = $("#terminal-note");
+      if (note) note.hidden = true;
+      var band = $("#status-band");
+      if (band) band.removeAttribute("data-outcome");
     } else {
       var map = TERMINAL[status.reason] || TERMINAL.error;
-      badge.textContent =
-        (map.outcome === "complete" ? "감사 완료"
-          : map.outcome === "partial" ? "부분 감사"
-          : map.outcome === "non_auditable" ? "감사 대상 아님"
-          : "중단됨") + (map.note ? " · " + map.note : "");
-      badge.setAttribute("data-outcome", map.outcome);
+      if (badge) {
+        badge.textContent =
+          (map.outcome === "complete" ? "감사 완료"
+            : map.outcome === "partial" ? "부분 감사"
+            : map.outcome === "non_auditable" ? "감사 대상 아님"
+            : "중단됨") + (map.note ? " · " + map.note : "");
+        badge.setAttribute("data-outcome", map.outcome);
+      }
       paintTerminal(status, map);
     }
+    paintBand(status);
+  }
+
+  // 상태 띠의 게이지와 결과 한 줄. 남은 시간은 예측하지 않는다 —
+  // 경과와 상한만 보여주고 얼마나 왔는지는 보는 사람이 읽는다.
+  function paintBand(status) {
+    var band = $("#status-band");
+    if (!band || band.hidden) return;
+    var shown = state.elapsed;
+    if (!state.done && state.elapsedWall) shown = state.elapsed + (Date.now() - state.elapsedWall) / 1000;
+    shown = Math.max(0, Math.min(shown, state.timebox));
+    var frac = state.timebox > 0 ? shown / state.timebox : 0;
+    if (state.done) frac = 1;
+    var fill = $("#sb-fill");
+    if (fill) fill.style.transform = "scaleX(" + frac.toFixed(4) + ")";
+    var gauge = $("#sb-gauge");
+    if (gauge) gauge.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
+    setText($("#sb-elapsed"), String(Math.round(shown)));
+    setText($("#sb-timebox"), String(Math.round(state.timebox)));
+
+    // 끝나면 같은 자리가 결과 한 줄이 된다
+    var result = $("#terminal-coverage");
+    if (!result) return;
+    var audit = (status && status.audit) || state.audit;
+    if (!state.done || !audit) {
+      result.hidden = true;
+      return;
+    }
+    var bits = [];
+    var rate = audit.unsupported_rate;
+    if (Array.isArray(rate) && rate[1]) bits.push("뒷받침 안 됨 " + rate[0] + " / " + rate[1]);
+    if (Array.isArray(audit.coverage) && audit.coverage[1])
+      bits.push("커버리지 " + audit.coverage[0] + " / " + audit.coverage[1]);
+    result.hidden = !bits.length;
+    setText(result, bits.join("  ·  "));
   }
 
   function paintTerminal(status, map) {
     var section = $("#terminal-summary");
-    section.hidden = false;
+    // 보이고 숨기는 것은 탭이 맡는다 — 여기서는 내용만 채운다
     section.setAttribute("data-outcome", map.outcome);
+    var band = $("#status-band");
+    if (band) band.setAttribute("data-outcome", map.outcome);
     setText($("#terminal-title"), map.title);
     var note = $("#terminal-note");
     note.hidden = !map.note;
@@ -1165,15 +1235,6 @@
       for (var i = 0; i < missing.length; i++) list.appendChild(el("li", null, missing[i]));
     }
 
-    var audit = status.audit || state.audit || {};
-    var box = $("#terminal-coverage");
-    if (map.outcome === "partial" && Array.isArray(audit.coverage)) {
-      box.hidden = false;
-      box.querySelector(".metric").innerHTML =
-        audit.coverage[0] + ' <span class="sep">/</span> ' + audit.coverage[1];
-    } else {
-      box.hidden = true;
-    }
 
     var report = $("#final-report");
     // 중단된 런의 최종 보고는 시작도 못 한 감사의 수치다 — 싣지 않는다.
@@ -1182,7 +1243,7 @@
       report.dataset.sig = md;
       var parts = md ? renderReport(md) : { report: "", fixes: [] };
       report.innerHTML = parts.report;
-      $(".report-label").hidden = !md;
+      $("#report-empty").hidden = !!md;
       paintFixes(parts.fixes);
     }
   }
@@ -1360,8 +1421,12 @@
       } else if (!line.trim()) {
         flushPara();
         flushItems();
+      } else if (items && items.length) {
+        // 목록이 열려 있는데 제목도 항목도 아닌 줄이면 앞 항목의 이어짐이다.
+        // 여기서 목록을 닫으면 항목의 뒷부분이 별도 문단으로 떨어져 나간다 —
+        // 추천 절에서는 그 뒷부분이 바로 추천 문장이라 통째로 사라졌다.
+        items[items.length - 1] += " " + line.trim();
       } else {
-        flushItems();
         para.push(line.trim());
       }
     }
@@ -1391,7 +1456,11 @@
     for (var n = 0; n < blocks.length; n++) {
       if (fix >= 0 && n >= fix && n < fixEnd) {
         if (blocks[n].type === "ul") fixes = fixes.concat(blocks[n].items);
-        continue; // 제목과 본문은 탭 라벨과 안내문이 대신한다
+        // 목록이 아닌 모양으로 와도 고쳐 쓸 문장이면 버리지 않는다 —
+        // 산출물을 조용히 버리는 경로를 남기지 않는다.
+        else if (blocks[n].type === "p" && blocks[n].text.indexOf("→") >= 0)
+          fixes.push(blocks[n].text);
+        continue; // 제목과 안내문은 탭 라벨과 패널 설명이 대신한다
       }
       html += renderBlock(blocks[n], false);
     }
@@ -1419,10 +1488,19 @@
   // 추천 절 안에서는 화살표에서 줄을 끊는다 — 대안은 그대로 옮겨 적을 문장이다
   function fixLine(text) {
     var at = text.indexOf("→");
-    if (at < 0) return inline(text);
+    if (at < 0) return '<p class="fix-now">' + inline(text) + "</p>";
+    var was = text.slice(0, at).trim();
+    var now = text.slice(at + 1).trim();
+    // "**C5** 원문: …" 에서 클레임 번호와 안내말을 떼어 낸다 — 화면이 라벨을 따로 단다
+    var id = /^\*\*([A-Z]\d+)\*\*/.exec(was);
+    was = was.replace(/^\*\*[A-Z]\d+\*\*\s*/, "").replace(/^원문[:：]\s*/, "");
+    now = now.replace(/^추천[:：]\s*/, "");
     return (
-      '<span class="fix-from">' + inline(text.slice(0, at).trim()) + "</span>" +
-      '<span class="fix-to">→ ' + inline(text.slice(at + 1).trim()) + "</span>"
+      '<p class="fix-was"><span class="fix-tag">원문' +
+      (id ? " " + inline(id[1]) : "") +
+      '</span><span class="fix-said">' + inline(was) + "</span></p>" +
+      '<p class="fix-now"><span class="fix-tag is-now">고쳐 쓰기</span>' +
+      '<span class="fix-said">' + inline(now) + "</span></p>"
     );
   }
 
@@ -1453,7 +1531,9 @@
   var TAB_SPEC = [
     { tab: "tab-sentences", panel: "galley", count: "count-sentences" },
     { tab: "tab-rebut", panel: "omissions-section", count: "count-rebut" },
-    { tab: "tab-fix", panel: "fix-panel", count: "count-fix" }
+    { tab: "tab-fix", panel: "fix-panel", count: "count-fix" },
+    // 최종 보고는 셀 것이 없다 — 하나뿐인 글이라 건수를 붙이지 않는다
+    { tab: "tab-report", panel: "terminal-summary", count: null }
   ];
 
   function tabIndexOf(node) {
@@ -1466,14 +1546,17 @@
     var counts = [
       audit ? sentencesOf(audit).length : 0,
       audit ? (audit.omissions || []).length : 0,
-      state.fixCount || 0
+      state.fixCount || 0,
+      state.done ? 1 : 0
     ];
     for (var i = 0; i < TAB_SPEC.length; i++) {
       var tab = $("#" + TAB_SPEC[i].tab);
-      var slot = $("#" + TAB_SPEC[i].count);
-      if (!tab || !slot) continue;
-      var text = String(counts[i]);
-      if (slot.textContent !== text) slot.textContent = text;
+      if (!tab) continue;
+      var slot = TAB_SPEC[i].count ? $("#" + TAB_SPEC[i].count) : null;
+      if (slot) {
+        var text = String(counts[i]);
+        if (slot.textContent !== text) slot.textContent = text;
+      }
       // 0 이어도 누를 수 있게 둔다. 왜 비었는지는 그 패널만 말할 수 있고,
       // 찾아봤지만 없었다와 아예 안 찾았다를 가르는 문장이 거기 있다.
       tab.dataset.empty = counts[i] ? "0" : "1";
@@ -1522,13 +1605,15 @@
     panel.classList.remove("is-entering");
   }
 
-  // 단계 1~3 은 문장, 4 는 반박. 5(종결)는 탭 밖이라 탭을 건드리지 않는다.
+  // 단계 1~3 은 문장, 4 는 반박, 5(종결)는 최종 보고.
   function tabForStage(stage) {
-    return stage >= 4 ? 1 : 0;
+    return stage >= 5 ? 3 : stage >= 4 ? 1 : 0;
   }
 
   // 대기 화면은 검사 과정 밴드로 마감된다 — 무대는 런이 시작될 때 올라온다
   function revealStage() {
+    var band = $("#status-band");
+    if (band) band.hidden = false;
     var tabs = $("#result-tabs");
     if (tabs && tabs.hidden) {
       tabs.hidden = false;
@@ -1552,12 +1637,9 @@
   // 자동 따라가기가 탭을 옮긴다. 이탈한 사용자의 탭은 뺏지 않는다 —
   // 여기 오는 것은 state.following 이 참일 때뿐이다.
   function goToStage(stage) {
-    if (stage >= 1 && stage <= 4) {
-      selectTab(tabForStage(stage));
-      scrollToTabs(stage);
-    } else if (stage >= 5) {
-      scrollToStage(stage);
-    }
+    if (stage < 1) return;
+    selectTab(tabForStage(stage));
+    scrollToTabs(stage);
   }
 
   function scrollToTabs(stage) {
@@ -1886,7 +1968,6 @@
       }
       $("#intake-open").addEventListener("click", function () {
         $("#intake").hidden = false;
-        $("#intake-collapsed").hidden = true;
         // 다시 입력하러 왔다는 것은 이 런이 끝났다는 뜻이다 —
         // 단계 표시도 방금 감사한 글도 지난 런의 것이므로 비운다.
         state.stage = 0;
@@ -1945,6 +2026,10 @@
       ["wheel", "touchstart", "pointerdown", "keydown"].forEach(function (name) {
         window.addEventListener(name, detach, { capture: true, passive: true });
       });
+      // 게이지는 이벤트가 없는 동안에도 흐른다 — 시간은 계속 가고 있다
+      setInterval(function () {
+        if (state.status) paintBand(state.status);
+      }, 500);
     }
     if (isRaw) {
       var pause = $("#pause-scroll");
@@ -1984,8 +2069,6 @@
         state.done = false;
         $("#follow-run").hidden = true;
         $("#intake").hidden = true;
-        $("#intake-collapsed").hidden = false;
-        $("#terminal-summary").hidden = true;
         revealStage();
         paintPreview(text.trim());
       })
