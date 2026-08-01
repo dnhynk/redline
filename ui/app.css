@@ -362,7 +362,7 @@ a {
 }
 .specimen-note {
   display: block;
-  margin-top: 4px;
+  margin-top: 9px;
   font-size: 11px;
   line-height: 1.45;
   font-weight: 500;
@@ -417,7 +417,7 @@ a {
 .form-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 18px;
   margin-top: 18px;
 }
