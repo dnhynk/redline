@@ -34,7 +34,6 @@
   var DEFAULT_TOOL_MAX = 30;
   // 서버가 config 로 알려 주기 전까지 쓰는 값. 진실은 서버에 있다.
   var textMaxChars = 2000;
-  var claimCap = 14;
   // 한꺼번에 도착한 반박 카드를 차례로 드러내는 간격과, 그 전체 창의 상한.
   // 창을 360ms 로 묶은 것은 카드 자체가 240ms 라, 첫 장이 앉을 무렵 마지막 장이
   // 출발해 물결 하나로 읽히는 지점이기 때문이다. 어떤 장수에서도 마지막 카드가
@@ -332,9 +331,10 @@
     if (event.kind === "config") {
       var cfg = event.payload || {};
       if (cfg.timebox_s) state.timebox = cfg.timebox_s;
-      if (cfg.text_max_chars) textMaxChars = cfg.text_max_chars;
-      if (cfg.max_claims) claimCap = cfg.max_claims;
-      if (cfg.text_max_chars || cfg.max_claims) paintInputCount();
+      if (cfg.text_max_chars) {
+        textMaxChars = cfg.text_max_chars;
+        paintInputCount();
+      }
       state.replay = !!cfg.mock;
       paintSource();
       noteHistoryGap(cfg);
@@ -1429,9 +1429,6 @@
     var n = area.value.length;
     count.textContent = n.toLocaleString("en-US") + " / " + textMaxChars.toLocaleString("en-US");
     count.dataset.over = n > textMaxChars ? "1" : "0";
-    // 몇 개까지 감사하는지는 붙여넣기 전에 말한다 — 사후 통보가 아니라 사전 고지다.
-    var cap = $("#input-cap");
-    if (cap) cap.textContent = "주장 " + claimCap + "개까지 감사합니다";
   }
 
   function paintStageRail() {
