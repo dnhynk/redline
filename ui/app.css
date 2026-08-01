@@ -1375,15 +1375,21 @@ a {
 
 .tally {
   margin-top: 26px;
-  padding: 22px 0 0;
+  padding: 22px 0 30px;
   border-top: 1px solid var(--rule);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0;
 }
 .tally-cell {
+  display: flex;
+  flex-direction: column;
   padding: 0 26px;
   border-left: 1px solid var(--hair);
+}
+/* 세 칸의 마지막 줄이 같은 선에 앉는다 — 한 칸만 떠 있으면 표가 기운 것처럼 읽힌다 */
+.tally-cell > :last-child {
+  margin-top: auto;
 }
 .tally-cell:first-child {
   padding-left: 0;
@@ -1593,6 +1599,16 @@ a {
   font-size: 12px;
   color: var(--muted);
 }
+/* 찾아봤는데 없었다는 사실. 카드가 아니라 한 줄이다 — 없는 것을 부풀리지 않는다. */
+.rebut-none {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 .rebut-empty {
   display: flex;
   align-items: center;

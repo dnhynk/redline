@@ -916,8 +916,11 @@
 
   function markLabel(verdict) {
     if (verdict !== "pending") return VERDICT_LABEL[verdict] || VERDICT_LABEL.pending;
+    // 런이 끝났으면 "확인 중"이라고 말하지 않는다 — 고르기는 했는데 판정까지 못 간
+    // 문장이다. 끝난 화면에서 진행 중인 척하는 것이 이 제품에서 가장 나쁜 거짓말이다.
+    if (!state.done) return VERDICT_LABEL.pending;
     var reason = state.status && state.status.reason;
-    if (!state.done || reason === "complete" || reason === "non_auditable") return VERDICT_LABEL.pending;
+    if (reason === "complete" || reason === "non_auditable") return "판정 못 함";
     return cutLabel();
   }
 
@@ -1172,6 +1175,7 @@
       if (!live[host.children[d].dataset.key]) host.removeChild(host.children[d]);
     }
     if (!list.length) {
+      paintNoneFound([]);
       $("#omissions-empty").hidden = false;
       if (state.done) {
         $("#omissions-empty").lastElementChild.textContent = emptyRebuttalCopy(audit);
@@ -1180,9 +1184,16 @@
       return;
     }
     $("#omissions-empty").hidden = true;
+    // 찾았는데 없었던 것은 카드 한 장을 차지할 만한 소식이 아니다. 지우지도 않는다 —
+    // 찾아봤다는 사실은 남아야 하니 패널 아래 한 줄로 모은다.
+    var none = [], found = [];
+    for (var s2 = 0; s2 < list.length; s2++) {
+      (foundNothing(list[s2]) ? none : found).push(list[s2]);
+    }
+    paintNoneFound(none);
     var fresh = [];
-    for (var i = 0; i < list.length; i++) {
-      var om = list[i];
+    for (var i = 0; i < found.length; i++) {
+      var om = found[i];
       var key = omissionKey(om);
       if (host.querySelector('[data-key="' + CSS.escape(key) + '"]')) continue;
       fresh.push(buildOmission(om, key, evidence));
@@ -1248,6 +1259,21 @@
       if (q && out.indexOf(q) < 0) out.push(q);
     }
     return out;
+  }
+
+  // 찾아본 클레임과 나간 질의 수만 말한다. 없는 것을 카드로 부풀리지 않는다.
+  function paintNoneFound(list) {
+    var line = $("#rebut-none");
+    if (!line) return;
+    line.hidden = !list.length;
+    if (!list.length) return;
+    var ids = [], queries = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].claim_id) ids.push(list[i].claim_id);
+      queries += searchedQueries(list[i]).length;
+    }
+    setText(line, "반박을 찾았으나 나오지 않은 주장 " + ids.length + "건 — " +
+      ids.join(" · ") + " · 반증 질의 " + queries + "건");
   }
 
   function buildOmission(om, key, evidence) {
@@ -1533,6 +1559,7 @@
     var map = {};
     for (var key in VERDICT_LABEL) if (VERDICT_LABEL.hasOwnProperty(key)) map[VERDICT_LABEL[key]] = key;
     map["감사 안 함"] = "pending";
+    map["판정 못 함"] = "pending";
     return map;
   })();
   var LABEL_IN_BRACKETS = new RegExp(
