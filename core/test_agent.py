@@ -63,6 +63,11 @@ def _tool_call(name: str, args: dict, call_id: str):
     )
 
 
+def _recall(call: ResponseFunctionToolCall, n: int) -> ResponseFunctionToolCall:
+    """같은 호출을 다시 보낸다. 실제 API는 호출마다 call_id가 다르고, SDK는 같은 call_id를 한 번만 실행한다."""
+    return call.model_copy(update={"call_id": f"{call.call_id}#{n}"})
+
+
 class FakeModel(Model):
     """턴마다 미리 짜인 출력을 돌려주는 모델. 마지막 턴 이후에는 마무리 메시지를 낸다."""
 
@@ -880,7 +885,7 @@ async def test_fetch_is_refused_after_the_cutoff():
 async def test_repeated_identical_records_do_not_spam_the_relay():
     """같은 판정을 다시 기록한 호출은 상태를 바꾸지 않는다 — 스냅샷을 또 밀어내지 않는다."""
     repeat = _verdict_call("C1", 1, "undecidable")
-    model = FakeModel([[CLASSIFY], [SEARCH], [CLAIM], [repeat] * 20, [_message("끝")]])
+    model = FakeModel([[CLASSIFY], [SEARCH], [CLAIM], [_recall(repeat, i) for i in range(20)], [_message("끝")]])
     events = await _collect(model, timebox_s=20)
     status = _last_status(events)
     audit_events = [e for e in events if e["kind"] == "audit"]
@@ -910,7 +915,7 @@ async def test_error_run_does_not_look_like_a_finished_audit():
 
 @pytest.mark.asyncio
 async def test_network_cap_refuses_the_call_but_not_the_run():
-    model = FakeModel([[CLASSIFY], [SEARCH, SEARCH], [CLAIM], [AXIS1], [_message("끝")]])
+    model = FakeModel([[CLASSIFY], [SEARCH, _recall(SEARCH, 2)], [CLAIM], [AXIS1], [_message("끝")]])
     events = await _collect(model, timebox_s=20, max_tool_calls=1)
     status = _last_status(events)
     assert status["tool_calls"] == 1
