@@ -7,3 +7,11 @@ dependencies = ["openai-agents","httpx","fastapi","uvicorn[standard]","websocket
 
 [project.optional-dependencies]
 dev = ["pytest","pytest-asyncio"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["core", "tools"]
+py-modules = ["main", "server"]
