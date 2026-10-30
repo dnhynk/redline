@@ -425,7 +425,7 @@ def test_asset_path_escape_is_blocked(asset):
 
 def test_font_files_are_served_from_the_repo():
     with TestClient(create_app(list_source([]))) as client:
-        res = client.get("/ui/fonts/PretendardVariable.subset.woff2")
+        res = client.get("/ui/fonts/PretendardVariable.woff2")
     assert res.status_code == 200
     assert res.headers["content-type"] == "font/woff2"
 
