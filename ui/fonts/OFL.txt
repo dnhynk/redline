@@ -1,6 +1,6 @@
 Fonts bundled in ui/fonts/ and their copyright notices
 
-Pretendard (PretendardVariable.subset.woff2)
+Pretendard (PretendardVariable.woff2)
 Copyright (c) 2021, Kil Hyung-jin (https://github.com/orioncactus/pretendard),
 with Reserved Font Name 'Pretendard'.
 Copyright 2014-2021 Adobe (http://www.adobe.com/),
