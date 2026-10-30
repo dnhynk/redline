@@ -83,10 +83,6 @@ For a live audit, copy `.env.example` to `.env`, set `OPENAI_API_KEY` and `LINER
 - [`.env.example`](.env.example): environment variables.
 - [`ui/fonts/LICENSES.md`](ui/fonts/LICENSES.md): the bundled fonts and their licenses.
 
-## Project context
-
-Specified, reviewed and verified by me; implemented with AI coding agents such as Claude Code.
-
 ## License
 
 Code: MIT ([LICENSE](LICENSE)). The fonts in `ui/fonts/` are under the SIL Open Font License 1.1 ([OFL.txt](ui/fonts/OFL.txt)).
