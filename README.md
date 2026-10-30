@@ -8,9 +8,7 @@ The Python host that runs the agent issues an evidence ID for every result a sea
 
 *A saved live run from 2026-08-01 on a Korean text about EV batteries, replayed with `python server.py --mock`. Margin labels, top to bottom: overstated, supported, supported, could not check, supported, unsupported. The yellow banner says the screen is a replay.*
 
-- **Context:** solo entry to AGENT:24, the 24-hour hackathon of YAI (Yonsei University's AI society), in the track for agents built on Liner's web and scholarly search API; 2026-08-01 to 08-02.
-- **Verified:** a 19-sentence Korean text gave 14 claims, all checked in 71.5 s within the 90 s timebox (live OpenAI and Liner APIs, 2026-08-01, local run by the author).
-- **Status:** prototype, version 0.1.0. Accuracy has not been measured on a labeled set; the live numbers come from four runs on 2026-08-01.
+REDLINE was a solo entry to AGENT:24, a 24-hour hackathon run by YAI, Yonsei University's AI society, in Seoul on 2026-08-01 and 08-02 (Liner API track). It is a prototype, version 0.1.0. In one live run on 2026-08-01 it picked 14 claims from a 19-sentence Korean text and checked all of them in 71.5 s of its 90 s timebox.
 
 ## What it does
 
@@ -23,17 +21,19 @@ The Python host that runs the agent issues an evidence ID for every result a sea
 
 The model classifies the input, picks claims, compares sources and proposes verdicts through seven tools. The host (the Python code in `core/`) records them and owns the state: the sentence list, the evidence ledger, the search log and the rules for when a run counts as complete.
 
-- Evidence IDs. Every search or fetch result enters a ledger and gets an ID such as `E7` (`Audit.register_evidence` in `core/audit.py`). The verdict tool `update_verdict` takes `evidence_ids` and has no field for a URL or title. The host rejects IDs that are not in the ledger and IDs that came from a search made for another claim, and the screen resolves every link from the ledger (`test_unknown_evidence_id_is_rejected_with_catalog`, `test_another_claims_evidence_cannot_close_this_claim` in `core/test_audit.py`).
+- Evidence IDs. Every search or fetch result enters a ledger and gets an ID such as `E7` (`Audit.register_evidence` in `core/audit.py`). The verdict tool `update_verdict` takes `evidence_ids` and has no field for a URL or title. The host rejects IDs that are not in the ledger and IDs that came from a search made for another claim, and the source links in the margin notes and on the counter-evidence cards come from the ledger (`test_unknown_evidence_id_is_rejected_with_catalog`, `test_another_claims_evidence_cannot_close_this_claim` in `core/test_audit.py`).
 - Search stance. `search_web` and `search_scholar` require a `stance` of `support` or `challenge`. `Audit.completion_report()` labels a run `complete` only if every audited claim, except those closed by a failed source check, got a support search and a challenge search with different queries. Each tool reply shows the model how many challenge searches it has made, but not how many are required (`test_budget_envelope_hides_the_challenge_quota` in `core/test_agent.py`).
 - Cheap checks first. `update_verdict` rejects a content verdict for a claim that has no source verdict yet, and a failed source check closes the claim. Page fetches, the slowest call, are refused after 60% of the 90 s timebox (`test_axis_order_violation_is_rejected_with_recovery_path`, `test_fetch_is_refused_after_the_cutoff`).
 - Verdict rules. The host derives each label from the check outcomes (`decide_verdict` in `core/audit.py`). A failed source check is stored as "source not found" and cannot become "unsupported". Only the content check can mark a claim unsupported or overstated; counter-evidence goes to its own panel and leaves the label as it was (`test_axis1_fail_is_always_no_source`).
-- Host-owned sentences. `record_claim` rejects a claim whose quoted text is not in the sentence it points to and returns candidate positions, so each margin mark sits on the sentence the claim came from (`test_out_of_range_index_is_rejected_with_candidates`).
+- Host-owned sentences. `record_claim` rejects a claim whose quoted text is not in the sentence it points to and returns candidate positions, so each margin mark sits on the sentence the claim came from (`test_mismatched_coordinate_is_rejected_and_correctable`).
+
+The agent loop runs on the OpenAI Agents SDK (`openai-agents`). Search goes to Liner's web and scholarly search APIs over `httpx`, which also fetches pages; `trafilatura` and `pypdf` extract the text of HTML pages and PDFs. `server.py` relays the run to the browser over a FastAPI and uvicorn WebSocket, and the UI in `ui/` is plain HTML, CSS and JavaScript.
 
 Start reading here: `core/agent.py` (the run loop, 416 lines), `core/model_tools.py` (the seven tools and the budget) and `core/audit.py` (ledger and completion rules; large at 1,740 lines, 88 KB).
 
 ## Results
 
-Four live runs on 2026-08-01 with the OpenAI and Liner APIs. These are local measurements by the author; there is no official score. The first two ran under an earlier demo setting with a 110 s timebox. The product now gives every input 90 s and at most 14 claims.
+Four live runs on 2026-08-01 with the OpenAI and Liner APIs. These are local measurements by the author. The first two ran under an earlier demo setting with a 110 s timebox. The product now gives every input 90 s and at most 14 claims.
 
 | Input | Timebox | End state | Time | Claims | Counter-evidence found | Support : challenge searches |
 |---|---|---|---|---|---|---|
@@ -48,13 +48,13 @@ Four live runs on 2026-08-01 with the OpenAI and Liner APIs. These are local mea
 
 ## Status and limitations
 
-- Prototype, version 0.1.0. Accuracy has not been measured on a labeled set; the four runs above are the only live measurements.
-- The evidence-ID check covers the sources a verdict cites. The one-sentence explanation beside each verdict is free text from the model, and the host does not check its wording.
+- Prototype, version 0.1.0. Accuracy has not been measured on a labeled set, and each row in the table above is a single live run.
+- The evidence-ID check covers the sources that verdicts and counter-evidence cards cite. The host does not check the model's own wording: the one-sentence explanation recorded with each verdict, the summary on each counter-evidence card and the final report. A link the model writes into a card summary or the final report is shown as a clickable link, whether or not a search returned it.
 - Live runs need an OpenAI API key and a Liner API key, and both are paid APIs. Without `LINER_API_KEY`, or with `LINER_MOCK=1`, search reads saved fixtures and the screen says so.
 - The interface is in Korean, and the model writes its final report in Korean, also for English input.
 - One audit covers at most 2,000 characters and 14 claims in 90 s. In longer texts some sentences go unchecked; the coverage figure counts them and the screen lists them.
 - A claim is anchored to one sentence, so a claim that spans two sentences keeps its second half only in the explanation. A claim registered by mistake cannot be withdrawn; the model closes it as "could not check".
-- Page fetches do not get past paywalls or robot blocks, and a page that cannot be read leaves the claim at "could not check". Scholarly search is limited to 2 requests per second. Retracted papers are not tracked.
+- Page fetches do not get past paywalls or robot blocks. The prompt then has the model judge from the search snippet, or record "could not check" when it cannot see the content; the host does not enforce this. Scholarly search is limited to 2 requests per second. Retracted papers are not tracked.
 - The audited text and fetched pages reach the model inside marked data blocks (`wrap_input` in `core/agent.py`, `fence_fetched_body` in `core/model_tools.py`). This is a prompt-level guard against injected instructions; the evidence-ID checks run in the host and do not depend on it.
 - Dependencies are not pinned in `pyproject.toml`. CI runs the offline suite, with a fake model and fixture search, on Python 3.11 and 3.13. On 2026-10-31 the suite had 529 tests and passed locally with openai-agents 0.24.0.
 
@@ -67,10 +67,11 @@ git clone https://github.com/dnhynk/redline.git && cd redline
 python3 -m venv .venv && . .venv/bin/activate   # Windows: py -m venv .venv, then .venv\Scripts\activate
 pip install -e ".[dev]"
 python server.py --mock                         # then open http://127.0.0.1:8486/
-python -m pytest -q                             # expected: 529 passed, in under a minute
+python -m pytest -q                             # expected: 529 passed in under a minute
+                                                # (528 passed, 1 skipped without Node.js)
 ```
 
-In the browser, paste any text and press the button under the text box (감사 시작, "start audit"). The server ignores the input and replays the saved run shown above; `--speed 3` plays it faster, and `/raw` shows the same run as raw tool calls. One test runs a small JavaScript harness and is skipped when Node.js is not installed.
+In the browser, paste any text and press the button under the text box (감사 시작, "start audit"). The server ignores the input and replays the saved run shown above; `--speed 3` plays it faster, and `/raw` shows the same run as raw tool calls.
 
 For a live audit, copy `.env.example` to `.env`, set `OPENAI_API_KEY` and `LINER_API_KEY`, and run `python server.py`. `python main.py --file text.txt` runs one audit in the terminal. The default model is `gpt-5.6-terra`; set `TRACER_MODEL` to use another.
 
@@ -84,9 +85,7 @@ For a live audit, copy `.env.example` to `.env`, set `OPENAI_API_KEY` and `LINER
 
 ## Project context
 
-Solo entry to AGENT:24, a 24-hour hackathon run by YAI, Yonsei University's AI society, on 2026-08-01 and 08-02 in Seoul (Liner API track).
-
-Specified, reviewed and verified by me; implemented with AI coding agents (Claude Code). Commits written with Claude Code carry Co-Authored-By trailers.
+Specified, reviewed and verified by me; implemented with AI coding agents such as Claude Code.
 
 ## License
 
