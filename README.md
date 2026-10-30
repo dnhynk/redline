@@ -1,184 +1,93 @@
 # REDLINE
 
-An agent that audits AI-written text sentence by sentence, citing only host-issued evidence IDs.
+REDLINE checks the factual claims in AI-written text sentence by sentence and marks each verdict in the margin, for people who rely on a model's answer or have to review a draft a model wrote.
 
-**AI가 쓴 글을 문장 단위로 감사하는 에이전트.**
+The Python host that runs the agent issues an evidence ID for every result a search or page fetch returns, and the tool that records a verdict accepts only those IDs, so a source the agent never retrieved cannot be recorded.
 
-붙여넣은 텍스트에서 사실 주장을 골라내고, 각 주장을 세 가지로 확인한 뒤,
-판정을 원고 여백에 교정 부호로 그린다. 모든 판정은 호스트가 발급한 증거 번호를
-인용해야만 기록된다 — 모델이 URL이나 논문 제목을 지어내서 근거로 쓰는 경로가 없다.
+![REDLINE margin view: six Korean sentences underlined by verdict, each with a margin note giving the verdict, the claim ID and the domains of the cited sources](docs/margin-view.png)
 
-```
-입력: "2024 Stanford Metabolic Longevity Trial이 간헐적 단식이 노화를 되돌린다고 입증했다."
-출력: [출처 못 찾음] 전기간 웹 검색에서 해당 시험을 확인하지 못했습니다.
-      + 이 글에 대한 반박 2건 (글이 언급하지 않은 반대 증거)
-      + 추천 수정안
-```
+*A saved live run from 2026-08-01 on a Korean text about EV batteries, replayed with `python server.py --mock`. Margin labels, top to bottom: overstated, supported, supported, could not check, supported, unsupported. The yellow banner says the screen is a replay.*
 
----
+- **Context:** solo entry to AGENT:24, the 24-hour hackathon of YAI (Yonsei University's AI society), in the track for agents built on Liner's web and scholarly search API; 2026-08-01 to 08-02.
+- **Verified:** a 19-sentence Korean text gave 14 claims, all checked in 71.5 s within the 90 s timebox (live OpenAI and Liner APIs, 2026-08-01, local run by the author).
+- **Status:** prototype, version 0.1.0. Accuracy has not been measured on a labeled set; the live numbers come from four runs on 2026-08-01.
 
-## 문제
+## What it does
 
-AI가 쓴 글은 그럴듯한 출처를 댄다 — 위 예시의 시험처럼, 확인해 보면 찾을 수 없는 출처도 있다.
-그런데 같은 종류의 모델에게 감사를 맡기면 감사관도 URL과 논문 제목을 지어낼 수 있고,
-"반대 증거도 찾으라"는 지시만으로는 검색이 확증 쪽으로 쏠린다.
-REDLINE은 이 두 문제를 프롬프트가 아니라 호스트 쪽 구조(문장 좌표계, 증거 원장, 검색 방향 선언)로 막는다.
+- Takes up to 2,000 characters of pasted text in Korean or English. The host splits it into sentences, and the model picks up to 14 claims to check. A claim is a sentence, or part of one, that states a checkable fact.
+- Checks each claim in up to three steps, cheapest first: does a source for it exist, does that source say what the sentence says, and is there counter-evidence the text leaves out. The agent fetches a page or PDF when a search snippet is not enough to compare.
+- Marks each checked sentence in the margin as supported, unsupported, overstated, source not found or could not check, with links to the search results the verdict cites.
+- Lists the counter-evidence and suggested rewrites in separate tabs, and streams every raw tool call to a second page (`/raw`) for projection during a live demo.
 
----
+## How it works
 
-## 파이프라인 — 왜 이 순서인가
+The model classifies the input, picks claims, compares sources and proposes verdicts through seven tools. The host (the Python code in `core/`) records them and owns the state: the sentence list, the evidence ledger, the search log and the rules for when a run counts as complete.
 
-일곱 단계가 있고, 순서가 곧 이 제품의 논증이다.
+- Evidence IDs. Every search or fetch result enters a ledger and gets an ID such as `E7` (`Audit.register_evidence` in `core/audit.py`). The verdict tool `update_verdict` takes `evidence_ids` and has no field for a URL or title. The host rejects IDs that are not in the ledger and IDs that came from a search made for another claim, and the screen resolves every link from the ledger (`test_unknown_evidence_id_is_rejected_with_catalog`, `test_another_claims_evidence_cannot_close_this_claim` in `core/test_audit.py`).
+- Search stance. `search_web` and `search_scholar` require a `stance` of `support` or `challenge`. `Audit.completion_report()` labels a run `complete` only if every audited claim, except those closed by a failed source check, got a support search and a challenge search with different queries. Each tool reply shows the model how many challenge searches it has made, but not how many are required (`test_budget_envelope_hides_the_challenge_quota` in `core/test_agent.py`).
+- Cheap checks first. `update_verdict` rejects a content verdict for a claim that has no source verdict yet, and a failed source check closes the claim. Page fetches, the slowest call, are refused after 60% of the 90 s timebox (`test_axis_order_violation_is_rejected_with_recovery_path`, `test_fetch_is_refused_after_the_cutoff`).
+- Verdict rules. The host derives each label from the check outcomes (`decide_verdict` in `core/audit.py`). A failed source check is stored as "source not found" and cannot become "unsupported". Only the content check can mark a claim unsupported or overstated; counter-evidence goes to its own panel and leaves the label as it was (`test_axis1_fail_is_always_no_source`).
+- Host-owned sentences. `record_claim` rejects a claim whose quoted text is not in the sentence it points to and returns candidate positions, so each margin mark sits on the sentence the claim came from (`test_out_of_range_index_is_rejected_with_candidates`).
 
-| # | 단계 | 하는 일 | 이 자리에 있는 이유 |
-|---|---|---|---|
-| 0 | 분류 | 입력 유형·언어·감사 가능 여부 판정 | 첫 이벤트가 *일*이 아니라 **일의 종류를 정하는 결정**이다. 시·의견문이 감사 루프에 들어가면 확신에 찬 헛소리가 나온다 |
-| 1 | 클레임 선정 | 문장 좌표 위에 감사 단위를 세우고 예산을 나눈다 | 감사 단위가 있어야 검색이 가능하다. 예산은 **쓰기 전에** 나눈다 |
-| 2 | 확증·반증 동시 발사 | 주장마다 `support` 검색과 `challenge` 검색을 한 턴에 함께 쏜다 | 확증을 먼저 보면 그 결과에 앵커링되어 반증 쿼리가 무뎌진다. 반증은 6단계의 원재료라 나중 일이 되면 안 된다 |
-| 3 | 출처 확인 (Check 1) | 주장이 기대는 출처가 실재하는가 | **가장 싼 필터**다. 단위 비용당 후보 공간을 가장 크게 자른다 |
-| 4 | 내용 확인 (Check 2) | 살아남은 주장만 원문을 가져와 대조 | `fetch`가 단위 비용 최고다. 탈락할 주장에 쓰면 전액 낭비 |
-| 5 | 판정 확정 | 판정을 상태 변화로 만든다 | 화면에서 교정 부호와 내려가는 막대가 되는 지점 |
-| 6 | 반박 찾기 (Check 3) | 글이 언급하지 않은 반대·한정 증거를 기록 | 멀쩡해 보이는 주장에만 의미가 있다. **입력이 좋을 때 화면이 비는 것을 막는 유일한 장치** |
-| 7 | 종결 | 커버리지·미완 항목과 함께 보고 | "지금 전원을 뽑아도 결과가 나온다" |
+Start reading here: `core/agent.py` (the run loop, 416 lines), `core/model_tools.py` (the seven tools and the budget) and `core/audit.py` (ledger and completion rules; large at 1,740 lines, 88 KB).
 
-**이 순서인 이유 넷**
+## Results
 
-1. **비용 오름차순** — 검색(무제한) → 학술 검색(초당 2건 제한) → 원문 수집(가장 느리다).
-2. **정보량** — 가장 크게 자르는 검사가 가장 싸다. 존재 확인은 이미 풀린 문제라 필터로 격하하고,
-   미해결인 충실도·완전성에 예산을 몰아준다.
-3. **관측 가능성** — 각 단계가 서로 다른 종류의 이벤트를 만든다. 순서가 곧 화면의 서사다.
-4. **집행 가능성** — 지시가 아니라 구조로 강제한다. 아래가 그 방법이다.
+Four live runs on 2026-08-01 with the OpenAI and Liner APIs. These are local measurements by the author; there is no official score. The first two ran under an earlier demo setting with a 110 s timebox. The product now gives every input 90 s and at most 14 claims.
 
-**왜 다른 순서가 아닌가**: 원문 수집을 먼저 하면 존재하지 않는 출처에 대한 수집이 전액 낭비다 ·
-학술 검색을 먼저 하면 초당 2건 제한이 병렬 폭을 묶는다 · 완전성을 먼저 보면 탈락할 주장에는 무의미하다 ·
-분류를 건너뛰면 규범 명제를 사실처럼 감사해 감사 자체가 무효가 된다.
+| Input | Timebox | End state | Time | Claims | Counter-evidence found | Support : challenge searches |
+|---|---|---|---|---|---|---|
+| English health text, 4 sentences | 110 s | complete | 38.3 s | 4 | 1 | 3 : 3 |
+| English text written with care, 3 sentences | 110 s | complete | 41.2 s | 3 | 3 | 4 : 4 |
+| Korean economics text | 90 s | complete | 30.0 s | 4 | 2 | 3 : 4 |
+| Korean mixed text, 19 sentences | 90 s | complete | 71.5 s | 14 | 6 | 14 : 14 |
 
----
+- No existing source was marked "source not found" in these runs. All three claims of the carefully written English text passed the source and content checks, and the counter-evidence found for them left their verdicts unchanged.
+- The 14-claim cap was worked back from the timebox: a measured base of 27 s plus about 3.2 s per claim. The longest input finished in 71.5 s, 19 s inside the limit.
+- Search results change between runs, so these numbers move. They were measured on the build of 2026-08-01. The completion rules and the binding of evidence to claims were tightened on 2026-08-02, and the live runs have not been repeated since.
 
-## 지시가 아니라 구조로 강제한 것 셋
+## Status and limitations
 
-프롬프트에 적어 두는 것만으로는 지켜지지 않는 규율이 있다. 지시가 구조와 싸우면 구조가 이긴다.
+- Prototype, version 0.1.0. Accuracy has not been measured on a labeled set; the four runs above are the only live measurements.
+- The evidence-ID check covers the sources a verdict cites. The one-sentence explanation beside each verdict is free text from the model, and the host does not check its wording.
+- Live runs need an OpenAI API key and a Liner API key, and both are paid APIs. Without `LINER_API_KEY`, or with `LINER_MOCK=1`, search reads saved fixtures and the screen says so.
+- The interface is in Korean, and the model writes its final report in Korean, also for English input.
+- One audit covers at most 2,000 characters and 14 claims in 90 s. In longer texts some sentences go unchecked; the coverage figure counts them and the screen lists them.
+- A claim is anchored to one sentence, so a claim that spans two sentences keeps its second half only in the explanation. A claim registered by mistake cannot be withdrawn; the model closes it as "could not check".
+- Page fetches do not get past paywalls or robot blocks, and a page that cannot be read leaves the claim at "could not check". Scholarly search is limited to 2 requests per second. Retracted papers are not tracked.
+- The audited text and fetched pages reach the model inside marked data blocks (`wrap_input` in `core/agent.py`, `fence_fetched_body` in `core/model_tools.py`). This is a prompt-level guard against injected instructions; the evidence-ID checks run in the host and do not depend on it.
+- Dependencies are not pinned in `pyproject.toml`. CI runs the offline suite, with a fake model and fixture search, on Python 3.11 and 3.13. On 2026-10-31 the suite had 529 tests and passed locally with openai-agents 0.24.0.
 
-### 1. 문장 좌표계는 호스트가 소유한다
+## Run it
 
-모델은 자기가 센 문장 번호를 쓰지 않는다. 호스트가 분할한 좌표표를 받고, 클레임을 등록할 때
-인용한 구절이 그 좌표의 문장에 실제로 들어 있는지 호스트가 검사한다. 어긋나면 등록을 **거부**하고
-후보 좌표를 돌려준다. 제목·구분선 같은 구조 줄은 아예 등록되지 않고 커버리지 분모에서도 빠진다.
-
-### 2. 증거 원장 — 출처 날조가 구조적으로 불가능하다
-
-검색·수집이 성공할 때마다 호스트가 결과에 증거 번호를 발급해 원장에 적재한다.
-판정 기록 도구의 스키마에는 **URL이나 제목을 적을 자리가 아예 없다** — 증거 번호만 받는다.
-원장에 없는 번호를 인용하면 거부된다. 화면의 출처 링크는 전부 원장에서 역참조한 것이라,
-모델이 문자열로 지어낸 출처가 화면에 오를 경로가 없다.
-
-증거는 자기를 데려온 검색의 클레임과 방향을 기억한다. 다른 주장의 검색이 데려온 자료를
-근거로 인용하면 거부되고, 확증 방향으로 나간 검색만으로 반박을 세우는 것도 거부된다.
-
-### 3. 검색은 방향을 선언해야 한다
-
-검색 도구는 `stance`(support/challenge)를 필수로 받는다. 이것이 없던 동안에는
-"확증과 반증을 함께 찾으라"는 지시가 프롬프트에 있어도 실제 검색의 대부분이 확증이었다 —
-호스트가 두 방향을 구분할 수 없으면 셀 수도, 강제할 수도 없기 때문이다. 방향을 선언시킨 뒤
-반박 산출물이 배 이상으로 늘었다. 종결 검사는 반증 검색이 주장 수의 절반에 못 미치면
-완주로 부르지 않는다. 다만 **필요 개수를 모델에게 알려주지는 않는다** — 목표를 주면
-모델이 정확히 그 수에서 멈추기 때문이다. 관측치만 보여주고 필요치는 감춘다.
-
----
-
-## 이 제품이 하지 않는 것
-
-- **안 한 것을 한 것처럼 보이지 않는다.** 시간이 모자라 끊긴 것(`timebox`)과 완주(`complete`)를
-  화면에서 같게 표시하지 않는다. 감사하지 않은 문장을 화면에서 지우지 않는다.
-  하기로 하고 안 한 것(`incomplete`)은 시간이 없어 못 한 것과 또 다른 사건으로 표시한다.
-- **실재하는 출처를 환각으로 단정하지 않는다.** "출처 못 찾음"은 회색 점선이지 빨강이 아니다.
-  검색이 못 찾은 것과 존재하지 않는 것은 다르다.
-- **모의 데이터를 실데이터로 위장하지 않는다.** 재생 모드에서는 화면에 배너가 뜨고,
-  실행 기록에 모드가 함께 남는다.
-- **확신을 계량으로 위장하지 않는다.** 신뢰도 백분율은 제품에서 뺐다 — 참일 확률이 아니라는
-  해명을 옆에 달아야 성립하는 수치였다. 확보한 근거의 양은 인용 건수와 원문 수집 건수로 센다.
-- **찾았는데 없었던 것을 지어내지 않는다.** 반박을 성실히 찾았지만 나오지 않은 런은 그렇게 기록한다.
-  완주하려고 없는 반박을 만들 필요가 없다.
-- **읽지 않은 문장을 판정하지 않는다.** 주장으로 고르지 않은 문장은 "감사 안 함"으로 남고,
-  소제목·목록 라벨은 문장 좌표계 밖이라 커버리지 분모에도 들어가지 않는다.
-
----
-
-## 구조
-
-```
-tools/     검색·원문 수집. 판단하지 않는다. 모의 모드와 실데이터를 구분해 기록한다
-core/      문장 좌표계 · 증거 원장 · 판정 계산 · 에이전트 루프. 네트워크에 나가지 않는다
-prompts/   감사 규율. 상한 숫자를 직접 쓰지 않는다(호스트가 주입한다)
-server.py  이벤트 릴레이. 요약·필터하지 않는다. 늦게 접속해도 처음부터 재생한다
-ui/        원고와 여백, 그리고 원본 이벤트를 그대로 흘리는 프로젝터 화면
-```
-
-## 기술 스택
-
-- Python 3.11+ · [OpenAI Agents SDK](https://github.com/openai/openai-agents-python)(`openai-agents`) — 에이전트 루프와 도구 호출. 기본 모델은 `gpt-5.6-terra`, `TRACER_MODEL`로 바꾼다
-- Liner API — 웹 검색·학술 검색 (`httpx`)
-- `trafilatura` · `pypdf` — 원문(HTML·PDF) 본문 추출
-- FastAPI · uvicorn · WebSocket — 이벤트 릴레이 서버
-- 프레임워크 없는 HTML/CSS/JavaScript — 원고·여백 화면과 프로젝터 화면
-- pytest · pytest-asyncio
-
----
-
-## 현재 상태
-
-버전 0.1.0. `python -m pytest` — 529개 테스트. 도구 스키마와 종결 사유는 골든 테스트가 고정한다.
-의존성 버전은 `pyproject.toml`에서 고정하지 않았다.
-
-### 측정값 (2026-08-01, 실제 API)
-
-타임박스 90초 · 주장 상한 14개 — 어떤 입력에도 같은 설정으로 돈다.
-
-| 입력 | 완주 | 시간 | 주장 | 반박 증거 | 확증:반증 |
-|---|---|---|---|---|---|
-| 영문 건강 정보 4문장 | `complete` | 38.3초 | 4 | 1 | 3 : 3 |
-| 영문 잘 쓴 글 3문장 | `complete` | 41.2초 | 3 | 3 | 4 : 4 |
-| 한국어 경제 글 | `complete` | 30.0초 | 4 | 2 | 3 : 4 |
-| 한국어 혼합 19문장 | `complete` | 71.5초 | 14 | 6 | 14 : 14 |
-
-- 실재하는 출처를 "출처 못 찾음"으로 잘못 찍은 사례 0건. 잘 쓴 글의 주장 3건은 전부
-  존재·충실도 검증을 통과했고, 반대 문헌을 찾은 뒤에도 판정이 내려가지 않았다 —
-  "글이 언급하지 않은 반대 증거"는 반박 패널로 말하지 판정을 깎는 근거가 아니다.
-- 모든 주장이 확증 검색과 반증 검색을 짝지어 받았다(위 표 마지막 열).
-- 주장 상한 14개는 타임박스에서 역산했다 — 실측 기본 27초에 주장당 약 3.2초가 붙고,
-  가장 긴 입력이 71.5초에 들어와 19초를 남겼다.
-
-숫자는 실행마다 흔들린다 — 같은 입력도 검색 결과가 매번 다르다. 위 값은 오늘 이 코드로 측정한 것이다.
-
-### 알려진 한계
-
-- 철회·오염된 논문 추적은 범위 밖이다.
-- 원문 수집은 페이월·로봇 차단을 뚫지 않는다. 못 읽으면 "확인 불가"로 남긴다 — 주장을 깎지 않는다.
-- 학술 검색은 초당 2건 제한이 있어 팬아웃 폭이 일반 검색보다 좁다.
-- 긴 입력에서는 주장 상한에 걸려 일부 문장이 감사되지 않는다. 그 사실은 커버리지로 표시되고,
-  감사하지 않은 문장에는 그 이유가 붙는다.
-- **두 문장에 걸친 주장은 등록할 수 없다.** 좌표계가 문장 하나에 앵커를 걸기 때문이다.
-  모델은 대표 문장에 앵커를 걸고 나머지를 근거 서술에 적는 방식으로 우회한다.
-- **등록한 주장을 철회하는 수단이 없다.** 잘못 고른 주장은 출처 확인을 "확인 불가"로 종결해 닫는다.
-
----
-
-## 실행
+Python 3.11 or newer. These commands need no API key.
 
 ```bash
-pip install -e .                  # 1. 설치
-cp .env.example .env              # 2. OPENAI_API_KEY, LINER_API_KEY 채우기
-python server.py                 # 3. http://127.0.0.1:8486/ (프로젝터 화면은 /raw)
+git clone https://github.com/dnhynk/redline.git && cd redline
+python3 -m venv .venv && . .venv/bin/activate   # Windows: py -m venv .venv, then .venv\Scripts\activate
+pip install -e ".[dev]"
+python server.py --mock                         # then open http://127.0.0.1:8486/
+python -m pytest -q                             # expected: 529 passed, in under a minute
 ```
 
-서버 없이 한 번만 돌리려면 `python main.py --file <텍스트파일>`.
-API 키 없이 화면을 보려면 `python server.py --mock` — 저장된 실행 기록을 재생하고,
-화면에 모의 재생임을 알리는 배너가 뜬다.
+In the browser, paste any text and press the button under the text box (감사 시작, "start audit"). The server ignores the input and replays the saved run shown above; `--speed 3` plays it faster, and `/raw` shows the same run as raw tool calls. One test runs a small JavaScript harness and is skipped when Node.js is not installed.
 
----
+For a live audit, copy `.env.example` to `.env`, set `OPENAI_API_KEY` and `LINER_API_KEY`, and run `python server.py`. `python main.py --file text.txt` runs one audit in the terminal. The default model is `gpt-5.6-terra`; set `TRACER_MODEL` to use another.
 
-## 상세 문서
+## Docs
 
-- [`prompts/system.md`](prompts/system.md) — 에이전트가 따르는 감사 규율(시스템 프롬프트)
-- [`.env.example`](.env.example) — 환경 변수 (`LINER_MOCK=1`이면 검색을 저장된 픽스처로 대체)
-- [`ui/fonts/LICENSES.md`](ui/fonts/LICENSES.md) — 동봉 폰트의 출처와 라이선스
+- [`prompts/system.md`](prompts/system.md): the agent's instructions and audit rules (in Korean, 532 lines).
+- [`test_contract_drift.py`](test_contract_drift.py): golden tests that pin the seven tool schemas and the list of end states.
+- [`ui/slides.html`](ui/slides.html): the five-slide hackathon pitch (in Korean; the server serves it at `/ui/slides.html`).
+- [`.env.example`](.env.example): environment variables.
+- [`ui/fonts/LICENSES.md`](ui/fonts/LICENSES.md): the bundled fonts and their licenses.
+
+## Project context
+
+Solo entry to AGENT:24, a 24-hour hackathon run by YAI, Yonsei University's AI society, on 2026-08-01 and 08-02 in Seoul (Liner API track).
+
+Specified, reviewed and verified by me; implemented with AI coding agents (Claude Code). Commits written with Claude Code carry Co-Authored-By trailers.
+
+## License
+
+Code: MIT ([LICENSE](LICENSE)). The fonts in `ui/fonts/` are under the SIL Open Font License 1.1 ([OFL.txt](ui/fonts/OFL.txt)).
